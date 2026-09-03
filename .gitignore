@@ -1,0 +1,10 @@
+# Fetched/generated data -- not source code, and can always be rebuilt by
+# re-running the data-fetch script. No reason to track it in git.
+cache/
+
+# Python's compiled-bytecode cache folders -- auto-generated, machine-specific.
+__pycache__/
+*.pyc
+
+# macOS Finder metadata file that can end up in random folders.
+.DS_Store
