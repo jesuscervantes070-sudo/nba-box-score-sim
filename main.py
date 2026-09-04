@@ -11,6 +11,7 @@ lives in game_engine.py, and loading real team data lives in loader.py.
 Keeping this file "dumb" (just I/O) means the simulation itself stays
 fully testable on its own, without needing a keyboard in the loop.
 """
+import sys
 from typing import Dict, List, Optional
 
 from loader import load_teams
@@ -31,6 +32,30 @@ SECTION = "-" * LINE_WIDTH
 # rule as everything else in this file) appended to a followed team's
 # row wherever standings are printed.
 YOUR_TEAM_MARKER = "  <-- YOUR TEAM"
+
+
+def _prompt(text: str) -> str:
+    """
+    A drop-in replacement for input() that fixes a real bug found by
+    testing: typing fast, ahead of the program actually reaching its
+    next prompt, let a leftover keystroke silently leak into a LATER,
+    unrelated prompt (e.g. a '2' meant for one question showing up
+    glued onto the next question's answer -- "Simulate the full season
+    now? (y/n): 2 y"). Flushing any not-yet-read input right before
+    reading means only what's typed AFTER a prompt actually appears
+    gets counted as the answer to it.
+
+    Falls back to plain input() wherever termios isn't available or
+    doesn't apply (Windows, or stdin isn't a real terminal at all --
+    e.g. this file being tested by piping canned answers in) --
+    flushing only matters for someone typing live at a real keyboard.
+    """
+    try:
+        import termios
+        termios.tcflush(sys.stdin, termios.TCIFLUSH)
+    except Exception:
+        pass
+    return input(text)
 
 
 # =====================================================================
@@ -68,7 +93,7 @@ def select_team_number(team_names: List[str], prompt_label: str, exclude_name: s
     """
     print(f"{prompt_label} (or 'b' to go back)")
     while True:
-        choice = input("> ").strip()
+        choice = _prompt("> ").strip()
 
         if choice.lower() in ("b", "back"):
             return None
@@ -209,7 +234,7 @@ def print_box_score(result: GameResult) -> None:
     # smaller, readable chunks, so the jump after each one is much less
     # jarring, and there's time to actually read the first team's box
     # score before the second one pushes it further up.
-    input("Press Enter to see the other team's box score...")
+    _prompt("Press Enter to see the other team's box score...")
     print()
     _print_team_box_score(result.away_team, result.away_players, result.away_score)
 
@@ -242,7 +267,7 @@ def run_single_game_flow(teams: Dict[str, Team], team_names: List[str], league_a
         result = simulate_game(teams[my_team_name], teams[opponent_team_name], league_avg)
         print_box_score(result)
 
-        again = input("Play again? (y/n): ").strip().lower()
+        again = _prompt("Play again? (y/n): ").strip().lower()
         print()
         if again != "y":
             return
@@ -364,7 +389,7 @@ def run_season_flow(teams: Dict[str, Team], team_names: List[str], season: str =
     optional look at one followed team's simulated season averages.
     """
     print()
-    confirm = input("Simulate the full season now? (y/n): ").strip().lower()
+    confirm = _prompt("Simulate the full season now? (y/n): ").strip().lower()
     if confirm != "y":
         return
 
@@ -380,18 +405,18 @@ def run_season_flow(teams: Dict[str, Team], team_names: List[str], season: str =
     conn = db.init_db()
     standings = db.get_standings(conn, season)
 
-    view = input("View standings by conference, or overall? (c/o): ").strip().lower()
+    view = _prompt("View standings by conference, or overall? (c/o): ").strip().lower()
     if view == "c":
         print_standings_by_conference(standings, teams, highlight=my_team_name)
     else:
         print_standings(standings, highlight=my_team_name)
 
-    compare = input("Compare against the real final standings? (y/n): ").strip().lower()
+    compare = _prompt("Compare against the real final standings? (y/n): ").strip().lower()
     if compare == "y":
         real_standings = fetch_real_standings(season)
         print_standings_comparison(standings, real_standings, highlight=my_team_name)
 
-    averages = input(f"View {my_team_name}'s simulated season averages vs. real? (y/n): ").strip().lower()
+    averages = _prompt(f"View {my_team_name}'s simulated season averages vs. real? (y/n): ").strip().lower()
     if averages == "y":
         print_team_season_averages(conn, teams[my_team_name], season)
 
@@ -414,7 +439,7 @@ def main() -> None:
         print("  1. Simulate a single game")
         print("  2. Simulate a full season and view standings")
         print("  3. Quit")
-        choice = input("> ").strip()
+        choice = _prompt("> ").strip()
         print()
 
         if choice == "1":
