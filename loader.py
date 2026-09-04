@@ -17,16 +17,18 @@ CACHE_DIR = Path(__file__).parent / "cache"
 ROSTER_CACHE_FILE = CACHE_DIR / "rosters.json"
 SCHEDULE_CACHE_FILE = CACHE_DIR / "schedule.json"
 TEAM_DEFENSE_CACHE_FILE = CACHE_DIR / "team_defense.json"
+TEAM_CONFERENCE_CACHE_FILE = CACHE_DIR / "team_conferences.json"
 
 
 def load_teams() -> Dict[str, Team]:
     """
-    Reads cache/rosters.json AND cache/team_defense.json and returns a
-    dict mapping each team's name to a real Team object -- real Player
-    objects for its roster, plus its own real defensive stats. Both
-    files get merged here so every caller gets one fully-populated
-    Team object, rather than every caller having to remember to load
-    and merge defense data separately.
+    Reads cache/rosters.json, cache/team_defense.json, and
+    cache/team_conferences.json, and returns a dict mapping each
+    team's name to a real Team object -- real Player objects for its
+    roster, plus its own real defensive stats and conference. All
+    three files get merged here so every caller gets one fully-
+    populated Team object, rather than every caller having to remember
+    to load and merge each piece separately.
 
     Returns a dict (not a list) so calling code can look up a team
     directly by name, e.g. teams["Los Angeles Lakers"], instead of
@@ -45,11 +47,18 @@ def load_teams() -> Dict[str, Team]:
             "No cached team defense data found at cache/team_defense.json. "
             "Run `python data_source.py` first to fetch it."
         )
+    if not TEAM_CONFERENCE_CACHE_FILE.exists():
+        raise FileNotFoundError(
+            "No cached team conference data found at cache/team_conferences.json. "
+            "Run `python data_source.py` first to fetch it."
+        )
 
     with open(ROSTER_CACHE_FILE) as f:
         raw = json.load(f)  # raw is now a plain Python dict -- not Player/Team objects yet
     with open(TEAM_DEFENSE_CACHE_FILE) as f:
         raw_defense = json.load(f)["teams"]
+    with open(TEAM_CONFERENCE_CACHE_FILE) as f:
+        raw_conference = json.load(f)["teams"]
 
     teams: Dict[str, Team] = {}
     for team_name, player_dicts in raw["teams"].items():
@@ -64,7 +73,8 @@ def load_teams() -> Dict[str, Team]:
         # -- data_source.py's DEFENSE_FIELD_MAP guarantees these JSON
         # keys already match Team's opp_* field names.
         defense = raw_defense.get(team_name, {})
-        teams[team_name] = Team(name=team_name, players=players, **defense)
+        conference = raw_conference.get(team_name, "")
+        teams[team_name] = Team(name=team_name, players=players, conference=conference, **defense)
 
     return teams
 

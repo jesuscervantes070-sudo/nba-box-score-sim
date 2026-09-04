@@ -124,6 +124,11 @@ class Team:
     opp_fg3m: float = 0.0
     opp_fg3a: float = 0.0
 
+    # Real conference ("East"/"West") -- structural fact about the
+    # team, not something that varies by game, used for grouping
+    # standings the way real broadcasts/apps do.
+    conference: str = ""
+
     def get_player(self, name: str) -> Optional[Player]:
         """Look up one player on this team by exact name match.
         Returns None if no player on the roster has that name."""

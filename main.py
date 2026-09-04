@@ -3,15 +3,15 @@ The playable, text-based front end for the sim. Run this file directly:
 
     python3 main.py
 
-Flow: welcome -> pick your team -> pick an opponent -> simulate one game
--> print the full box score -> play again? -> loop until the user quits.
+Top-level menu: simulate a single game, or simulate a full season and
+view standings.
 
 This file only prints/reads text -- all the actual simulation logic
 lives in game_engine.py, and loading real team data lives in loader.py.
 Keeping this file "dumb" (just I/O) means the simulation itself stays
 fully testable on its own, without needing a keyboard in the loop.
 """
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from loader import load_teams
 from models import Player, Team
@@ -27,6 +27,15 @@ LINE_WIDTH = 96
 DIVIDER = "=" * LINE_WIDTH
 SECTION = "-" * LINE_WIDTH
 
+# A plain-text marker (no color codes -- same "keyboard symbols only"
+# rule as everything else in this file) appended to a followed team's
+# row wherever standings are printed.
+YOUR_TEAM_MARKER = "  <-- YOUR TEAM"
+
+
+# =====================================================================
+# TEAM SELECTION
+# =====================================================================
 
 def print_welcome() -> None:
     print(DIVIDER)
@@ -44,24 +53,33 @@ def print_team_list(team_names: List[str]) -> None:
     print()
 
 
-def select_team_number(team_names: List[str], prompt_label: str, exclude_name: str = None) -> Team:
+def select_team_number(team_names: List[str], prompt_label: str, exclude_name: str = None) -> Optional[str]:
     """
     Read the user's choice by number, against the list already printed
     by print_team_list. Loops until it gets a valid number, and (if
     `exclude_name` is set -- used for picking the OPPONENT) refuses to
     let the user pick the same team twice.
+
+    Returns None if the user types 'b'/'back' -- there was previously
+    no way to escape team selection once inside it (found by testing:
+    typing anything other than a valid number, including an attempt to
+    back out, just got rejected and re-prompted forever). Callers
+    should treat a None return as "give up and return to the menu."
     """
-    print(prompt_label)
+    print(f"{prompt_label} (or 'b' to go back)")
     while True:
         choice = input("> ").strip()
 
+        if choice.lower() in ("b", "back"):
+            return None
+
         if not choice.isdigit():
-            print("Please enter a number from the list above.")
+            print("Please enter a number from the list above, or 'b' to go back.")
             continue
 
         index = int(choice)
         if index < 1 or index > len(team_names):
-            print(f"Please enter a number between 1 and {len(team_names)}.")
+            print(f"Please enter a number between 1 and {len(team_names)}, or 'b' to go back.")
             continue
 
         chosen_name = team_names[index - 1]
@@ -71,6 +89,10 @@ def select_team_number(team_names: List[str], prompt_label: str, exclude_name: s
 
         return chosen_name
 
+
+# =====================================================================
+# BOX SCORE DISPLAY (single game)
+# =====================================================================
 
 def _team_totals_row(players) -> Player:
     """
@@ -105,7 +127,7 @@ def _team_totals_row(players) -> Player:
 # ("Nickeil Alexander-Walker", "Yanic Konan Niederhäuser") -- a shorter
 # column was silently overflowing and throwing off every column after
 # it on that player's row.
-COLUMNS = [
+BOX_SCORE_COLUMNS = [
     ("PLAYER", "<", 25),
     ("MIN", ">", 4),
     ("PTS", ">", 4),
@@ -125,8 +147,8 @@ COLUMNS = [
 ]
 
 
-def _header_row() -> str:
-    return "  ".join(f"{label:{align}{width}}" for label, align, width in COLUMNS)
+def _box_score_header_row() -> str:
+    return "  ".join(f"{label:{align}{width}}" for label, align, width in BOX_SCORE_COLUMNS)
 
 
 def _pct_str(pct: float) -> str:
@@ -139,10 +161,11 @@ def _format_player_row(p: Player) -> str:
     row, since that's also just a Player -- see _team_totals_row)."""
     if p.min == 0:
         # A real box score doesn't print stats for someone who didn't
-        # play -- it just marks them DNP. Uses COLUMNS[0]'s width
-        # directly (rather than a second hardcoded number) so this can
-        # never quietly drift out of alignment with the header again.
-        name_width = COLUMNS[0][2]
+        # play -- it just marks them DNP. Uses BOX_SCORE_COLUMNS[0]'s
+        # width directly (rather than a second hardcoded number) so
+        # this can never quietly drift out of alignment with the
+        # header again.
+        name_width = BOX_SCORE_COLUMNS[0][2]
         return f"{p.name:<{name_width}}  DNP"
 
     values = [
@@ -153,13 +176,13 @@ def _format_player_row(p: Player) -> str:
         f"{p.fg3m:.0f}-{p.fg3a:.0f}", _pct_str(p.fg3_pct),
         f"{p.ftm:.0f}-{p.fta:.0f}", _pct_str(p.ft_pct),
     ]
-    return "  ".join(f"{v:{align}{width}}" for v, (_, align, width) in zip(values, COLUMNS))
+    return "  ".join(f"{v:{align}{width}}" for v, (_, align, width) in zip(values, BOX_SCORE_COLUMNS))
 
 
 def _print_team_box_score(team_name: str, players, score: float) -> None:
     print(f"{team_name} ({score:.0f})")
     print(SECTION)
-    print(_header_row())
+    print(_box_score_header_row())
     print(SECTION)
 
     # Highest scorers show up first -- DNPs (0 minutes) sink to the
@@ -191,6 +214,10 @@ def print_box_score(result: GameResult) -> None:
     _print_team_box_score(result.away_team, result.away_players, result.away_score)
 
 
+# =====================================================================
+# SINGLE GAME FLOW
+# =====================================================================
+
 def run_single_game_flow(teams: Dict[str, Team], team_names: List[str], league_avg: LeagueAverages) -> None:
     """The original pick-two-teams-and-simulate loop. Returns to the
     caller (the top-level menu) once the user says they're done,
@@ -202,9 +229,13 @@ def run_single_game_flow(teams: Dict[str, Team], team_names: List[str], league_a
         print_team_list(team_names)
 
         my_team_name = select_team_number(team_names, "Select YOUR team:")
+        if my_team_name is None:
+            return
         print(f"-> {my_team_name}\n")
 
         opponent_team_name = select_team_number(team_names, "Select the OPPONENT team:", exclude_name=my_team_name)
+        if opponent_team_name is None:
+            return
         print(f"-> {opponent_team_name}\n")
 
         print(f"Simulating: {my_team_name} vs. {opponent_team_name} ...")
@@ -217,7 +248,16 @@ def run_single_game_flow(teams: Dict[str, Team], team_names: List[str], league_a
             return
 
 
-def print_standings(standings: list) -> None:
+# =====================================================================
+# STANDINGS DISPLAY
+# =====================================================================
+
+def _standings_row(rank: int, row: dict, highlight: str) -> str:
+    marker = YOUR_TEAM_MARKER if row["team"] == highlight else ""
+    return f"{rank:>3}. {row['team']:<28}{row['W']:>5}{row['L']:>5}{marker}"
+
+
+def print_standings(standings: List[dict], highlight: str = None) -> None:
     print()
     print(DIVIDER)
     print("STANDINGS".center(LINE_WIDTH))
@@ -225,11 +265,27 @@ def print_standings(standings: list) -> None:
     print(f"{'#':>3}  {'TEAM':<28}{'W':>5}{'L':>5}")
     print(SECTION)
     for i, row in enumerate(standings, start=1):
-        print(f"{i:>3}. {row['team']:<28}{row['W']:>5}{row['L']:>5}")
+        print(_standings_row(i, row, highlight))
     print()
 
 
-def print_standings_comparison(standings: list, real_standings: Dict[str, int]) -> None:
+def print_standings_by_conference(standings: List[dict], teams: Dict[str, Team], highlight: str = None) -> None:
+    print()
+    print(DIVIDER)
+    print("STANDINGS BY CONFERENCE".center(LINE_WIDTH))
+    print(DIVIDER)
+    for conference in ("East", "West"):
+        conf_rows = [row for row in standings if teams[row["team"]].conference == conference]
+        print()
+        print(f"-- {conference} --")
+        print(f"{'#':>3}  {'TEAM':<28}{'W':>5}{'L':>5}")
+        print(SECTION)
+        for i, row in enumerate(conf_rows, start=1):
+            print(_standings_row(i, row, highlight))
+    print()
+
+
+def print_standings_comparison(standings: List[dict], real_standings: Dict[str, int], highlight: str = None) -> None:
     """
     Simulated standings side by side with the REAL final standings --
     the original point of this whole project: checking how close a
@@ -247,12 +303,13 @@ def print_standings_comparison(standings: list, real_standings: Dict[str, int]) 
     for row in rows:
         real_w = real_standings.get(row["team"])
         sim_w = row["W"]
+        marker = YOUR_TEAM_MARKER if row["team"] == highlight else ""
         if real_w is None:
-            print(f"{row['team']:<28}{'?':>8}{sim_w:>8}")
+            print(f"{row['team']:<28}{'?':>8}{sim_w:>8}{marker}")
             continue
         diff = sim_w - real_w
         diffs.append(abs(diff))
-        print(f"{row['team']:<28}{real_w:>8}{sim_w:>8}{diff:>+7}")
+        print(f"{row['team']:<28}{real_w:>8}{sim_w:>8}{diff:>+7}{marker}")
 
     print(SECTION)
     if diffs:
@@ -260,35 +317,88 @@ def print_standings_comparison(standings: list, real_standings: Dict[str, int]) 
     print()
 
 
-def run_season_flow(season: str = "2025-26") -> None:
+# =====================================================================
+# SEASON AVERAGES DISPLAY
+# =====================================================================
+
+def print_team_season_averages(conn, team: Team, season: str) -> None:
     """
-    Simulates the full real 1,230-game season (overwriting any
-    previously simulated one -- see season.py's simulate_season for
-    why re-running isn't additive) and shows the resulting standings,
-    with an option to compare against the REAL final standings.
+    For one team's roster: real per-game averages next to simulated
+    season averages (from the games just simulated and stored) -- the
+    original point of this whole project, finally visible in the game
+    itself rather than only in a test script.
     """
     print()
-    confirm = input(
-        f"Simulate the full {season} season now (1,230 games)? "
-        "This replaces any previously simulated season. (y/n): "
-    ).strip().lower()
+    print(DIVIDER)
+    print(f"{team.name.upper()} -- REAL VS. SIMULATED SEASON AVERAGES".center(LINE_WIDTH))
+    print(DIVIDER)
+    print(f"{'PLAYER':<25}{'GP':>4}  {'PTS':>13}  {'REB':>13}  {'AST':>13}  {'FG%':>13}")
+    print(f"{'':<25}{'':>4}  {'real':>6}{'sim':>7}  {'real':>6}{'sim':>7}  {'real':>6}{'sim':>7}  {'real':>6}{'sim':>7}")
+    print(SECTION)
+
+    for player in sorted(team.players, key=lambda p: -p.pts):
+        avg = db.get_player_season_averages(conn, player.name, season)
+        if not avg:
+            print(f"{player.name:<25}{'--':>4}  (no simulated games played)")
+            continue
+        print(
+            f"{player.name:<25}{avg['games_played']:>4}  "
+            f"{player.pts:>6.1f}{avg['pts']:>7.1f}  "
+            f"{player.reb:>6.1f}{avg['reb']:>7.1f}  "
+            f"{player.ast:>6.1f}{avg['ast']:>7.1f}  "
+            f"{player.fg_pct * 100:>5.1f}%{avg['fg_pct'] * 100:>6.1f}%"
+        )
+    print()
+
+
+# =====================================================================
+# SEASON FLOW
+# =====================================================================
+
+def run_season_flow(teams: Dict[str, Team], team_names: List[str], season: str = "2025-26") -> None:
+    """
+    Simulates the full real season (overwriting any previously
+    simulated one -- see season.py's simulate_season for why re-
+    running isn't additive), then shows standings (overall or by
+    conference), an optional real-vs-simulated comparison, and an
+    optional look at one followed team's simulated season averages.
+    """
+    print()
+    confirm = input("Simulate the full season now? (y/n): ").strip().lower()
     if confirm != "y":
         return
 
     print()
+    print_team_list(team_names)
+    my_team_name = select_team_number(team_names, "Select YOUR team (highlighted in standings below):")
+    if my_team_name is None:
+        return
+    print(f"-> {my_team_name}\n")
+
     simulate_season(season=season, fresh=True)
 
     conn = db.init_db()
     standings = db.get_standings(conn, season)
-    print_standings(standings)
+
+    view = input("View standings by conference, or overall? (c/o): ").strip().lower()
+    if view == "c":
+        print_standings_by_conference(standings, teams, highlight=my_team_name)
+    else:
+        print_standings(standings, highlight=my_team_name)
 
     compare = input("Compare against the real final standings? (y/n): ").strip().lower()
     if compare == "y":
-        print()
-        print("Fetching real standings...")
         real_standings = fetch_real_standings(season)
-        print_standings_comparison(standings, real_standings)
+        print_standings_comparison(standings, real_standings, highlight=my_team_name)
 
+    averages = input(f"View {my_team_name}'s simulated season averages vs. real? (y/n): ").strip().lower()
+    if averages == "y":
+        print_team_season_averages(conn, teams[my_team_name], season)
+
+
+# =====================================================================
+# MAIN ENTRY POINT
+# =====================================================================
 
 def main() -> None:
     print_welcome()
@@ -310,7 +420,7 @@ def main() -> None:
         if choice == "1":
             run_single_game_flow(teams, team_names, league_avg)
         elif choice == "2":
-            run_season_flow()
+            run_season_flow(teams, team_names)
         elif choice == "3":
             print("Thanks for playing!")
             break

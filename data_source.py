@@ -32,6 +32,7 @@ CACHE_DIR.mkdir(exist_ok=True)
 ROSTER_CACHE = CACHE_DIR / "rosters.json"
 SCHEDULE_CACHE = CACHE_DIR / "schedule.json"
 TEAM_DEFENSE_CACHE = CACHE_DIR / "team_defense.json"
+TEAM_CONFERENCE_CACHE = CACHE_DIR / "team_conferences.json"
 
 # Maps our field names -> the NBA stats API's "Opponent" column names.
 # These are real per-game stats about what a team's REAL OPPONENTS did
@@ -171,6 +172,41 @@ def fetch_real_standings(season: str) -> dict:
     return standings
 
 
+def fetch_team_conferences(season: str) -> dict:
+    """
+    Each team's real conference (East/West). Cached, unlike
+    fetch_real_standings -- a team's conference is essentially
+    permanent structural fact (not something to re-check every
+    comparison), the same category as its name or roster.
+    """
+    from nba_api.stats.endpoints import leaguestandingsv3
+    df = leaguestandingsv3.LeagueStandingsV3(season=season, timeout=30).get_data_frames()[0]
+
+    conferences = {}
+    for _, row in df.iterrows():
+        team_name = f"{row['TeamCity']} {row['TeamName']}"
+        team_name = NBA_API_TEAM_NAME_FIXES.get(team_name, team_name)
+        conferences[team_name] = row["Conference"]
+    return conferences
+
+
+def build_and_cache_team_conferences(season: str = "2025-26", force: bool = False) -> None:
+    if TEAM_CONFERENCE_CACHE.exists() and not force:
+        print(f"Team conference cache already exists at {TEAM_CONFERENCE_CACHE}. Use --refresh to force an update.")
+        return
+
+    print(f"Fetching {season} team conference assignments...")
+    conferences = fetch_team_conferences(season)
+
+    if len(conferences) != 30:
+        print(f"WARNING: expected 30 teams, got {len(conferences)} -- double check the season string.")
+
+    with open(TEAM_CONFERENCE_CACHE, "w") as f:
+        json.dump({"season": season, "teams": conferences}, f, indent=2)
+
+    print(f"Cached conference assignments for {len(conferences)} teams -> {TEAM_CONFERENCE_CACHE}")
+
+
 def fetch_schedule(season: str):
     """
     The real regular-season schedule for `season`: a list of dicts, one
@@ -279,3 +315,4 @@ if __name__ == "__main__":
     build_and_cache(season=args.season, force=args.refresh)
     build_and_cache_schedule(season=args.season, force=args.refresh)
     build_and_cache_team_defense(season=args.season, force=args.refresh)
+    build_and_cache_team_conferences(season=args.season, force=args.refresh)
