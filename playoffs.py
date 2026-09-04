@@ -8,14 +8,26 @@ Like season.py, this file has no simulation logic of its own -- every
 game is still produced by game_engine.simulate_game(). This file only
 decides WHO plays WHOM and WHERE (home court), then reads who won.
 
-Kept deliberately "easy" per the project's current priorities:
-  - Standings ties break by win count, then team name alphabetically.
-    Real NBA tiebreakers (head-to-head, division record, etc.) are a
-    much deeper rabbit hole -- not worth it for this pass.
-  - Nothing here gets written to season.db. It's simulate-and-print,
-    same spirit as a single exhibition game in main.py's option 1.
+Seeding ties use the real current-NBA tiebreaker chain, in order:
+  1. Head-to-head record
+  2. Division leader (only if every tied team shares a division)
+  3. Division record (same condition)
+  4. Conference record
+  5. Record vs. teams in the real playoff picture (top 10) in-conference
+  6. Record vs. the other conference's playoff picture
+  7. Net point differential
+Applied as a recursive group-split (_break_ties) so it also covers
+3+-team ties, not just two-team ones. The one deliberate gap: the
+NBA's official algorithm has extra nuance for a 3+-team tie that spans
+multiple divisions (which sub-group a division comparison even applies
+to). This skips division steps entirely for a group that isn't all in
+one division rather than guessing -- astronomically rare to matter with
+real 82-game variance, and never crashes if it does.
+
+Nothing here gets written to season.db -- it's simulate-and-print,
+same spirit as a single exhibition game in main.py's option 1.
 """
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from models import Team
 from game_engine import simulate_game, GameResult, LeagueAverages
@@ -32,17 +44,182 @@ Seed = Tuple[int, str]
 # that ends early just never reaches the later entries.
 HOME_PATTERN = [True, True, False, False, True, False, True]
 
+# Real NBA divisions -- realignments happen roughly once a decade, so
+# hardcoding this beats standing up a whole new fetch/cache file (like
+# team_conferences.json) just for a fact that basically never changes.
+# Only used by the division-leader/division-record tiebreaker steps.
+TEAM_DIVISIONS = {
+    # Atlantic
+    "Boston Celtics": "Atlantic", "Brooklyn Nets": "Atlantic", "New York Knicks": "Atlantic",
+    "Philadelphia 76ers": "Atlantic", "Toronto Raptors": "Atlantic",
+    # Central
+    "Chicago Bulls": "Central", "Cleveland Cavaliers": "Central", "Detroit Pistons": "Central",
+    "Indiana Pacers": "Central", "Milwaukee Bucks": "Central",
+    # Southeast
+    "Atlanta Hawks": "Southeast", "Charlotte Hornets": "Southeast", "Miami Heat": "Southeast",
+    "Orlando Magic": "Southeast", "Washington Wizards": "Southeast",
+    # Northwest
+    "Denver Nuggets": "Northwest", "Minnesota Timberwolves": "Northwest", "Oklahoma City Thunder": "Northwest",
+    "Portland Trail Blazers": "Northwest", "Utah Jazz": "Northwest",
+    # Pacific
+    "Golden State Warriors": "Pacific", "Los Angeles Clippers": "Pacific", "Los Angeles Lakers": "Pacific",
+    "Phoenix Suns": "Pacific", "Sacramento Kings": "Pacific",
+    # Southwest
+    "Dallas Mavericks": "Southwest", "Houston Rockets": "Southwest", "Memphis Grizzlies": "Southwest",
+    "New Orleans Pelicans": "Southwest", "San Antonio Spurs": "Southwest",
+}
 
-def seed_conference(standings: List[dict], teams: Dict[str, Team], conference: str) -> List[str]:
+# The tiebreaker chain, in the real NBA's priority order. A plain list
+# of names (not functions) so _break_ties can just pop through it.
+TIEBREAK_ORDER = [
+    "head_to_head", "division_leader", "division_record",
+    "conference_record", "vs_own_playoff_pool", "vs_other_playoff_pool",
+    "point_differential",
+]
+
+
+def _win_pct(games: List[tuple]) -> float:
+    """
+    Win % across a list of (opponent, my_score, opp_score) tuples.
+    -1.0 for an empty list (e.g. two teams in different divisions have
+    no "division games" against each other) so it sorts last within
+    its own tier instead of dividing by zero or needing a special case.
+    """
+    if not games:
+        return -1.0
+    wins = sum(1 for _, mine, theirs in games if mine > theirs)
+    return wins / len(games)
+
+
+def _playoff_pool(standings: List[dict], teams: Dict[str, Team], conference: str) -> set:
+    """
+    One conference's real playoff picture: the top 10 teams by win
+    count. Ties sitting exactly at the 10th spot are ALL included
+    (rather than arbitrarily picking one) so this doesn't quietly
+    depend on some other still-unresolved tie's outcome.
+    """
+    conf_teams = sorted(
+        (row for row in standings if teams[row["team"]].conference == conference),
+        key=lambda row: -row["W"],
+    )
+    if len(conf_teams) <= 10:
+        return {row["team"] for row in conf_teams}
+    cutoff_wins = conf_teams[9]["W"]
+    return {row["team"] for row in conf_teams if row["W"] >= cutoff_wins}
+
+
+def _division_leaders(standings: List[dict]) -> set:
+    """
+    Every team that leads its division outright, or is part of a tie
+    for the lead -- the division-leader tiebreaker step only asks "is
+    this team A leader," not which specific team leads (the next step,
+    division record, is what actually ranks them against each other).
+    """
+    by_division: Dict[str, List[dict]] = {}
+    for row in standings:
+        division = TEAM_DIVISIONS.get(row["team"])
+        if division:
+            by_division.setdefault(division, []).append(row)
+
+    leaders = set()
+    for rows in by_division.values():
+        best = max(r["W"] for r in rows)
+        leaders.update(r["team"] for r in rows if r["W"] == best)
+    return leaders
+
+
+def _tiebreak_value(criterion: str, conn, season: str, team: str, group: List[str], ctx: dict) -> Optional[float]:
+    """
+    One team's value for one tiebreaker criterion (higher always means
+    "earns the better seed"). Returns None when a criterion doesn't
+    apply to this group at all (the two division steps, when the tied
+    teams aren't all in the same division) so _break_ties can skip
+    straight to the next criterion instead of comparing a meaningless
+    number.
+    """
+    games = db.get_team_games(conn, season, team)
+
+    if criterion == "head_to_head":
+        # Real rule for a GROUP tie: win % in games against just the
+        # other currently-tied teams -- collapses to "the other team"
+        # automatically when the group only has two members.
+        return _win_pct([g for g in games if g[0] in group])
+
+    if criterion in ("division_leader", "division_record"):
+        divisions = {TEAM_DIVISIONS.get(t) for t in group}
+        if None in divisions or len(divisions) != 1:
+            return None  # not every team here is in the same division -- step doesn't apply
+        if criterion == "division_leader":
+            return 1.0 if team in ctx["division_leaders"] else 0.0
+        my_division = TEAM_DIVISIONS[team]
+        return _win_pct([g for g in games if TEAM_DIVISIONS.get(g[0]) == my_division])
+
+    if criterion == "conference_record":
+        return _win_pct([g for g in games if g[0] in ctx["conference_teams"]])
+
+    if criterion == "vs_own_playoff_pool":
+        return _win_pct([g for g in games if g[0] in ctx["conf_pool"]])
+
+    if criterion == "vs_other_playoff_pool":
+        return _win_pct([g for g in games if g[0] in ctx["other_pool"]])
+
+    return sum(mine - theirs for _, mine, theirs in games)  # "point_differential"
+
+
+def _break_ties(conn, season: str, group: List[str], ctx: dict, remaining: List[str]) -> List[str]:
+    """
+    Orders one same-win-count group of teams best-to-worst, working
+    through `remaining` criteria in order: compute the next one, split
+    the group by value, and recurse into any sub-group that's STILL
+    tied using whatever criteria are left. A group that ties through
+    every single criterion (essentially never happens across 82 real
+    games of variance) falls back to alphabetical -- a last resort now,
+    not the whole rule like before.
+    """
+    if len(group) <= 1:
+        return group
+    if not remaining:
+        return sorted(group)
+
+    criterion, rest = remaining[0], remaining[1:]
+    values = {team: _tiebreak_value(criterion, conn, season, team, group, ctx) for team in group}
+
+    if any(v is None for v in values.values()):
+        return _break_ties(conn, season, group, ctx, rest)  # criterion doesn't apply to this group
+
+    ordered: List[str] = []
+    for v in sorted(set(values.values()), reverse=True):
+        subgroup = [t for t in group if values[t] == v]
+        ordered.extend(_break_ties(conn, season, subgroup, ctx, rest))
+    return ordered
+
+
+def seed_conference(conn, season: str, standings: List[dict], teams: Dict[str, Team], conference: str) -> List[str]:
     """
     Top 10 teams in one conference, ranked 1-10, off the regular-season
-    standings. `standings` is already win-sorted (see db.get_standings),
-    but ties in win count aren't broken there -- broken here instead,
-    by team name, just so seeding is deterministic and reproducible.
+    standings, ties broken by the real NBA tiebreaker chain (module
+    docstring + _break_ties above). Teams with different win counts
+    are never "tied" and skip the whole chain -- only same-win-count
+    groups ever reach _break_ties.
     """
+    other_conference = "West" if conference == "East" else "East"
     conf_teams = [row for row in standings if teams[row["team"]].conference == conference]
-    conf_teams.sort(key=lambda row: (-row["W"], row["team"]))
-    return [row["team"] for row in conf_teams[:10]]
+
+    ctx = {
+        "conference_teams": {row["team"] for row in conf_teams},
+        "conf_pool": _playoff_pool(standings, teams, conference),
+        "other_pool": _playoff_pool(standings, teams, other_conference),
+        "division_leaders": _division_leaders(standings),
+    }
+
+    by_wins: Dict[int, List[str]] = {}
+    for row in conf_teams:
+        by_wins.setdefault(row["W"], []).append(row["team"])
+
+    ordered: List[str] = []
+    for wins in sorted(by_wins.keys(), reverse=True):
+        ordered.extend(_break_ties(conn, season, by_wins[wins], ctx, TIEBREAK_ORDER))
+    return ordered[:10]
 
 
 def _play_one_game(home: str, away: str, teams: Dict[str, Team], league_avg: LeagueAverages) -> Tuple[str, str]:
@@ -280,15 +457,17 @@ def run_finals(east_champ: str, east_seed: int, west_champ: str, west_seed: int,
     return result
 
 
-def run_playoffs(teams: Dict[str, Team], standings: List[dict], league_avg: LeagueAverages) -> dict:
+def run_playoffs(conn, season: str, teams: Dict[str, Team], standings: List[dict], league_avg: LeagueAverages) -> dict:
     """
     Full playoffs: seed both conferences, run each conference's play-in
     and bracket, then the Finals. Returns everything main.py needs to
     print -- this function itself does no printing, same "logic and
-    display stay separate" rule as the rest of the project.
+    display stay separate" rule as the rest of the project. `conn` and
+    `season` are only needed for seed_conference's real tiebreakers
+    (head-to-head/division/conference record all come from season.db).
     """
-    east_seeded = seed_conference(standings, teams, "East")
-    west_seeded = seed_conference(standings, teams, "West")
+    east_seeded = seed_conference(conn, season, standings, teams, "East")
+    west_seeded = seed_conference(conn, season, standings, teams, "West")
 
     east = run_conference_bracket("East", east_seeded, teams, league_avg)
     west = run_conference_bracket("West", west_seeded, teams, league_avg)

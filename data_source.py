@@ -248,9 +248,17 @@ def _team_schedule_map(schedule_games: list) -> dict:
 def fetch_player_absence_stints(df, rosters: dict, schedule_games: list) -> dict:
     """
     Real per-player absence stints this season: for every player, how many
-    SEPARATE stretches of their own team's games they missed, and how long
-    each stretch actually was (e.g. a player might show [16, 1] -- one real
-    16-game absence, plus one unrelated single-game miss later).
+    SEPARATE stretches of their own team's games they missed, how long
+    each stretch actually was, AND where it actually started (as a game
+    INDEX into that team's own real schedule, e.g. a stint starting at
+    index 0 means "missed games from the literal start of the season" --
+    a real day-one injury, not one that happened to land there). The
+    start index is what lets injuries.py anchor a simulated injury to
+    roughly WHEN it really happened, instead of scattering it randomly
+    across the whole season regardless of when the real one actually
+    began (e.g. a player who was hurt before the season even started,
+    like a real preseason Achilles tear, should still be hurt from the
+    start in a simulated season too, not randomly mid-season).
 
     IMPORTANT CAVEAT: "missed" here just means "team played a game, this
     player has no stat line for it." The real NBA data has no field for
@@ -280,6 +288,20 @@ def fetch_player_absence_stints(df, rosters: dict, schedule_games: list) -> dict
             rows = all_rows[all_rows["TEAM_NAME"] == team_name]
             played_game_ids = set(rows["GAME_ID"])
 
+            # A player with real game-log evidence of playing for a
+            # DIFFERENT team, but ZERO real games logged for the team
+            # rosters.json currently lists them under, isn't "hurt for
+            # this team's entire season" -- that's a roster
+            # misattribution (e.g. a trade that happened after this
+            # team's season was already over), which
+            # fetch_roster_membership handles instead (routes them to
+            # their real team, fully excludes them here). Recording an
+            # 82-game stint here too would just duplicate that exclusion
+            # as a misleading fake "injury" in the display.
+            if all_rows["TEAM_NAME"].nunique() and team_name not in set(all_rows["TEAM_NAME"]):
+                absences[name] = {"games_considered": 0, "stints": []}
+                continue
+
             # Only clip to "games since first appearance for this team"
             # when there's real evidence of a mid-season trade (this
             # player's log shows them on a DIFFERENT team at some point).
@@ -293,28 +315,35 @@ def fetch_player_absence_stints(df, rosters: dict, schedule_games: list) -> dict
                 first_index = min(full_sched.index(gid) for gid in played_game_ids if gid in full_sched)
                 considered = full_sched[first_index:]
             else:
+                first_index = 0
                 considered = full_sched
 
             # Walk the team's games in order, grouping consecutive misses
             # into stints -- a real injury is a contiguous stretch, not
-            # scattered single-game gaps.
+            # scattered single-game gaps. `start` is recorded relative to
+            # the team's FULL schedule (not just `considered`), so it
+            # lines up directly with injuries.py's own game-index list,
+            # which is always the full season regardless of any trade clip.
             stints = []
-            current_stint = 0
-            for gid in considered:
+            current_length = 0
+            current_start = None
+            for i, gid in enumerate(considered):
                 if gid in played_game_ids:
-                    if current_stint:
-                        stints.append(current_stint)
-                        current_stint = 0
+                    if current_length:
+                        stints.append({"start": first_index + current_start, "length": current_length})
+                        current_length = 0
                 else:
-                    current_stint += 1
-            if current_stint:
-                stints.append(current_stint)  # still out when the season ended
+                    if current_length == 0:
+                        current_start = i
+                    current_length += 1
+            if current_length:
+                stints.append({"start": first_index + current_start, "length": current_length})  # still out when the season ended
 
             absences[name] = {"games_considered": len(considered), "stints": stints}
     return absences
 
 
-def fetch_roster_membership(df, schedule_games: list) -> dict:
+def fetch_roster_membership(df, rosters: dict, schedule_games: list) -> dict:
     """
     Real per-team roster membership this season: for every player who
     suited up for a given team AT ALL, the first and last game (in that
@@ -350,7 +379,7 @@ def fetch_roster_membership(df, schedule_games: list) -> dict:
     teams_by_player = df.groupby("PLAYER_NAME")["TEAM_NAME"].unique()
     traded_players = {name for name, teams_ in teams_by_player.items() if len(teams_) > 1}
 
-    membership = {}  # team_name -> [{"name", "first_game_id", "last_game_id"}, ...]
+    membership = {}  # team_name -> [{"name", "first_game_id", "last_game_id", "real_min"}, ...]
     for team_name, game_ids in team_schedule.items():
         game_index = {gid: i for i, gid in enumerate(game_ids)}
         team_rows = df[(df["TEAM_NAME"] == team_name) & (df["PLAYER_NAME"].isin(traded_players))]
@@ -362,7 +391,65 @@ def fetch_roster_membership(df, schedule_games: list) -> dict:
                 "name": player_name,
                 "first_game_id": game_ids[indices[0]],
                 "last_game_id": game_ids[indices[-1]],
+                # This team-STINT's real per-game minutes -- NOT the same
+                # as rosters.json's season-long blended average across
+                # every team a player suited up for. Confirmed by
+                # testing (benchmark_accuracy.py): reusing the blended
+                # average for both stints was the actual cause of real
+                # trades making standings accuracy WORSE, not better --
+                # gaps of 8-13 real minutes/game between the blend and a
+                # specific stint are common, and minutes is both the
+                # weight game_engine._active_roster_for_game uses to
+                # decide who plays AND the denominator every other real
+                # stat gets divided by to build a per-minute rate. See
+                # transactions.py for where this actually gets applied.
+                "real_min": float(player_rows["MIN"].mean()),
             })
+
+    # A separate, smaller case from an ordinary in-season trade above:
+    # a player whose CURRENT roster listing (rosters.json -- "who holds
+    # their rights right now") doesn't match ANY team they logged a
+    # real game for this season -- e.g. a trade that happened after the
+    # season's games were already all played. The `len(teams_) > 1`
+    # check above can't catch this: such a player shows under exactly
+    # ONE team in the log (their real one), never the one rosters.json
+    # currently lists them under. Confirmed by testing: exactly 4 such
+    # players this season (Emanuel Miller, D'Angelo Russell, Anthony
+    # Davis, Tosan Evbuomwan), all real established players with real
+    # per-game stats -- not noise. Without this, each would be
+    # simulated as having missed literally every game for a team they
+    # never suited up for even once, AND never appear in the pool for
+    # the team they actually played for at all.
+    for wrong_team, players in rosters.items():
+        for p in players:
+            name = p["name"]
+            real_teams = set(df[df["PLAYER_NAME"] == name]["TEAM_NAME"].unique())
+            if not real_teams or wrong_team in real_teams:
+                continue  # no real game-log evidence either way, or it does match -- not this case
+
+            # Route them to their real team, same as an ordinary trade.
+            real_team = next(iter(real_teams))  # always exactly one in practice -- see docstring above
+            real_game_ids = team_schedule.get(real_team, [])
+            real_game_index = {gid: i for i, gid in enumerate(real_game_ids)}
+            real_rows = df[(df["PLAYER_NAME"] == name) & (df["TEAM_NAME"] == real_team)]
+            indices = sorted(real_game_index[gid] for gid in real_rows["GAME_ID"] if gid in real_game_index)
+            if indices:
+                membership.setdefault(real_team, []).append({
+                    "name": name,
+                    "first_game_id": real_game_ids[indices[0]],
+                    "last_game_id": real_game_ids[indices[-1]],
+                    "real_min": float(real_rows["MIN"].mean()),
+                })
+
+            # Fully exclude them from the wrongly-listed team -- None
+            # first/last_game_id is a sentinel transactions.py reads as
+            # "zero real games here," not a normal restricted window
+            # (there's no real game to anchor a first/last id to).
+            # real_min is meaningless here for the same reason.
+            membership.setdefault(wrong_team, []).append({
+                "name": name, "first_game_id": None, "last_game_id": None, "real_min": None,
+            })
+
     return membership
 
 
@@ -410,7 +497,7 @@ def build_and_cache_player_history(season: str = "2025-26", force: bool = False)
           f"({with_absences} had at least one real absence) -> {INJURIES_CACHE}")
 
     print("Computing real per-team roster membership...")
-    membership = fetch_roster_membership(df, schedule_games)
+    membership = fetch_roster_membership(df, rosters, schedule_games)
     with open(ROSTER_MEMBERSHIP_CACHE, "w") as f:
         json.dump({"season": season, "teams": membership}, f, indent=2)
     traded = _count_traded_players(membership)

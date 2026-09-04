@@ -14,14 +14,15 @@ fully testable on its own, without needing a keyboard in the loop.
 import os
 import re
 import sys
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
-from loader import load_teams, load_team_abbreviations
+from loader import load_teams, load_team_abbreviations, load_roster_membership
 from models import Player, Team
 from game_engine import simulate_game, compute_league_averages, GameResult, LeagueAverages
 from data_source import fetch_real_standings
 from season import simulate_season
 from playoffs import run_playoffs, compute_series_player_averages
+from transactions import summarize_moves
 import db
 
 # Plain ASCII only for every divider/border in this file, on purpose --
@@ -94,6 +95,30 @@ def _colorize_series_line(line: str) -> str:
             f"{_style(f'{win_ct}-{lose_ct}', 'bold', margin_color)}")
 
 
+def _colorize_play_in_line(line: str) -> str:
+    """
+    Bolds+greens the winner's name in a play-in log line. Play-in
+    lines use a different shape than a full series' "X def. Y, N-M"
+    line ("X wins, becomes the N seed" / "X wins, advances; Y
+    eliminated") -- _colorize_series_line's regex doesn't match that
+    shape at all, so play-in results were never getting colored. The
+    winner's name is always the text right after the LAST "-> " (Games
+    1-2) or "): " (Game 3, which has no "->") in the line, immediately
+    before " wins" -- checked in that order since a line can contain
+    both separators (e.g. "Game 1 (7 vs 8): ... -> ... wins", where the
+    "): " is just part of the game-number prefix, not the real split
+    point).
+    """
+    if not _COLOR_ENABLED or " wins" not in line:
+        return line
+    before, _, after = line.partition(" wins")
+    for sep in (" -> ", "): "):
+        if sep in before:
+            prefix, _, winner = before.rpartition(sep)
+            return f"{prefix}{sep}{_style(winner, 'bold', 'green')} wins{after}"
+    return line
+
+
 def _highlight_team(line: str, team_name: Optional[str]) -> str:
     """Bolds+cyans every occurrence of the followed team's name in a
     plain playoff line -- the same "your team" cyan already used on
@@ -116,6 +141,12 @@ def _format_playoff_line(line: str, highlight: Optional[str]) -> str:
     other way around would put _colorize_series_line's reset code in
     the middle of _highlight_team's span instead of at its end."""
     return _highlight_team(_colorize_series_line(line), highlight)
+
+
+def _format_play_in_line(line: str, highlight: Optional[str]) -> str:
+    """Same idea as _format_playoff_line, for a play-in log line's
+    different shape -- see _colorize_play_in_line."""
+    return _highlight_team(_colorize_play_in_line(line), highlight)
 
 
 def _prompt(text: str) -> str:
@@ -483,12 +514,22 @@ _BRACKET_GAP = 2
 _BRACKET_MARKER = "*"
 
 
-def _bracket_place_text(grid: dict, row: int, col: int, text: str) -> None:
+def _bracket_place_text(grid: dict, row: int, col: int, text: str,
+                         highlight_spans: List[Tuple[int, int, int]], is_highlighted: bool) -> None:
     for i, ch in enumerate(text):
         grid.setdefault(row, {})[col + i] = ch
+    if is_highlighted:
+        # Record WHERE this label landed (row, start col, length) --
+        # color gets applied later, once the grid is flattened into
+        # plain strings, by slicing at this exact position. Never by
+        # splicing color codes into the character grid itself (see
+        # _render_conference_tree's docstring on why that would corrupt
+        # the diagram's column math).
+        highlight_spans.append((row, col, len(text)))
 
 
-def _bracket_draw_connector(grid: dict, top_row: int, bot_row: int, conn_col: int, label_col: int, label: str) -> int:
+def _bracket_draw_connector(grid: dict, top_row: int, bot_row: int, conn_col: int, label_col: int, label: str,
+                             highlight_spans: List[Tuple[int, int, int]], is_highlighted: bool) -> int:
     """
     Draws one bracket "elbow": a dash+plus at each of the two child
     rows, a vertical bar filling every row strictly between them, and
@@ -505,7 +546,7 @@ def _bracket_draw_connector(grid: dict, top_row: int, bot_row: int, conn_col: in
         grid.setdefault(row, {})[conn_col] = '+' if row == mid_row else '|'
     for col in range(conn_col + 1, label_col):
         grid.setdefault(mid_row, {})[col] = '-'
-    _bracket_place_text(grid, mid_row, label_col, label)
+    _bracket_place_text(grid, mid_row, label_col, label, highlight_spans, is_highlighted)
     return mid_row
 
 
@@ -513,15 +554,18 @@ def _render_conference_tree(tree: dict, abbrev: Dict[str, str], highlight: Optio
     """
     Draws the actual bracket shape (seed 1-8, not the play-in) as ASCII
     art: leaves -> Round 1 winners -> Semifinal winners -> conference
-    champion, connected the way a real bracket sheet is. Plain text
-    only, no ANSI color -- the layout below is column math built on
-    every label being exactly _BRACKET_LEAF_WIDTH wide, and splicing
-    invisible escape bytes into a label would make it silently overrun
+    champion, connected the way a real bracket sheet is. The layout is
+    column math built on every label being exactly _BRACKET_LEAF_WIDTH
+    wide, so the grid itself stays plain text -- splicing invisible
+    escape bytes directly into a label would make it silently overrun
     into its neighboring column instead of raising an error, corrupting
-    the diagram. The followed team is still marked, just with a plain
-    "*" in a reserved column instead -- an ordinary visible character
-    is exactly as safe as any other in a fixed grid. Color stays on
-    the plain-text detail lines below this diagram.
+    the diagram. The followed team still gets the plain "*" marker (a
+    real character is exactly as safe as any other in a fixed grid) --
+    PLUS actual color now, applied afterward: _bracket_place_text
+    records WHERE each highlighted label landed as the grid is built,
+    and only once the grid is flattened into plain row strings (below)
+    does color get sliced in at those exact positions -- never through
+    the character grid itself.
 
     Relies entirely on `tree`'s leaf order (see playoffs.py's
     run_conference_bracket) to know who plays whom -- this function
@@ -542,51 +586,71 @@ def _render_conference_tree(tree: dict, abbrev: Dict[str, str], highlight: Optio
         return f"({seed}) {code}{marker}"
 
     grid: dict = {}
+    highlight_spans: List[Tuple[int, int, int]] = []
     leaf_rows = [i * 2 for i in range(8)]
     for row, (seed, team) in zip(leaf_rows, tree["leaves"]):
-        _bracket_place_text(grid, row, LEAF_COL, seed_label(seed, team))
+        _bracket_place_text(grid, row, LEAF_COL, seed_label(seed, team), highlight_spans, team == highlight)
 
     round2_rows = []
     for i, result in enumerate(tree["round1"]):
         top, bot = leaf_rows[2 * i], leaf_rows[2 * i + 1]
         label = seed_label(result["winner_seed"], result["winner"])
-        round2_rows.append(_bracket_draw_connector(grid, top, bot, conn1_col, r2_label_col, label))
+        round2_rows.append(_bracket_draw_connector(grid, top, bot, conn1_col, r2_label_col, label,
+                                                     highlight_spans, result["winner"] == highlight))
 
     round3_rows = []
     for i, result in enumerate(tree["round2"]):
         top, bot = round2_rows[2 * i], round2_rows[2 * i + 1]
         label = seed_label(result["winner_seed"], result["winner"])
-        round3_rows.append(_bracket_draw_connector(grid, top, bot, conn2_col, r3_label_col, label))
+        round3_rows.append(_bracket_draw_connector(grid, top, bot, conn2_col, r3_label_col, label,
+                                                     highlight_spans, result["winner"] == highlight))
 
     champion = tree["round3"]["winner"]
-    champ_label = champion + (f" {_BRACKET_MARKER}" if champion == highlight else "")
-    _bracket_draw_connector(grid, round3_rows[0], round3_rows[1], conn3_col, champ_col, champ_label)
+    champ_is_mine = champion == highlight
+    champ_label = champion + (f" {_BRACKET_MARKER}" if champ_is_mine else "")
+    _bracket_draw_connector(grid, round3_rows[0], round3_rows[1], conn3_col, champ_col, champ_label,
+                             highlight_spans, champ_is_mine)
 
     max_row = max(grid.keys())
     max_col = max(col for row in grid.values() for col in row)
-    return ["".join(grid.get(row, {}).get(col, " ") for col in range(max_col + 1)).rstrip()
-            for row in range(max_row + 1)]
+    rows = []
+    for row in range(max_row + 1):
+        line = "".join(grid.get(row, {}).get(col, " ") for col in range(max_col + 1))
+        # Rightmost span first -- inserting invisible escape bytes for
+        # one span never shifts the column positions of an earlier,
+        # not-yet-processed span further left on the same row.
+        for _, col, length in sorted((s for s in highlight_spans if s[0] == row), key=lambda s: -s[1]):
+            line = line[:col] + _style(line[col:col + length], "bold", "cyan") + line[col + length:]
+        rows.append(line.rstrip())
+    return rows
 
 
 def _print_conference_bracket(conf_result: dict, abbrev: Dict[str, str], highlight: Optional[str] = None) -> None:
-    """One conference's play-in log + bracket diagram + every round's
-    detail + its champion line -- split out of print_playoffs so it
-    can pause BETWEEN conferences (see print_playoffs's docstring)."""
+    """One conference's play-in, then each round in turn -- paused
+    BETWEEN every stage (not just between conferences, see
+    print_playoffs's docstring) so the postseason unfolds round by
+    round: play-in, then Round 1, then Round 2, etc. The bracket
+    diagram prints as a recap at the very end, once every round's
+    winner is actually known -- it can't be drawn any earlier than
+    that (its connector lines ARE those winners), so showing it
+    upfront would either be blank or spoil rounds not revealed yet."""
     print()
     print(_style(f"-- {conf_result['conference']} Play-In Tournament --", "bold"))
     for line in conf_result["play_in_log"]:
-        print(_highlight_team(line, highlight))
-
-    print()
-    for line in _render_conference_tree(conf_result["tree"], abbrev, highlight):
-        print(line)
+        print(_format_play_in_line(line, highlight))
 
     for round_lines in conf_result["round_logs"]:
+        _prompt("Press Enter for the next round...")
         print()
         header, *series_lines = round_lines
         print(_style(header, "bold"))
         for line in series_lines:
             print(_format_playoff_line(line, highlight))
+
+    _prompt("Press Enter to see the bracket recap...")
+    print()
+    for line in _render_conference_tree(conf_result["tree"], abbrev, highlight):
+        print(line)
 
     print()
     print(_style(
@@ -639,6 +703,9 @@ def print_playoffs(result: dict, abbrev: Dict[str, str], highlight: Optional[str
     whole postseason in one unbroken burst made it hard to actually
     read: the East bracket scrolled the West bracket and the Finals
     straight off screen before there was time to look at any of it.
+    Paced by ROUND now, not just by conference (see
+    _print_conference_bracket) -- play-in, then each round in turn,
+    each its own pause, matching how the playoffs actually unfold.
     """
     print()
     print(DIVIDER)
@@ -677,30 +744,39 @@ def print_playoffs(result: dict, abbrev: Dict[str, str], highlight: Optional[str
 def _injury_row(row: dict, highlight: Optional[str] = None) -> str:
     is_mine = row["team"] == highlight
     marker = YOUR_TEAM_MARKER if is_mine else ""
-    line = (f"{row['player']:<22}{row['team']:<26}{row['start_date']:<12}"
+    # PLAYER field is 25 wide, not 22 -- the longest real names this
+    # season (e.g. "Kentavious Caldwell-Pope", "Nickeil Alexander-
+    # Walker") are 24 characters, which a 22-wide field doesn't
+    # truncate, it just runs the TEAM column (and everything after it)
+    # straight into the name with no gap and no longer under its
+    # header. 25 leaves a 1-character buffer even for the longest name.
+    line = (f"{row['player']:<25}{row['team']:<26}{row['start_date']:<12}"
             f"{row['end_date']:<12}{row['games_missed']:>4}{marker}")
     return _style(line, "bold", "cyan") if is_mine else line
 
 
-def print_injuries(injuries: List[dict], highlight: Optional[str] = None, limit: Optional[int] = 25) -> None:
+def print_injuries(injuries: List[dict], title: str = "SIMULATED INJURIES",
+                    highlight: Optional[str] = None, limit: Optional[int] = 25) -> None:
     """
-    Prints simulated injuries for the season, longest (most impactful)
-    first -- see injuries.py for how a real player's real absence
-    pattern this season gets reused, at randomized points, in a
-    simulated season. `limit` caps how many print at once by default: a
-    full season has well over a thousand short (2-3 game) absences
-    league-wide, fine to have stored, not useful to dump all at once.
+    Prints simulated injuries, longest (most impactful) first -- see
+    injuries.py for how a real player's real absence pattern this
+    season gets reused, at randomized points, in a simulated season.
+    `limit` caps how many print at once by default: a full season has
+    well over a thousand short (2-3 game) absences league-wide, fine to
+    have stored, not useful to dump all at once. `title` lets the same
+    printer serve both the "healed before playoffs" and "still out
+    entering the playoffs" views with their own header.
     """
     print()
     print(DIVIDER)
-    print(_style("SIMULATED INJURIES".center(LINE_WIDTH), "bold", "cyan"))
+    print(_style(title.center(LINE_WIDTH), "bold", "cyan"))
     print(DIVIDER)
     if not injuries:
-        print("No simulated injuries this season.")
+        print("None.")
         print()
         return
 
-    print(f"{'PLAYER':<22}{'TEAM':<26}{'START':<12}{'END':<12}{'GAMES':>4}")
+    print(f"{'PLAYER':<25}{'TEAM':<26}{'START':<12}{'END':<12}{'GAMES':>4}")
     print(SECTION)
     shown = injuries[:limit] if limit else injuries
     for row in shown:
@@ -711,59 +787,156 @@ def print_injuries(injuries: List[dict], highlight: Optional[str] = None, limit:
     print()
 
 
-def _run_injuries_browser(conn, team_names: List[str], season: str, highlight: Optional[str] = None) -> None:
+def print_team_moves(moves: List[dict], highlight: Optional[str] = None) -> None:
     """
-    Lets the user drill into one team's simulated injuries (uncapped),
-    since the league-wide list above is capped for readability.
+    Prints every real in-season trade this season (see
+    transactions.summarize_moves) as "Player: Team A -> Team B" --
+    just the real WHERE, not the WHY (no trade-details data is fetched
+    anywhere in this project, only real game-log evidence of who
+    suited up for whom).
     """
-    all_injuries = db.get_injuries(conn, season)
+    print()
+    print(DIVIDER)
+    print(_style("TEAM MOVES THIS SEASON".center(LINE_WIDTH), "bold", "cyan"))
+    print(DIVIDER)
+    if not moves:
+        print("No real in-season trades this season.")
+        print()
+        return
+
+    for m in moves:
+        is_mine = highlight in m["teams"]
+        marker = YOUR_TEAM_MARKER if is_mine else ""
+        # 25 wide, not 22 -- see _injury_row's comment: the longest real
+        # names this season are 24 characters, which ran straight into
+        # the " -> " chain with no gap at a 22-wide field.
+        line = f"{m['player']:<25}{' -> '.join(m['teams'])}{marker}"
+        print(_style(line, "bold", "cyan") if is_mine else line)
+    print()
+
+
+def _run_moves_browser(all_moves: List[dict], team_names: List[str], highlight: Optional[str] = None) -> None:
+    """
+    Lets the user look up another team's real in-season moves beyond
+    the auto-printed "your team only" list above.
+    """
     while True:
         print_team_list(team_names)
         choice = _prompt(
-            "View one team's full simulated injury list? Enter a number, 'a' for the "
-            "full league list (uncapped), or press Enter to finish: "
+            "View another team's moves? Enter a number, 'a' for the full league list, "
+            "or press Enter to finish: "
         ).strip().lower()
 
         if choice == "":
             return
         if choice == "a":
-            print_injuries(all_injuries, highlight=highlight, limit=None)
+            print_team_moves(all_moves, highlight=highlight)
             continue
         if choice.isdigit() and 1 <= int(choice) <= len(team_names):
             chosen_name = team_names[int(choice) - 1]
-            team_injuries = [row for row in all_injuries if row["team"] == chosen_name]
-            print_injuries(team_injuries, highlight=highlight, limit=None)
+            team_moves = [m for m in all_moves if chosen_name in m["teams"]]
+            print_team_moves(team_moves, highlight=highlight)
             continue
         print("Please enter a number from the list, 'a' for the full list, or press Enter to finish.")
 
 
+def _run_injuries_browser(conn, team_names: List[str], season: str, highlight: Optional[str] = None) -> None:
+    """
+    Lets the user look up another team's injuries beyond the auto-
+    printed "your team only" lists above -- same single team-pick/'a'/
+    Enter pattern as the moves and season-averages browsers below, not
+    a separate healed-vs-still-out sub-menu (that extra step was
+    confusing -- unclear what info it was even offering). Whichever
+    team gets picked, both the healed and still-out sections print for
+    it, same as the auto-printed view above.
+    """
+    all_injuries = db.get_injuries(conn, season)
+
+    def _show(subset: List[dict], limit: Optional[int]) -> None:
+        healed = [row for row in subset if not row["still_out_at_season_end"]]
+        still_out = [row for row in subset if row["still_out_at_season_end"]]
+        print_injuries(healed, title="INJURIES DURING THE SEASON (HEALED BEFORE PLAYOFFS)",
+                        highlight=highlight, limit=limit)
+        print_injuries(still_out, title="STILL OUT ENTERING THE PLAYOFFS", highlight=highlight, limit=limit)
+
+    while True:
+        print_team_list(team_names)
+        choice = _prompt(
+            "View another team's injuries? Enter a number, 'a' for the full league list, "
+            "or press Enter to finish: "
+        ).strip().lower()
+
+        if choice == "":
+            return
+        if choice == "a":
+            _show(all_injuries, limit=25)
+            continue
+        if choice.isdigit() and 1 <= int(choice) <= len(team_names):
+            chosen_name = team_names[int(choice) - 1]
+            team_injuries = [row for row in all_injuries if row["team"] == chosen_name]
+            _show(team_injuries, limit=None)
+            continue
+        print("Please enter a number from the list, 'a' for the full list, or press Enter to finish.")
+
+
+def _accuracy_color(real: float, sim: float) -> str:
+    """
+    Green/yellow/red by how far sim landed from real, as a % of real --
+    same "distance, not direction" spirit as the standings comparison's
+    inline accuracy coloring, just scaled RELATIVELY instead of by a
+    fixed games-off count, so one threshold works across stats of very
+    different sizes (PTS in the 20s, AST often under 5, FG% as a %).
+    """
+    if real == 0:
+        return "green" if sim == 0 else "yellow"
+    pct_off = abs(sim - real) / real
+    return "green" if pct_off <= 0.10 else "yellow" if pct_off <= 0.25 else "red"
+
+
 def print_team_season_averages(conn, team: Team, season: str) -> None:
     """
-    For one team's roster: real per-game averages next to simulated
-    season averages (from the games just simulated and stored) -- the
-    original point of this whole project, finally visible in the game
-    itself rather than only in a test script.
+    For one team's roster: real per-game averages vs. simulated season
+    averages (from the games just simulated and stored) -- the original
+    point of this whole project, finally visible in the game itself
+    rather than only in a test script.
+
+    Real and sim are on their OWN row per player (a "real" row directly
+    above a "sim" row for the same stat columns) instead of interleaved
+    side by side on one line -- that packed 8 numbers into a single row
+    per player and was hard to read at a glance. Stacked wasn't quite
+    enough on its own though, so each SIM number is also colored by how
+    close it landed to the real number right above it (green/yellow/red
+    -- same "how far off" idea as the standings comparison table's
+    accuracy_color), which does double duty: separates the two rows at
+    a glance AND shows how good that particular match actually was.
     """
     print()
     print(DIVIDER)
     print(f"{team.name.upper()} -- REAL VS. SIMULATED SEASON AVERAGES".center(LINE_WIDTH))
     print(DIVIDER)
-    print(f"{'PLAYER':<25}{'GP':>4}  {'PTS':>13}  {'REB':>13}  {'AST':>13}  {'FG%':>13}")
-    print(f"{'':<25}{'':>4}  {'real':>6}{'sim':>7}  {'real':>6}{'sim':>7}  {'real':>6}{'sim':>7}  {'real':>6}{'sim':>7}")
+    print(f"{'PLAYER':<25}{'GP':>4}  {'PTS':>8}  {'REB':>8}  {'AST':>8}  {'FG%':>8}")
     print(SECTION)
 
     for player in sorted(team.players, key=lambda p: -p.pts):
         avg = db.get_player_season_averages(conn, player.name, season)
+        # Bold, not colored -- color on this table already means
+        # something specific (accuracy, below), so the name just needs
+        # to read as "the anchor this block starts at," not another
+        # color signal competing with that one.
+        name_s = _style(f"{player.name:<25}", "bold")
         if not avg:
-            print(f"{player.name:<25}{'--':>4}  (no simulated games played)")
+            print(f"{name_s}{'--':>4}  (no simulated games played)")
             continue
-        print(
-            f"{player.name:<25}{avg['games_played']:>4}  "
-            f"{player.pts:>6.1f}{avg['pts']:>7.1f}  "
-            f"{player.reb:>6.1f}{avg['reb']:>7.1f}  "
-            f"{player.ast:>6.1f}{avg['ast']:>7.1f}  "
-            f"{player.fg_pct * 100:>5.1f}%{avg['fg_pct'] * 100:>6.1f}%"
-        )
+        print(f"{name_s}{avg['games_played']:>4}")
+        print(f"{'  real':<25}{'':>4}  {player.pts:>8.1f}  {player.reb:>8.1f}  "
+              f"{player.ast:>8.1f}  {player.fg_pct * 100:>7.1f}%")
+
+        pts_s = _style(f"{avg['pts']:>8.1f}", _accuracy_color(player.pts, avg['pts']))
+        reb_s = _style(f"{avg['reb']:>8.1f}", _accuracy_color(player.reb, avg['reb']))
+        ast_s = _style(f"{avg['ast']:>8.1f}", _accuracy_color(player.ast, avg['ast']))
+        fg_s = _style(f"{avg['fg_pct'] * 100:>7.1f}%",
+                      _accuracy_color(player.fg_pct * 100, avg['fg_pct'] * 100))
+        print(f"{'  sim':<25}{'':>4}  {pts_s}  {reb_s}  {ast_s}  {fg_s}")
     print()
 
 
@@ -775,17 +948,19 @@ def run_season_flow(teams: Dict[str, Team], team_names: List[str], league_avg: L
                      abbrev: Dict[str, str], season: str = "2025-26") -> None:
     """
     Picks the followed team FIRST (so it's known before anything else
-    runs, and can be highlighted everywhere below -- standings, the
-    comparison, and now the playoffs too), then simulates the full
-    real season (overwriting any previously simulated one -- see
+    runs, and can be highlighted everywhere below), then simulates the
+    full real season (overwriting any previously simulated one -- see
     season.py's simulate_season for why re-running isn't additive),
-    then shows standings (overall or by conference), the real-vs-
-    simulated comparison, and the followed team's simulated season
-    averages -- all shown automatically, no "do you want to see this?
+    then shows -- all automatically, no "do you want to see this?
     (y/n)" gates in front of them (removed per feedback: those gates
     were in front of exactly the numbers this whole project exists to
-    produce, not optional side content). Afterward, offers a look at
-    any OTHER team's season averages too.
+    produce, not optional side content) -- standings, the real-vs-
+    simulated comparison, and (scoped to just the followed team, each
+    with an opt-in browser to look up another team) that team's real
+    in-season moves, injuries, and simulated season averages. Playoffs
+    (optional) run LAST, after all of that -- "who's actually
+    available going in" naturally comes before the playoffs happen,
+    not after.
     """
     print()
     print_team_list(team_names)
@@ -811,16 +986,33 @@ def run_season_flow(teams: Dict[str, Team], team_names: List[str], league_avg: L
     real_standings = fetch_real_standings(season)
     print_standings_comparison(standings, real_standings, highlight=my_team_name)
 
-    if _confirm("Simulate the playoffs too?"):
-        playoff_result = run_playoffs(teams, standings, league_avg)
-        print_playoffs(playoff_result, abbrev, highlight=my_team_name)
+    # Moves, injuries, and season averages -- all scoped to YOUR team
+    # by default (the league-wide dumps were too much at once), each
+    # with an opt-in browser to look up another team if you want one.
+    # All shown BEFORE playoffs (not buried at the end) -- this is the
+    # "who's actually available going in" picture, so it reads
+    # naturally right before the playoffs happen, not after.
+    membership = load_roster_membership()
+    all_moves = summarize_moves(membership)
+    my_moves = [m for m in all_moves if my_team_name in m["teams"]]
+    print_team_moves(my_moves, highlight=my_team_name)
+    _run_moves_browser(all_moves, team_names, highlight=my_team_name)
 
-    print_injuries(db.get_injuries(conn, season), highlight=my_team_name)
+    all_injuries = db.get_injuries(conn, season)
+    healed = [row for row in all_injuries if not row["still_out_at_season_end"]]
+    still_out = [row for row in all_injuries if row["still_out_at_season_end"]]
+    print_injuries([r for r in healed if r["team"] == my_team_name],
+                    title="INJURIES DURING THE SEASON (HEALED BEFORE PLAYOFFS)", highlight=my_team_name)
+    print_injuries([r for r in still_out if r["team"] == my_team_name],
+                    title="STILL OUT ENTERING THE PLAYOFFS", highlight=my_team_name)
     _run_injuries_browser(conn, team_names, season, highlight=my_team_name)
 
     print_team_season_averages(conn, teams[my_team_name], season)
-
     _run_season_averages_browser(conn, teams, team_names, season)
+
+    if _confirm("Simulate the playoffs too?"):
+        playoff_result = run_playoffs(conn, season, teams, standings, league_avg)
+        print_playoffs(playoff_result, abbrev, highlight=my_team_name)
 
 
 def _run_season_averages_browser(conn, teams: Dict[str, Team], team_names: List[str], season: str) -> None:

@@ -42,8 +42,11 @@ def expand_rosters_with_real_moves(
     whoever rosters.json currently files them under), pulling each
     added player's real per-game stat line from whichever team's
     roster they already exist under -- one player has one real season-
-    average stat line, it doesn't get split per team, same as every
-    other real/derived-stat rule in this project.
+    average stat line for shooting/passing/etc, it doesn't get split
+    per team, same as every other real/derived-stat rule in this
+    project. MINUTES is the one deliberate exception -- see the
+    real_min handling below -- because it isn't just a descriptive
+    stat here, it's the weight/denominator the whole sim is built on.
 
     IMPORTANT: call this AFTER game_engine.compute_league_averages(teams),
     not before -- that function sums real per-player stats across
@@ -71,19 +74,54 @@ def expand_rosters_with_real_moves(
             continue
         game_index = {gid: i for i, gid in enumerate(team_game_ids)}
 
-        existing_names = {p.name for p in team.players}
+        # Index (not just a name set) so an ALREADY-listed player's
+        # real_min can be corrected in place below, not just checked.
+        index_by_name = {p.name: i for i, p in enumerate(team.players)}
+
         for entry in membership.get(team_name, []):
             name = entry["name"]
-            if name not in existing_names:
+
+            # Sentinel for "this player never actually played a single
+            # real game for this team at all" (see
+            # data_source.fetch_roster_membership's misattributed-
+            # player handling, e.g. a trade that happened after this
+            # team's real season was already over) -- mark every one
+            # of this team's games unavailable for them, rather than
+            # trying to compute a first/last-game window that has no
+            # real game to anchor to. No need to add them to
+            # team.players either -- rosters.json already (incorrectly)
+            # lists them here, which is exactly the problem being fixed.
+            if entry["first_game_id"] is None:
+                unavailable |= {(name, gid) for gid in team_game_ids}
+                continue
+
+            # This team-STINT's real minutes, not the season-blended
+            # average rosters.json's Player object carries -- see
+            # fetch_roster_membership's real_min comment for why this
+            # matters (confirmed cause of trades hurting accuracy).
+            # Applies whether the player is already listed here
+            # (rosters.json's side -- their existing min gets
+            # corrected) or being newly added from the other side.
+            real_min = entry.get("real_min")
+
+            if name in index_by_name:
+                if real_min is not None:
+                    i = index_by_name[name]
+                    team.players[i] = replace(team.players[i], min=real_min)
+            else:
                 source = all_players_by_name.get(name)
                 if source is None:
                     continue  # no real stat line anywhere -- can't simulate them
                 # A new Player entry for THIS team, same real per-game
-                # stat line, just attributed to this team for box-score
-                # purposes (dataclasses.replace makes a copy -- doesn't
-                # touch the original team's Player object).
-                team.players.append(replace(source, team=team_name))
-                existing_names.add(name)
+                # shooting/passing/etc stat line, just attributed to
+                # this team for box-score purposes (dataclasses.replace
+                # makes a copy -- doesn't touch the original team's
+                # Player object) -- WITH minutes corrected to this
+                # stint's real value, falling back to the blended one
+                # only if a stint-specific value somehow isn't available.
+                new_min = real_min if real_min is not None else source.min
+                team.players.append(replace(source, team=team_name, min=new_min))
+                index_by_name[name] = len(team.players) - 1
 
             first_idx = game_index.get(entry["first_game_id"])
             last_idx = game_index.get(entry["last_game_id"])
@@ -95,6 +133,48 @@ def expand_rosters_with_real_moves(
                     unavailable.add((name, gid))
 
     return unavailable
+
+
+def summarize_moves(membership: Dict[str, list]) -> List[dict]:
+    """
+    Every real in-season trade this season, as a chronological team
+    sequence per player (a player traded twice this season -- rare,
+    but it happens -- shows all three teams in order, not just the
+    first and last).
+
+    Built by inverting roster_membership.json from "team -> its traded
+    players" to "player -> the teams they were on," then sorting each
+    player's teams by first_game_id. game_id strings are fixed-width
+    and zero-padded (see fetch_schedule), so they already sort into
+    real chronological order with no separate date lookup needed.
+
+    Only WHERE a player moved is available here, not WHY -- no real
+    trade-details data (players/picks exchanged) is fetched anywhere
+    in this project, just real game-log evidence of which team someone
+    actually suited up for.
+    """
+    by_player: Dict[str, List[Tuple[str, str]]] = {}
+    for team_name, entries in membership.items():
+        for entry in entries:
+            if entry["first_game_id"] is None:
+                # Sentinel for "never actually played here at all" (see
+                # data_source.fetch_roster_membership's misattributed-
+                # player handling) -- not a real team in their history,
+                # so it doesn't belong in a "moved from -> to" list, and
+                # can't be chronologically sorted against a real game_id
+                # anyway (None has no ordering against a string).
+                continue
+            by_player.setdefault(entry["name"], []).append((entry["first_game_id"], team_name))
+
+    moves = []
+    for name, team_windows in by_player.items():
+        if len(team_windows) < 2:
+            continue  # only one REAL team once the sentinel above is filtered -- not a move
+        team_windows.sort()  # chronological -- see docstring on why this is safe
+        moves.append({"player": name, "teams": [team for _, team in team_windows]})
+
+    moves.sort(key=lambda m: m["player"])
+    return moves
 
 
 if __name__ == "__main__":

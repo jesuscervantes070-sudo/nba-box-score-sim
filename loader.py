@@ -102,12 +102,13 @@ def load_schedule() -> List[ScheduledGame]:
 def load_player_injuries() -> Dict[str, dict]:
     """
     Reads cache/injuries.json: each real player's real absence pattern
-    this season -- {"games_considered": 82, "stints": [16, 1]} means their
-    team played 82 games and they missed two separate stretches, one 16
-    games long and one a single game. See data_source.py's
-    fetch_player_absence_stints for exactly what "absence" means here and
-    its caveats (injury, rest, a trade, personal reasons all look
-    identical in this data).
+    this season -- {"games_considered": 82, "stints": [{"start": 0,
+    "length": 16}, {"start": 40, "length": 1}]} means their team played
+    82 games and they missed two separate stretches: one 16 games long
+    starting at the literal first game of the season, one a single game
+    starting at index 40. See data_source.py's fetch_player_absence_stints
+    for exactly what "absence" means here and its caveats (injury, rest,
+    a trade, personal reasons all look identical in this data).
 
     Returned as plain dicts, not a dataclass -- this is season-shape
     metadata only injuries.py needs to build a SIMULATED season's injury

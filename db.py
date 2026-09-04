@@ -61,7 +61,10 @@ CREATE TABLE IF NOT EXISTS injuries (
     start_date TEXT NOT NULL,
     end_game_id TEXT NOT NULL,
     end_date TEXT NOT NULL,
-    games_missed INTEGER NOT NULL
+    games_missed INTEGER NOT NULL,
+    -- Whether this span's last missed game was the team's literal last
+    -- regular-season game -- see injuries.InjurySpan.still_out_at_season_end.
+    still_out_at_season_end INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_pgs_game ON player_game_stats(game_id);
@@ -129,14 +132,15 @@ def insert_injuries(conn: sqlite3.Connection, season: str, schedule_by_id: dict,
     cur = conn.cursor()
     for span in spans:
         # span.game_ids is already this team's real chronological order
-        # (see injuries._place_stints), so first/last are the real start/end.
+        # (see injuries.build_season_injuries), so first/last are the
+        # real start/end.
         start_game = schedule_by_id[span.game_ids[0]]
         end_game = schedule_by_id[span.game_ids[-1]]
         cur.execute(
             "INSERT INTO injuries (season, player_name, team, start_game_id, start_date, "
-            "end_game_id, end_date, games_missed) VALUES (?,?,?,?,?,?,?,?)",
+            "end_game_id, end_date, games_missed, still_out_at_season_end) VALUES (?,?,?,?,?,?,?,?,?)",
             (season, span.player_name, span.team, start_game.game_id, start_game.date,
-             end_game.game_id, end_game.date, len(span.game_ids)),
+             end_game.game_id, end_game.date, len(span.game_ids), int(span.still_out_at_season_end)),
         )
     conn.commit()
 
@@ -147,12 +151,13 @@ def get_injuries(conn: sqlite3.Connection, season: str) -> list:
     worth knowing about first when browsing.
     """
     rows = conn.execute(
-        "SELECT player_name, team, start_date, end_date, games_missed "
+        "SELECT player_name, team, start_date, end_date, games_missed, still_out_at_season_end "
         "FROM injuries WHERE season = ? ORDER BY games_missed DESC",
         (season,),
     ).fetchall()
     return [
-        {"player": r[0], "team": r[1], "start_date": r[2], "end_date": r[3], "games_missed": r[4]}
+        {"player": r[0], "team": r[1], "start_date": r[2], "end_date": r[3],
+         "games_missed": r[4], "still_out_at_season_end": bool(r[5])}
         for r in rows
     ]
 
@@ -182,6 +187,29 @@ def get_standings(conn: sqlite3.Connection, season: str) -> list:
     standings = [{"team": t, **rec} for t, rec in records.items()]
     standings.sort(key=lambda r: -r["W"])
     return standings
+
+
+def get_team_games(conn: sqlite3.Connection, season: str, team: str) -> list:
+    """
+    One team's real per-game results this season, as (opponent, my_score,
+    opp_score) tuples -- the shared building block for every playoff
+    tiebreaker in playoffs.py (head-to-head, division/conference record,
+    point differential, record-vs-playoff-pool are all just filtering or
+    summing this same list), instead of five near-duplicate queries.
+    """
+    rows = conn.execute(
+        "SELECT home_team, away_team, home_score, away_score FROM games "
+        "WHERE season = ? AND (home_team = ? OR away_team = ?)",
+        (season, team, team),
+    ).fetchall()
+
+    games = []
+    for home, away, home_score, away_score in rows:
+        if home == team:
+            games.append((away, home_score, away_score))
+        else:
+            games.append((home, away_score, home_score))
+    return games
 
 
 def get_player_season_averages(conn: sqlite3.Connection, player_name: str, season: Optional[str] = None) -> dict:
