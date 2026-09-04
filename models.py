@@ -1,5 +1,5 @@
 """
-Core data model for the sim: the Player class.
+Core data models for the sim: Player and Team.
 
 Design rule this whole file exists to protect: PTS and every shooting
 percentage are NEVER stored as their own number. They're always calculated
@@ -7,7 +7,8 @@ from the real counting stats (makes/attempts) underneath them, so it's
 mathematically impossible for them to disagree with each other or drift
 out of sync as the sim runs.
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import List, Optional
 
 
 @dataclass
@@ -89,3 +90,31 @@ class Player:
     def ft_pct(self) -> float:
         """Free throw %, same divide-by-zero guard."""
         return self.ftm / self.fta if self.fta else 0.0
+
+
+@dataclass
+class Team:
+    """
+    A team is deliberately simple: a name plus a list of Players. It has no
+    stats of its own -- team totals always come from summing player rows
+    (that happens later, in the game engine / db layer), never stored here.
+    That's the same "derive, don't duplicate" rule as Player.pts, just
+    applied one level up.
+    """
+
+    name: str
+    # `field(default_factory=list)` gives every Team its OWN empty list to
+    # start with. Writing `players: List[Player] = []` instead would be a
+    # classic Python trap -- all Team objects would silently share the
+    # exact same list, so adding a player to one team would add it to
+    # every team. default_factory avoids that by building a fresh list
+    # each time a Team is created.
+    players: List[Player] = field(default_factory=list)
+
+    def get_player(self, name: str) -> Optional[Player]:
+        """Look up one player on this team by exact name match.
+        Returns None if no player on the roster has that name."""
+        for player in self.players:
+            if player.name == name:
+                return player
+        return None
