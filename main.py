@@ -478,7 +478,10 @@ def run_team_game_log_replay(conn, team_name: str, season: str, highlight: Optio
     Commands at each pause: Enter (next game), a number (that many games
     in a row), 'b' (box score of the last game shown), 't' (fast-forward
     -- still showing every score line along the way -- through every
-    game up to the real trade deadline), 'e' (stop here).
+    game up to the real trade deadline), 'e' (fast-forward the SAME way
+    through every remaining game of the season, landing you at the
+    standings right after -- not a silent skip; every score line still
+    prints on the way there).
 
     Each score line also carries the team's RUNNING record through that
     game (e.g. "14-3") -- games always reveal in real chronological
@@ -501,7 +504,7 @@ def run_team_game_log_replay(conn, team_name: str, season: str, highlight: Optio
     while pos < len(log):
         raw = _prompt(
             f"[{pos}/{len(log)} shown] Enter=next, N=skip N, b=box score, "
-            f"t=jump to trade deadline, e=end: "
+            f"t=jump to trade deadline, e=show the rest + standings: "
         )
         action, count = _parse_replay_command(raw)
 
@@ -509,7 +512,13 @@ def run_team_game_log_replay(conn, team_name: str, season: str, highlight: Optio
             print("Please enter a blank line, a number, 'b', 't', or 'e'.")
             continue
         if action == "end":
-            break
+            # 'e' still shows every remaining score line (not a silent
+            # bail-out) -- reported directly: skipping straight to the
+            # standings with no scores in between read as a bug, not a
+            # shortcut. Falls through to the normal print block below,
+            # sized to whatever's left, then the while loop ends on its
+            # own once pos reaches len(log).
+            count = len(log) - pos
         if action == "box":
             if last_shown_id is None:
                 print("No game shown yet -- press Enter first to see one.")
@@ -584,7 +593,10 @@ def _replay_playoff_series(series: dict, matchup_label: str, final_line: str, hi
     season replay above, which has to rebuild one from storage.
 
     Each score line carries the SERIES record so far (e.g. "2-1"), same
-    idea as the season replay's running win/loss tally above.
+    idea as the season replay's running win/loss tally above. 'e' shows
+    every remaining game of the series (not a silent skip) before
+    landing on the final series line -- same reasoning as 'e' in
+    run_team_game_log_replay above.
     """
     print()
     print(_style(f"  {matchup_label}", "bold"))
@@ -594,14 +606,15 @@ def _replay_playoff_series(series: dict, matchup_label: str, final_line: str, hi
     wins = losses = 0
     last_shown = None
     while pos < len(game_log):
-        raw = _prompt(f"  Game {pos + 1}/{len(game_log)}: Enter=next, N=skip N, b=box score, e=end: ")
+        raw = _prompt(f"  Game {pos + 1}/{len(game_log)}: Enter=next, N=skip N, b=box score, "
+                       f"e=show the rest: ")
         action, count = _parse_replay_command(raw)
 
         if action in ("invalid", "deadline"):
             print("  Please enter a blank line, a number, 'b', or 'e'.")
             continue
         if action == "end":
-            break
+            count = len(game_log) - pos
         if action == "box":
             if last_shown is None:
                 print("  No game shown yet -- press Enter first to see one.")
