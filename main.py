@@ -444,18 +444,25 @@ def _ot_suffix(overtime_periods: int) -> str:
 
 
 def _format_score_line(label: str, opponent: str, my_score: float, opp_score: float, is_home: bool,
-                        overtime_periods: int = 0) -> str:
+                        overtime_periods: int = 0, record: Optional[str] = None) -> str:
     """
-    One score-line of a replay -- e.g. '2025-11-04 vs Miami Heat   W 108-102 (OT)'.
+    One score-line of a replay -- e.g. '2025-11-04 vs Miami Heat   W 108-102 (OT)  14-3'.
     Colored green/red by win/loss, not by accuracy -- the one place in
     this file color means "who won" rather than "how close to real,"
     since a replayed game has no "real" number to compare against.
+
+    `record` (optional) is the followed team's running tally THROUGH
+    this game -- "14-3" for the season replay, or the series score so
+    far for a playoff series -- so watching game by game actually shows
+    the standings/series updating as you go, not just isolated scores
+    (reported directly: this was the one thing missing).
     """
     vs_at = "vs" if is_home else "@ "
     won = my_score > opp_score
     result = _style("W", "bold", "green") if won else _style("L", "bold", "red")
     ot = f" ({_ot_suffix(overtime_periods).lstrip('/')})" if overtime_periods else ""
-    return f"  {label:<11}{vs_at} {opponent:<26} {result} {my_score:.0f}-{opp_score:.0f}{ot}"
+    record_str = f"  {record}" if record else ""
+    return f"  {label:<11}{vs_at} {opponent:<26} {result} {my_score:.0f}-{opp_score:.0f}{ot}{record_str}"
 
 
 def run_team_game_log_replay(conn, team_name: str, season: str, highlight: Optional[str] = None) -> None:
@@ -472,6 +479,11 @@ def run_team_game_log_replay(conn, team_name: str, season: str, highlight: Optio
     in a row), 'b' (box score of the last game shown), 't' (fast-forward
     -- still showing every score line along the way -- through every
     game up to the real trade deadline), 'e' (stop here).
+
+    Each score line also carries the team's RUNNING record through that
+    game (e.g. "14-3") -- games always reveal in real chronological
+    order here (no jumping backward), so it's a plain running win/loss
+    tally, not a re-query of the standings table.
     """
     log = db.get_team_game_log(conn, season, team_name)
     if not log:
@@ -484,6 +496,7 @@ def run_team_game_log_replay(conn, team_name: str, season: str, highlight: Optio
     print(SECTION)
 
     pos = 0  # index of the next not-yet-shown game
+    wins = losses = 0
     last_shown_id: Optional[str] = None
     while pos < len(log):
         raw = _prompt(
@@ -520,8 +533,12 @@ def run_team_game_log_replay(conn, team_name: str, season: str, highlight: Optio
 
         shown = log[pos: pos + count]
         for game in shown:
+            if game["my_score"] > game["opp_score"]:
+                wins += 1
+            else:
+                losses += 1
             print(_format_score_line(game["date"], game["opponent"], game["my_score"], game["opp_score"],
-                                      game["is_home"], game["overtime_periods"]))
+                                      game["is_home"], game["overtime_periods"], record=f"{wins}-{losses}"))
         if shown:
             last_shown_id = shown[-1]["game_id"]
         pos += len(shown)
@@ -565,12 +582,16 @@ def _replay_playoff_series(series: dict, matchup_label: str, final_line: str, hi
     season.db -- see that module's docstring), not the database -- so
     'b' hands print_box_score() a GameResult it already has, unlike the
     season replay above, which has to rebuild one from storage.
+
+    Each score line carries the SERIES record so far (e.g. "2-1"), same
+    idea as the season replay's running win/loss tally above.
     """
     print()
     print(_style(f"  {matchup_label}", "bold"))
     game_log = series["game_log"]
 
     pos = 0
+    wins = losses = 0
     last_shown = None
     while pos < len(game_log):
         raw = _prompt(f"  Game {pos + 1}/{len(game_log)}: Enter=next, N=skip N, b=box score, e=end: ")
@@ -594,7 +615,12 @@ def _replay_playoff_series(series: dict, matchup_label: str, final_line: str, hi
             opp = result.away_team if is_home else result.home_team
             my_score = result.home_score if is_home else result.away_score
             opp_score = result.away_score if is_home else result.home_score
-            print(_format_score_line(f"Game {i}", opp, my_score, opp_score, is_home, result.overtime_periods))
+            if my_score > opp_score:
+                wins += 1
+            else:
+                losses += 1
+            print(_format_score_line(f"Game {i}", opp, my_score, opp_score, is_home,
+                                      result.overtime_periods, record=f"{wins}-{losses}"))
         if shown:
             last_shown = shown[-1]
         pos += len(shown)

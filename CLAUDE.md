@@ -181,6 +181,11 @@ opponents' shooting (see game_engine.py).
   `t` explicitly checks "already past the deadline" and says so rather
   than silently behaving like Enter (found by testing — it originally
   did, and looked like a bug with no explanation).
+- Every score line also carries the followed team's RUNNING record
+  through that game (season win/loss tally, or the series score for a
+  playoff series) — games always reveal in real chronological order
+  here (no jumping backward), so this is a plain running tally kept by
+  the replay loop itself, not a re-query of the standings table per game.
 - `TRADE_DEADLINE_DATE = "2026-02-05"` (the real 2025-26 deadline) is
   hardcoded in main.py — same reasoning as playoffs.py's `TEAM_DIVISIONS`,
   a fixed real-world fact not worth a fetch/cache file for.
