@@ -114,6 +114,72 @@ decorative to what they actually do in real basketball:
     -- so a defense's real steal/block numbers now determine how often
     these events actually happen, instead of being generated fully
     independently of the opponent they're supposedly happening to.
+
+DEFENSE needed a FIFTH fix on top of that, found the same way -- by
+simulating full seasons and comparing to real 2025-26 standings, not by
+guessing. Blending in the LITERAL real ratio (the fix above) was a real
+improvement but still left a big gap: a full season of simulated
+standings only correlated 0.55 with the real ones (vs. a real
+correlation-with-itself of 1.0), and that gap did NOT shrink by
+averaging more simulated seasons together -- proving it wasn't random
+noise evening out, but a genuine, systematic under-count of how much a
+real defense's quality should matter.
+
+The cause: real NBA defensive quality is narrow in absolute terms (OKC's
+best-in-the-league real defense is only ~10% below league-average
+opponent shooting) but shows up almost every single night for that
+team. This sim ALSO adds real, deliberate per-game randomness on top of
+every shot (the same DISPERSION-driven variance that makes a "wild
+outlier" night possible for any player or team) -- and that necessary
+noise was swamping the real, correct-but-modest defensive signal before
+it could accumulate into a full season's standings the way it does in
+real basketball.
+
+DEFENSE_AMPLIFICATION fixes this WITHOUT touching any of that per-game
+randomness (a good team can still have a bad night, same as before) --
+it just scales up how far a real defense's factor is allowed to push
+away from 1.0 (league average), strong enough for that real signal to
+actually survive 82 games of noise. Tested by sweeping the multiplier
+from 1x-8x against real 2025-26 standings: 4x was the sweep's sweet
+spot -- correlation rose from 0.55 to 0.87 and mean win-total error
+dropped from ~9.9 to ~6.3 games; going higher (6x, 8x) started pushing
+simulated records WIDER than real ones actually spread (e.g. an 8x
+factor produced a simulated 4-74 win range against a real ~17-64 one),
+which made the error creep back up even as raw correlation kept
+climbing. Worth being upfront about the tradeoff: the applied factor is
+no longer the literal real ratio checked against real data above --
+it's that real ratio, deliberately amplified to compensate for what
+this sim's own necessary per-game randomness otherwise dilutes over a
+season.
+
+DEFENSE needed a SIXTH fix, found by checking a DIFFERENT number this
+time -- not win/loss standings, but real-vs-simulated PLAYER shooting
+%. That check found simulated FG% running ~3 percentage points below
+real, across 425 real players averaged over 10 simulated seasons (real
+per-game attempts also ran ~1.1 low). Isolating each mechanism (turning
+steals/blocks off one at a time) traced it almost entirely to
+blocks -- and to a lesser but real degree, steals -- not to the
+DEFENSE_AMPLIFICATION fix above (which, tested the same way, added
+only ~0.2 of those ~3 points; the rest was already there beforehand).
+
+The actual cause: a real player's real FG% and real FGA are already
+NET of however many of their real shots got blocked, or never became
+attempts because they got stolen, on AVERAGE. block_rate_for and
+steal_rate_for return the FULL real rate for a given defense (needed
+so even a below-average defense still generates a realistic, non-zero
+STL/BLK box score) -- but _finish_shooting was applying that FULL rate
+directly on top of a % and volume that already had the LEAGUE-AVERAGE
+version of that same effect baked in, silently blocking/stealing the
+same shots twice over.
+
+The fix: gross real_2pt_pct (in _finish_shooting) and expected_fga (in
+_resolve_team_offense) back UP by the league-average per-make block
+rate / per-attempt steal rate BEFORE the defender's full rate gets
+applied -- so an exactly-average defense nets back out to a player's
+real numbers instead of double-subtracting, while an above/below-
+average defense still correctly pushes below/above them. The STL/BLK
+counting stats credited to the defense still use the FULL rate,
+unchanged, so every team's own box score still looks realistic.
 """
 from dataclasses import dataclass
 from typing import Dict, List, Tuple
@@ -206,6 +272,22 @@ MINUTES_CONCENTRATION = 3000
 # normal rotation is barely affected at all (stars still 99.6-100%).
 ROTATION_WEIGHT_EXPONENT = 8
 
+# How much stronger a real defense's effect on opponent shooting % gets
+# made than its literal real ratio -- see the module docstring's FIFTH
+# DEFENSE fix for the full experiment. 1 = the literal real ratio, no
+# amplification. First tuned (sweeping 1x-8x) to 4, which got mean
+# win-total error from ~9.9 down to ~6.3 games and real-vs-sim
+# correlation from 0.55 to 0.87 -- but that sweep was run BEFORE the
+# SIXTH DEFENSE fix (the block/steal double-counting bug below), which
+# had been quietly doing some of this constant's job. Re-swept after
+# that fix: 5 is the new best fit (error ~6.3 -> ~7.8 games on the
+# corrected baseline, correlation 0.85) -- worse than the old number
+# LOOKED, but that old number was partly measuring a bug, not real
+# accuracy. Going higher (7, 8, 10) kept nudging correlation up but,
+# same as before, started spreading simulated records wider than real
+# ones actually go, which made the error creep back up.
+DEFENSE_AMPLIFICATION = 5
+
 
 @dataclass
 class LeagueAverages:
@@ -227,16 +309,40 @@ class LeagueAverages:
     baseline_steal_prob: float
     baseline_block_prob: float
 
+    @property
+    def avg_block_rate_per_make(self) -> float:
+        """baseline_block_prob is blocks per 2-point ATTEMPT faced, but
+        block_rate_for (and _finish_shooting, which applies it) work in
+        blocks per 2-point MAKE (only a make can be overturned into a
+        miss) -- this converts between the two (blocks-per-attempt /
+        makes-per-attempt = blocks-per-make). block_rate_for reuses
+        this SAME conversion, not its own -- found by testing that
+        using the two independently, even though each was individually
+        "correct", left them scaled differently from each other
+        (block_rate_for still in attempt-units), so applying
+        block_rate_for's result to a MAKE count removed less than
+        _finish_shooting's gross-up (in true make-units) had added
+        back, overshooting real FG% by +2.4 points in the OTHER
+        direction instead of landing near zero."""
+        return self.baseline_block_prob / self.avg_opp_2pt_pct if self.avg_opp_2pt_pct else 0.0
+
     def two_pt_defense_factor(self, defender: Team) -> float:
         """>1 means `defender` allows EASIER 2-point shooting than a
-        league-average defense (weaker D); <1 means tougher."""
+        league-average defense (weaker D); <1 means tougher. Amplified
+        by DEFENSE_AMPLIFICATION -- see that constant and the module
+        docstring's FIFTH DEFENSE fix for why the literal real ratio
+        alone wasn't enough."""
         opp_2pt_makes = defender.opp_fgm - defender.opp_fg3m
         opp_2pt_attempts = defender.opp_fga - defender.opp_fg3a
         opp_2pt_pct = opp_2pt_makes / opp_2pt_attempts if opp_2pt_attempts else self.avg_opp_2pt_pct
-        return opp_2pt_pct / self.avg_opp_2pt_pct if self.avg_opp_2pt_pct else 1.0
+        real_ratio = opp_2pt_pct / self.avg_opp_2pt_pct if self.avg_opp_2pt_pct else 1.0
+        return 1 + DEFENSE_AMPLIFICATION * (real_ratio - 1)
 
     def three_pt_defense_factor(self, defender: Team) -> float:
-        return defender.opp_fg3_pct / self.avg_opp_3pt_pct if self.avg_opp_3pt_pct else 1.0
+        """Same real-ratio-amplified-by-DEFENSE_AMPLIFICATION idea as
+        two_pt_defense_factor above, just for 3-point defense."""
+        real_ratio = defender.opp_fg3_pct / self.avg_opp_3pt_pct if self.avg_opp_3pt_pct else 1.0
+        return 1 + DEFENSE_AMPLIFICATION * (real_ratio - 1)
 
     def steal_rate_for(self, defender: Team) -> float:
         """Probability one shot attempt against `defender` gets stolen
@@ -248,10 +354,14 @@ class LeagueAverages:
 
     def block_rate_for(self, defender: Team) -> float:
         """Probability one already-made 2-point shot against `defender`
-        gets overturned into a blocked miss, scaled the same way."""
+        gets overturned into a blocked miss, scaled the same way.
+        Built on avg_block_rate_per_make (blocks-per-MAKE units, not
+        baseline_block_prob's raw blocks-per-ATTEMPT) -- see that
+        property's docstring for why the two must share one
+        conversion, not compute it separately."""
         team_blk = sum(p.blk for p in defender.players)
         relative = team_blk / self.avg_team_blk if self.avg_team_blk else 1.0
-        return self.baseline_block_prob * relative
+        return self.avg_block_rate_per_make * relative
 
 
 def compute_league_averages(teams: Dict[str, Team]) -> LeagueAverages:
@@ -614,6 +724,7 @@ def _finish_shooting(
     player: Player, fga: int, fta: int,
     steal_rate: float = 0.0, block_rate: float = 0.0,
     two_pt_factor: float = 1.0, three_pt_factor: float = 1.0,
+    avg_block_rate_per_make: float = 0.0,
 ) -> Tuple[int, int, int, int, int, int, int]:
     """
     Given a player's final attempt counts for the game, resolves what
@@ -643,6 +754,22 @@ def _finish_shooting(
     are events the DEFENSE gets credited for, which the caller
     aggregates across every shooter it defended into that defense's
     own STL/BLK.
+
+    `avg_block_rate_per_make` fixes a real, measured bug (found by
+    testing: real vs. simulated FG% was off by ~3 percentage points
+    across 425 players, averaged over 10 simulated seasons): a
+    player's real 2PT% is ALREADY net of however many of their real
+    makes got blocked on average -- so applying `block_rate` in step 3
+    on top of that real %, unchanged, was blocking the SAME shots
+    twice: once implicitly (baked into the real % itself) and once
+    explicitly (step 3 below). Step 2 grosses the real % back up by
+    this league-average per-make block rate BEFORE applying step 3's
+    FULL, defender-specific rate -- so an exactly-average-blocking
+    defense nets back out to the real %, while an above/below-average
+    one correctly pushes below/above it. `block_rate` itself stays the
+    FULL rate (not just the above-average excess) specifically so a
+    below-average-blocking defense still generates a realistic,
+    non-zero BLK total in its own box score, not zero.
     """
     # -- Step 1: steals remove attempts before they become a shot ------
     stolen = _binomial_draw(fga, steal_rate)
@@ -659,7 +786,12 @@ def _finish_shooting(
     real_2pt_makes = player.fgm - player.fg3m
     real_2pt_attempts = player.fga - player.fg3a
     real_2pt_pct = real_2pt_makes / real_2pt_attempts if real_2pt_attempts else 0.0
-    blended_2pt_pct = real_2pt_pct * two_pt_factor
+    # Gross real_2pt_pct back up to an "unblocked" baseline -- see this
+    # function's docstring on `avg_block_rate_per_make` for why.
+    unblocked_2pt_pct = (
+        real_2pt_pct / (1 - avg_block_rate_per_make) if avg_block_rate_per_make < 1 else real_2pt_pct
+    )
+    blended_2pt_pct = unblocked_2pt_pct * two_pt_factor
     blended_3pt_pct = player.fg3_pct * three_pt_factor
 
     two_pt_makes = _binomial_draw(two_pt_attempts, blended_2pt_pct)
@@ -810,8 +942,25 @@ def _resolve_team_offense(
     THIS player's own turnovers. defender_credit = {"stl": total,
     "blk": total} -- the events `defender` earned shutting this
     offense down, which the CALLER credits to defender's own box score.
+
+    expected_fga is grossed up by the league-average steal rate before
+    the team-total draw -- the same real-vs-double-counted issue as
+    _finish_shooting's block gross-up (see its docstring): a player's
+    real FGA is already NET of however many of their real attempts
+    got stolen on average (a stolen ball never became a real
+    "attempt"), so subtracting an ADDITIONAL average-level steal rate
+    below (via `_finish_shooting`'s FULL, defender-specific steal_rate)
+    was removing attempts that real per-game data already accounts
+    for. Measured impact: -1.11 attempts/game bias with this ungrossed;
+    grossing up here is what lets an exactly-average-stealing defense
+    reproduce real attempt volume instead of double-subtracting steals.
     """
-    expected_fga = [(p.fga / p.min if p.min else 0.0) * m for p, m in zip(active_players, minutes)]
+    steal_gross_up = 1 - league_avg.baseline_steal_prob
+    expected_fga = [
+        ((p.fga / p.min if p.min else 0.0) * m) / steal_gross_up if steal_gross_up > 0 else
+        (p.fga / p.min if p.min else 0.0) * m
+        for p, m in zip(active_players, minutes)
+    ]
     expected_fta = [(p.fta / p.min if p.min else 0.0) * m for p, m in zip(active_players, minutes)]
 
     team_target_fga = _negative_binomial_count(sum(expected_fga), dispersion=TEAM_ATTEMPTS_DISPERSION)
@@ -824,6 +973,7 @@ def _resolve_team_offense(
     block_rate = league_avg.block_rate_for(defender)
     two_pt_factor = league_avg.two_pt_defense_factor(defender)
     three_pt_factor = league_avg.three_pt_defense_factor(defender)
+    avg_block_rate_per_make = league_avg.avg_block_rate_per_make
 
     per_player_shot_stats = []
     total_stolen = 0
@@ -831,6 +981,7 @@ def _resolve_team_offense(
     for player, fga, fta in zip(active_players, assigned_fga, assigned_fta):
         fgm, final_fga, fg3m, fg3a, ftm, stolen, blocked = _finish_shooting(
             player, fga, fta, steal_rate, block_rate, two_pt_factor, three_pt_factor,
+            avg_block_rate_per_make,
         )
         # fta is untouched by steals (free throws aren't stolen, so the
         # assigned count is already the real final count).
