@@ -190,6 +190,22 @@ USAGE_CONCENTRATION = 150
 # far closer to realistic than sharing the looser attempts value did).
 MINUTES_CONCENTRATION = 3000
 
+# How strongly the active-roster weighted shuffle (see
+# _active_roster_for_game) favors higher real-minute players. Raising
+# real minutes to this power before weighting exaggerates the gap
+# between them -- needed because plain real minutes (exponent 1) treats
+# a team with a very flat, deep rotation (checked against Utah: top 5
+# players all within 34.3-27.6 real minutes of each other) almost like
+# a coin flip, which let real 30+ minute players sit out 1 in 3
+# simulated games -- far too often for a real rotation regular. Tuned
+# by testing against both a flat rotation (Utah) and a normal one
+# (Lakers): at 8, Utah's real 30+ minute players land at 94-99.7%
+# inclusion (still not a guarantee, matching real rest nights) while
+# its borderline 25-28 minute players get a real, non-zero, 43-76%
+# shot instead of the 0% a hard cutoff gave them -- and the Lakers'
+# normal rotation is barely affected at all (stars still 99.6-100%).
+ROTATION_WEIGHT_EXPONENT = 8
+
 
 @dataclass
 class LeagueAverages:
@@ -435,16 +451,47 @@ def _active_roster_for_game(team: Team) -> List[Player]:
     scale off simulated minutes). Restricting to a realistic-sized
     active group first fixes that dilution at the source.
 
-    Chosen by real minutes, highest first, stopping once the group's
-    combined real minutes reaches the full 240-minute pool -- so it
-    naturally sizes itself per team rather than assuming a fixed
-    rotation depth. Anyone left off this list didn't play tonight
-    (a real, normal thing -- "DNP - Coach's Decision").
+    WHO makes that group is a WEIGHTED RANDOM shuffle by real minutes,
+    not a fixed cutoff -- found by testing a full simulated season that
+    a fixed cutoff was a real bug: 244 of 522 real players across the
+    league (47%) never appeared in a single simulated game, ALL SEASON,
+    including genuine rotation players (a real 22-minutes-a-game player
+    on the Kings, several 20+ minute players on the Jazz). A deep,
+    balanced bench (several players clustered around 20-25 real
+    minutes) meant a hard cutoff permanently locked out whoever fell
+    just below the line, every single game -- real rotations vary
+    night to night (matchups, rest, foul trouble), ours didn't at all.
+
+    The weighting still strongly favors real stars (so they play almost
+    every night, matching reality), but a borderline rotation player
+    now has a real, non-zero chance of making the cut on any given
+    night instead of a guaranteed zero across an entire season.
+    Stopping once the group's combined real minutes reaches the full
+    240-minute pool, same as before -- it still sizes itself
+    naturally per team rather than assuming a fixed rotation depth.
     """
-    sorted_players = sorted(team.players, key=lambda p: -p.min)
+    weights = np.array([p.min for p in team.players], dtype=float)
+    if weights.sum() <= 0:
+        # Every player has 0 real minutes -- shouldn't happen for a
+        # real roster, but falls back to an even chance for everyone
+        # rather than dividing by zero.
+        weights = np.ones(len(team.players))
+    weights = weights ** ROTATION_WEIGHT_EXPONENT
+    weights = weights / weights.sum()
+
+    # A weighted shuffle: draws every player once, in an order where
+    # higher real minutes make an EARLIER draw more likely -- not a
+    # guarantee, just a strong tilt. Walking that order and stopping at
+    # 240 minutes is what turns "more likely to be drawn early" into
+    # "more likely to make the active group," while still leaving room
+    # for a borderline player to occasionally get in ahead of someone
+    # slightly ahead of them in real minutes.
+    order = _rng.choice(len(team.players), size=len(team.players), replace=False, p=weights)
+
     active = []
     total_minutes = 0.0
-    for player in sorted_players:
+    for index in order:
+        player = team.players[index]
         active.append(player)
         total_minutes += player.min
         if total_minutes >= TOTAL_GAME_MINUTES:
