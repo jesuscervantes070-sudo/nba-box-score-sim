@@ -20,7 +20,7 @@ import sqlite3
 from pathlib import Path
 from typing import List, Optional
 
-from models import Player, ScheduledGame
+from models import ScheduledGame
 from game_engine import GameResult
 
 DB_PATH = Path(__file__).parent / "cache" / "season.db"

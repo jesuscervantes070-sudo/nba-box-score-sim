@@ -14,7 +14,6 @@ Usage:
 """
 import argparse
 import time
-from pathlib import Path
 
 from loader import load_teams, load_schedule
 from game_engine import simulate_game, compute_league_averages

@@ -725,34 +725,6 @@ def simulate_player_game(player: Player) -> Player:
     )
 
 
-@dataclass
-class GameResult:
-    """
-    One full simulated game between two teams. Holds every player's
-    simulated stat line for both sides -- nothing else. Scores are
-    computed properties (below), never stored, for the exact same reason
-    Player.pts is computed: a team's score must always be traceable back
-    to its own players adding up, never an independent number that could
-    disagree with them.
-    """
-
-    home_team: str
-    away_team: str
-    home_players: List[Player]  # each entry is one player's SIMULATED game line
-    away_players: List[Player]
-
-    @property
-    def home_score(self) -> float:
-        """Home team's final score = sum of its players' simulated PTS.
-        Never simulated on its own -- this is what makes it impossible
-        for a team's score to disagree with its own box score."""
-        return sum(p.pts for p in self.home_players)
-
-    @property
-    def away_score(self) -> float:
-        return sum(p.pts for p in self.away_players)
-
-
 def _simulate_team_defaults(team: Team) -> tuple:
     """
     Everything about a team's game that does NOT depend on who they're
