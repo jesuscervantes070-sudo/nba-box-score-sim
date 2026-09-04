@@ -31,6 +31,19 @@ CACHE_DIR = Path(__file__).parent / "cache"
 CACHE_DIR.mkdir(exist_ok=True)
 ROSTER_CACHE = CACHE_DIR / "rosters.json"
 SCHEDULE_CACHE = CACHE_DIR / "schedule.json"
+TEAM_DEFENSE_CACHE = CACHE_DIR / "team_defense.json"
+
+# Maps our field names -> the NBA stats API's "Opponent" column names.
+# These are real per-game stats about what a team's REAL OPPONENTS did
+# against them -- i.e., a direct measure of that team's own defense.
+# Checked directly against real data: Oklahoma City (the real league's
+# best team) has the single lowest opp_fg_pct in the league, and
+# Washington (the worst team) is near the highest -- confirms this
+# data genuinely captures real defensive strength.
+DEFENSE_FIELD_MAP = {
+    "opp_fgm": "OPP_FGM", "opp_fga": "OPP_FGA",
+    "opp_fg3m": "OPP_FG3M", "opp_fg3a": "OPP_FG3A",
+}
 
 # The real schedule endpoint (ScheduleLeagueV2) returns EVERY game the
 # league plays -- preseason, All-Star weekend, the play-in tournament,
@@ -56,13 +69,14 @@ NON_REGULAR_SEASON_LABELS = {
 NBA_CUP_LABEL = "Emirates NBA Cup"
 NBA_CUP_FINAL_SUBLABEL = "Championship"
 
-# The schedule endpoint spells one team's name differently ("LA
+# Some nba_api endpoints spell one team's name differently ("LA
 # Clippers") than every other endpoint used in this project ("Los
-# Angeles Clippers") -- checked directly, it's the only mismatch left
-# once non-regular-season games are filtered out. Without this fix,
-# the Clippers' schedule entries wouldn't match their roster/stats
-# entries anywhere else in the project.
-SCHEDULE_TEAM_NAME_FIXES = {
+# Angeles Clippers") -- checked directly against both the schedule
+# endpoint and the team-defense endpoint, it's the only mismatch
+# either one has. Reused everywhere a team name comes back from
+# nba_api, so a name mismatch can't silently break a lookup anywhere
+# in the project.
+NBA_API_TEAM_NAME_FIXES = {
     "LA Clippers": "Los Angeles Clippers",
 }
 
@@ -100,6 +114,45 @@ def fetch_team_rosters(season: str):
     return rosters
 
 
+def fetch_team_defense(season: str):
+    """
+    Real per-game stats about what each team's OPPONENTS did against
+    them -- a direct measure of that team's own defense, since it's
+    literally "how well do teams shoot when they play against this
+    team." Returns a dict keyed by full team name (matching every other
+    team-name key in this project), each value the raw makes/attempts
+    needed to compute 2PT/3PT/overall opponent shooting %.
+    """
+    from nba_api.stats.endpoints import leaguedashteamstats
+    df = leaguedashteamstats.LeagueDashTeamStats(
+        season=season, measure_type_detailed_defense="Opponent", per_mode_detailed="PerGame", timeout=30,
+    ).get_data_frames()[0]
+
+    defense = {}
+    for _, row in df.iterrows():
+        team_name = NBA_API_TEAM_NAME_FIXES.get(row["TEAM_NAME"], row["TEAM_NAME"])
+        entry = {our_key: float(row[api_key]) for our_key, api_key in DEFENSE_FIELD_MAP.items()}
+        defense[team_name] = entry
+    return defense
+
+
+def build_and_cache_team_defense(season: str = "2025-26", force: bool = False) -> None:
+    if TEAM_DEFENSE_CACHE.exists() and not force:
+        print(f"Team defense cache already exists at {TEAM_DEFENSE_CACHE}. Use --refresh to force an update.")
+        return
+
+    print(f"Fetching {season} real opponent-shooting (defense) stats...")
+    defense = fetch_team_defense(season)
+
+    if len(defense) != 30:
+        print(f"WARNING: expected 30 teams, got {len(defense)} -- double check the season string.")
+
+    with open(TEAM_DEFENSE_CACHE, "w") as f:
+        json.dump({"season": season, "teams": defense}, f, indent=2)
+
+    print(f"Cached defensive stats for {len(defense)} teams -> {TEAM_DEFENSE_CACHE}")
+
+
 def fetch_schedule(season: str):
     """
     The real regular-season schedule for `season`: a list of dicts, one
@@ -124,7 +177,7 @@ def fetch_schedule(season: str):
 
     def _team_name(city: str, name: str) -> str:
         full_name = f"{city} {name}"
-        return SCHEDULE_TEAM_NAME_FIXES.get(full_name, full_name)
+        return NBA_API_TEAM_NAME_FIXES.get(full_name, full_name)
 
     games = []
     for _, row in regular_season.iterrows():
@@ -207,3 +260,4 @@ if __name__ == "__main__":
     args = parser.parse_args()
     build_and_cache(season=args.season, force=args.refresh)
     build_and_cache_schedule(season=args.season, force=args.refresh)
+    build_and_cache_team_defense(season=args.season, force=args.refresh)

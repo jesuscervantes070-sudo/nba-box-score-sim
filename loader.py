@@ -16,12 +16,17 @@ from models import Player, Team, ScheduledGame
 CACHE_DIR = Path(__file__).parent / "cache"
 ROSTER_CACHE_FILE = CACHE_DIR / "rosters.json"
 SCHEDULE_CACHE_FILE = CACHE_DIR / "schedule.json"
+TEAM_DEFENSE_CACHE_FILE = CACHE_DIR / "team_defense.json"
 
 
 def load_teams() -> Dict[str, Team]:
     """
-    Reads cache/rosters.json and returns a dict mapping each team's name
-    to a real Team object (which holds real Player objects).
+    Reads cache/rosters.json AND cache/team_defense.json and returns a
+    dict mapping each team's name to a real Team object -- real Player
+    objects for its roster, plus its own real defensive stats. Both
+    files get merged here so every caller gets one fully-populated
+    Team object, rather than every caller having to remember to load
+    and merge defense data separately.
 
     Returns a dict (not a list) so calling code can look up a team
     directly by name, e.g. teams["Los Angeles Lakers"], instead of
@@ -35,9 +40,16 @@ def load_teams() -> Dict[str, Team]:
             "No cached data found at cache/rosters.json. "
             "Run `python data_source.py` first to fetch rosters/stats."
         )
+    if not TEAM_DEFENSE_CACHE_FILE.exists():
+        raise FileNotFoundError(
+            "No cached team defense data found at cache/team_defense.json. "
+            "Run `python data_source.py` first to fetch it."
+        )
 
     with open(ROSTER_CACHE_FILE) as f:
         raw = json.load(f)  # raw is now a plain Python dict -- not Player/Team objects yet
+    with open(TEAM_DEFENSE_CACHE_FILE) as f:
+        raw_defense = json.load(f)["teams"]
 
     teams: Dict[str, Team] = {}
     for team_name, player_dicts in raw["teams"].items():
@@ -48,7 +60,11 @@ def load_teams() -> Dict[str, Team]:
         # hand. This works because data_source.py's FIELD_MAP already
         # guarantees the JSON keys match Player's actual field names.
         players = [Player(**player_dict) for player_dict in player_dicts]
-        teams[team_name] = Team(name=team_name, players=players)
+        # Same unpacking trick for the team's own real defensive stats
+        # -- data_source.py's DEFENSE_FIELD_MAP guarantees these JSON
+        # keys already match Team's opp_* field names.
+        defense = raw_defense.get(team_name, {})
+        teams[team_name] = Team(name=team_name, players=players, **defense)
 
     return teams
 

@@ -95,11 +95,14 @@ class Player:
 @dataclass
 class Team:
     """
-    A team is deliberately simple: a name plus a list of Players. It has no
-    stats of its own -- team totals always come from summing player rows
-    (that happens later, in the game engine / db layer), never stored here.
-    That's the same "derive, don't duplicate" rule as Player.pts, just
-    applied one level up.
+    A team is a name, a list of Players, and its own real defensive
+    stats. GAME totals (score, rebounds, etc. for one simulated game)
+    still always come from summing player rows, never stored here --
+    same "derive, don't duplicate" rule as Player.pts. The defensive
+    fields below are a different category: real, externally-sourced
+    SEASON stats (what this team's actual opponents shot against them),
+    an input to the simulation rather than an output of it -- the same
+    role a Player's real fga/fgm play for that player.
     """
 
     name: str
@@ -111,6 +114,16 @@ class Team:
     # each time a Team is created.
     players: List[Player] = field(default_factory=list)
 
+    # Real per-game stats about what THIS team's real opponents shot
+    # against them this season -- a direct measure of this team's own
+    # real defense. Stored as raw makes/attempts, not a percentage,
+    # for the same reason Player does: a percentage computed on the
+    # fly can never disagree with the makes/attempts underneath it.
+    opp_fgm: float = 0.0
+    opp_fga: float = 0.0
+    opp_fg3m: float = 0.0
+    opp_fg3a: float = 0.0
+
     def get_player(self, name: str) -> Optional[Player]:
         """Look up one player on this team by exact name match.
         Returns None if no player on the roster has that name."""
@@ -118,6 +131,17 @@ class Team:
             if player.name == name:
                 return player
         return None
+
+    @property
+    def opp_fg_pct(self) -> float:
+        """Real opponent field goal % allowed -- how tough this team's
+        overall shot-contesting defense actually is."""
+        return self.opp_fgm / self.opp_fga if self.opp_fga else 0.0
+
+    @property
+    def opp_fg3_pct(self) -> float:
+        """Real opponent 3-point % allowed."""
+        return self.opp_fg3m / self.opp_fg3a if self.opp_fg3a else 0.0
 
 
 @dataclass
