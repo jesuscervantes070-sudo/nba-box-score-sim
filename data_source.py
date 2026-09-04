@@ -153,6 +153,24 @@ def build_and_cache_team_defense(season: str = "2025-26", force: bool = False) -
     print(f"Cached defensive stats for {len(defense)} teams -> {TEAM_DEFENSE_CACHE}")
 
 
+def fetch_real_standings(season: str) -> dict:
+    """
+    The REAL final standings for `season` -- not cached, since it's
+    used on demand for comparing a simulated season against reality
+    (the whole original point of this project), not as an input the
+    simulation itself depends on every run. Returns {team_name: wins}.
+    """
+    from nba_api.stats.endpoints import leaguestandingsv3
+    df = leaguestandingsv3.LeagueStandingsV3(season=season, timeout=30).get_data_frames()[0]
+
+    standings = {}
+    for _, row in df.iterrows():
+        team_name = f"{row['TeamCity']} {row['TeamName']}"
+        team_name = NBA_API_TEAM_NAME_FIXES.get(team_name, team_name)
+        standings[team_name] = int(row["WINS"])
+    return standings
+
+
 def fetch_schedule(season: str):
     """
     The real regular-season schedule for `season`: a list of dicts, one

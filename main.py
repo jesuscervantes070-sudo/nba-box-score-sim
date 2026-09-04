@@ -15,7 +15,10 @@ from typing import Dict, List
 
 from loader import load_teams
 from models import Player, Team
-from game_engine import simulate_game, GameResult
+from game_engine import simulate_game, compute_league_averages, GameResult, LeagueAverages
+from data_source import fetch_real_standings
+from season import simulate_season
+import db
 
 # Plain ASCII only for every divider/border in this file, on purpose --
 # no fancy unicode box-drawing characters, just characters already on a
@@ -188,11 +191,10 @@ def print_box_score(result: GameResult) -> None:
     _print_team_box_score(result.away_team, result.away_players, result.away_score)
 
 
-def main() -> None:
-    print_welcome()
-    teams = load_teams()
-    team_names = sorted(teams.keys())  # alphabetical, so it's easy to scan
-
+def run_single_game_flow(teams: Dict[str, Team], team_names: List[str], league_avg: LeagueAverages) -> None:
+    """The original pick-two-teams-and-simulate loop. Returns to the
+    caller (the top-level menu) once the user says they're done,
+    rather than ending the whole program."""
     while True:
         # Printed at the start of every round (including replays) --
         # by the time a box score has scrolled by, the list is long
@@ -206,14 +208,115 @@ def main() -> None:
         print(f"-> {opponent_team_name}\n")
 
         print(f"Simulating: {my_team_name} vs. {opponent_team_name} ...")
-        result = simulate_game(teams[my_team_name], teams[opponent_team_name])
+        result = simulate_game(teams[my_team_name], teams[opponent_team_name], league_avg)
         print_box_score(result)
 
         again = input("Play again? (y/n): ").strip().lower()
         print()
         if again != "y":
+            return
+
+
+def print_standings(standings: list) -> None:
+    print()
+    print(DIVIDER)
+    print("STANDINGS".center(LINE_WIDTH))
+    print(DIVIDER)
+    print(f"{'#':>3}  {'TEAM':<28}{'W':>5}{'L':>5}")
+    print(SECTION)
+    for i, row in enumerate(standings, start=1):
+        print(f"{i:>3}. {row['team']:<28}{row['W']:>5}{row['L']:>5}")
+    print()
+
+
+def print_standings_comparison(standings: list, real_standings: Dict[str, int]) -> None:
+    """
+    Simulated standings side by side with the REAL final standings --
+    the original point of this whole project: checking how close a
+    simulated season lands to what actually happened.
+    """
+    print()
+    print(DIVIDER)
+    print("SIMULATED VS. REAL STANDINGS".center(LINE_WIDTH))
+    print(DIVIDER)
+    print(f"{'TEAM':<28}{'REAL W':>8}{'SIM W':>8}{'DIFF':>7}")
+    print(SECTION)
+
+    rows = sorted(standings, key=lambda r: -real_standings.get(r["team"], 0))
+    diffs = []
+    for row in rows:
+        real_w = real_standings.get(row["team"])
+        sim_w = row["W"]
+        if real_w is None:
+            print(f"{row['team']:<28}{'?':>8}{sim_w:>8}")
+            continue
+        diff = sim_w - real_w
+        diffs.append(abs(diff))
+        print(f"{row['team']:<28}{real_w:>8}{sim_w:>8}{diff:>+7}")
+
+    print(SECTION)
+    if diffs:
+        print(f"Mean absolute error: {sum(diffs) / len(diffs):.1f} games across {len(diffs)} teams")
+    print()
+
+
+def run_season_flow(season: str = "2025-26") -> None:
+    """
+    Simulates the full real 1,230-game season (overwriting any
+    previously simulated one -- see season.py's simulate_season for
+    why re-running isn't additive) and shows the resulting standings,
+    with an option to compare against the REAL final standings.
+    """
+    print()
+    confirm = input(
+        f"Simulate the full {season} season now (1,230 games)? "
+        "This replaces any previously simulated season. (y/n): "
+    ).strip().lower()
+    if confirm != "y":
+        return
+
+    print()
+    simulate_season(season=season, fresh=True)
+
+    conn = db.init_db()
+    standings = db.get_standings(conn, season)
+    print_standings(standings)
+
+    compare = input("Compare against the real final standings? (y/n): ").strip().lower()
+    if compare == "y":
+        print()
+        print("Fetching real standings...")
+        real_standings = fetch_real_standings(season)
+        print_standings_comparison(standings, real_standings)
+
+
+def main() -> None:
+    print_welcome()
+    teams = load_teams()
+    team_names = sorted(teams.keys())  # alphabetical, so it's easy to scan
+
+    # Real, league-wide baselines (what's an average defense, an
+    # average steal/block rate) -- computed ONCE here, not per game.
+    league_avg = compute_league_averages(teams)
+
+    while True:
+        print("What would you like to do?")
+        print("  1. Simulate a single game")
+        print("  2. Simulate a full season and view standings")
+        print("  3. Quit")
+        choice = input("> ").strip()
+        print()
+
+        if choice == "1":
+            run_single_game_flow(teams, team_names, league_avg)
+        elif choice == "2":
+            run_season_flow()
+        elif choice == "3":
             print("Thanks for playing!")
             break
+        else:
+            print("Please enter 1, 2, or 3.")
+        print()
 
 
 if __name__ == "__main__":

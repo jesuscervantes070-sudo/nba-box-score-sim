@@ -87,9 +87,36 @@ what a plain "give everyone their own independent random draw" approach
 could never provide, no matter how it was tuned (there's a hard
 mathematical floor -- a Negative Binomial's variance can never go below
 its own mean -- that a single shared knob can't get under).
+
+DEFENSE needed a FOURTH fix, found only after simulating a full season
+and comparing it to the real 2025-26 standings: every real strong team
+(Oklahoma City: 64 real wins) came back far too weak (39 simulated),
+and every real weak team (Washington: 17 real wins) came back far too
+strong (37 simulated) -- a systematic squeeze toward .500, not random
+noise. The cause: a team's simulated score depended ENTIRELY on their
+OWN real offensive stats, with zero regard for who they were playing --
+OKC's real defense (allowing the league's lowest opponent FG%) had no
+mechanism to actually suppress an opponent's shooting in the sim.
+
+Two things were fixed together, both tying stats that were previously
+decorative to what they actually do in real basketball:
+  - Every shot's make-probability now blends the shooter's own real %
+    with the DEFENDING team's real opponent-FG%-allowed (checked
+    directly: OKC allows a real 0.438 opponent FG% against a 0.471
+    league average -- genuinely the toughest defense in the league).
+  - Steals and blocks, which previously never affected anything, now
+    have real consequences: a steal removes a shot attempt before it
+    happens (crediting a TOV to the shooter's team and a STL to the
+    defense), and a block overturns an already-made 2-point shot into
+    a miss (crediting a BLK to the defense). Both are scaled by the
+    DEFENDING team's own real STL/BLK generation relative to league
+    average, computed once via LeagueAverages/compute_league_averages
+    -- so a defense's real steal/block numbers now determine how often
+    these events actually happen, instead of being generated fully
+    independently of the opponent they're supposedly happening to.
 """
 from dataclasses import dataclass
-from typing import List
+from typing import Dict, List, Tuple
 
 import numpy as np
 
@@ -162,6 +189,102 @@ USAGE_CONCENTRATION = 150
 # same idea as the Negative Binomial floor discussed earlier -- but
 # far closer to realistic than sharing the looser attempts value did).
 MINUTES_CONCENTRATION = 3000
+
+
+@dataclass
+class LeagueAverages:
+    """
+    Real, LEAGUE-WIDE baselines computed once from every team's real
+    stats (see compute_league_averages below) -- needed because "is
+    this a good or bad defense" only means something relative to
+    league average, not looked at on its own. Passed into simulate_game
+    once per season/session rather than recomputed every game.
+    """
+
+    avg_opp_2pt_pct: float
+    avg_opp_3pt_pct: float
+    avg_team_stl: float
+    avg_team_blk: float
+    # The probability an average NBA defense steals/blocks a given shot
+    # attempt -- derived directly from real league totals (steals per
+    # shot attempt faced, blocks per 2-point attempt faced), not guessed.
+    baseline_steal_prob: float
+    baseline_block_prob: float
+
+    def two_pt_defense_factor(self, defender: Team) -> float:
+        """>1 means `defender` allows EASIER 2-point shooting than a
+        league-average defense (weaker D); <1 means tougher."""
+        opp_2pt_makes = defender.opp_fgm - defender.opp_fg3m
+        opp_2pt_attempts = defender.opp_fga - defender.opp_fg3a
+        opp_2pt_pct = opp_2pt_makes / opp_2pt_attempts if opp_2pt_attempts else self.avg_opp_2pt_pct
+        return opp_2pt_pct / self.avg_opp_2pt_pct if self.avg_opp_2pt_pct else 1.0
+
+    def three_pt_defense_factor(self, defender: Team) -> float:
+        return defender.opp_fg3_pct / self.avg_opp_3pt_pct if self.avg_opp_3pt_pct else 1.0
+
+    def steal_rate_for(self, defender: Team) -> float:
+        """Probability one shot attempt against `defender` gets stolen
+        before it happens, scaled by how much better/worse `defender`'s
+        real steal generation is than league average."""
+        team_stl = sum(p.stl for p in defender.players)
+        relative = team_stl / self.avg_team_stl if self.avg_team_stl else 1.0
+        return self.baseline_steal_prob * relative
+
+    def block_rate_for(self, defender: Team) -> float:
+        """Probability one already-made 2-point shot against `defender`
+        gets overturned into a blocked miss, scaled the same way."""
+        team_blk = sum(p.blk for p in defender.players)
+        relative = team_blk / self.avg_team_blk if self.avg_team_blk else 1.0
+        return self.baseline_block_prob * relative
+
+
+def compute_league_averages(teams: Dict[str, Team]) -> LeagueAverages:
+    """
+    Computes real, league-wide baselines from every team's real data --
+    call this ONCE (e.g. right after loader.load_teams()) and reuse the
+    result for every simulated game, rather than recomputing it per game.
+
+    Percentages are computed from SUMMED makes/attempts across the
+    whole league, never by averaging each team's own percentage --
+    same "derive from real totals" rule used everywhere else in this
+    project, and it avoids letting a low-volume team's percentage
+    count as much as a high-volume one.
+    """
+    total_opp_2pt_m = total_opp_2pt_a = 0.0
+    total_opp_3pt_m = total_opp_3pt_a = 0.0
+    total_stl = total_blk = total_fga = total_2pt_fga = 0.0
+
+    for team in teams.values():
+        total_opp_2pt_m += team.opp_fgm - team.opp_fg3m
+        total_opp_2pt_a += team.opp_fga - team.opp_fg3a
+        total_opp_3pt_m += team.opp_fg3m
+        total_opp_3pt_a += team.opp_fg3a
+
+        team_stl = sum(p.stl for p in team.players)
+        team_blk = sum(p.blk for p in team.players)
+        team_fga = sum(p.fga for p in team.players)
+        team_fg3a = sum(p.fg3a for p in team.players)
+        total_stl += team_stl
+        total_blk += team_blk
+        total_fga += team_fga
+        total_2pt_fga += team_fga - team_fg3a
+
+    n_teams = len(teams)
+    avg_opp_2pt_pct = total_opp_2pt_m / total_opp_2pt_a if total_opp_2pt_a else 0.5
+    avg_opp_3pt_pct = total_opp_3pt_m / total_opp_3pt_a if total_opp_3pt_a else 0.36
+    avg_team_stl = total_stl / n_teams if n_teams else 0.0
+    avg_team_blk = total_blk / n_teams if n_teams else 0.0
+    avg_team_fga = total_fga / n_teams if n_teams else 0.0
+    avg_team_2pt_fga = total_2pt_fga / n_teams if n_teams else 0.0
+
+    return LeagueAverages(
+        avg_opp_2pt_pct=avg_opp_2pt_pct,
+        avg_opp_3pt_pct=avg_opp_3pt_pct,
+        avg_team_stl=avg_team_stl,
+        avg_team_blk=avg_team_blk,
+        baseline_steal_prob=(total_stl / n_teams) / avg_team_fga if avg_team_fga else 0.0,
+        baseline_block_prob=(total_blk / n_teams) / avg_team_2pt_fga if avg_team_2pt_fga else 0.0,
+    )
 
 
 def _negative_binomial_count(mean: float, dispersion: float = DISPERSION) -> int:
@@ -440,13 +563,44 @@ def _team_split_stat(
     return _dirichlet_multinomial_split(expected, team_target, concentration)
 
 
-def _finish_shooting(player: Player, fga: int, fta: int) -> tuple:
+def _finish_shooting(
+    player: Player, fga: int, fta: int,
+    steal_rate: float = 0.0, block_rate: float = 0.0,
+    two_pt_factor: float = 1.0, three_pt_factor: float = 1.0,
+) -> Tuple[int, int, int, int, int, int, int]:
     """
-    Given a player's final attempt counts for the game, roll the actual
-    makes. Shared by both simulate_player_game and the real team-game
-    pipeline, since the shooting-split math itself doesn't depend on
-    HOW fga/fta were decided. Returns (fgm, fg3m, fg3a, ftm).
+    Given a player's final attempt counts for the game, resolves what
+    actually happens to them AGAINST A SPECIFIC DEFENSE. Shared by both
+    simulate_player_game (which leaves the defense knobs at their
+    do-nothing defaults: no steals, no blocks, no % adjustment -- an
+    "average, anonymous opponent") and the real team-game pipeline
+    (which passes real opponent-derived values -- see
+    LeagueAverages/compute_league_averages).
+
+    Three defensive effects, applied in the order they'd actually
+    happen in a real possession:
+      1. STEALS: some attempts never become a shot at all -- removed
+         before the 3PA/2PA split, so they can't also show up as a
+         miss. Each one becomes a turnover for this player's team.
+      2. SHOOTING %: the remaining attempts get resolved using this
+         player's real % BLENDED with the defense's real opponent-%-
+         allowed (two_pt_factor/three_pt_factor -- see LeagueAverages).
+      3. BLOCKS: some of the makes from step 2 get overturned into
+         blocked misses (2-point makes only -- 3-point blocks are rare
+         enough in real basketball to not model here).
+
+    Returns (fgm, fga, fg3m, fg3a, ftm, stolen, blocked). `fga` here is
+    the REAL, final attempt count (after steals remove some) -- a shot
+    that got stolen before it happened was never really an attempt at
+    all, matching how a real box score counts it. `stolen`/`blocked`
+    are events the DEFENSE gets credited for, which the caller
+    aggregates across every shooter it defended into that defense's
+    own STL/BLK.
     """
+    # -- Step 1: steals remove attempts before they become a shot ------
+    stolen = _binomial_draw(fga, steal_rate)
+    fga -= stolen
+
     # What fraction of this player's REAL shot attempts are 3-pointers?
     # Reusing that real rate as the split's odds is what keeps
     # fg3a <= fga guaranteed, no matter what gets randomly drawn.
@@ -454,18 +608,25 @@ def _finish_shooting(player: Player, fga: int, fta: int) -> tuple:
     fg3a = _binomial_draw(fga, real_3pt_rate)
     two_pt_attempts = fga - fg3a
 
-    # Real shooting percentages for each shot type, so the makes rolled
-    # below reflect how well this specific player actually shoots.
+    # -- Step 2: shooting %, blended with the real defense faced --------
     real_2pt_makes = player.fgm - player.fg3m
     real_2pt_attempts = player.fga - player.fg3a
-    two_pt_pct = real_2pt_makes / real_2pt_attempts if real_2pt_attempts else 0.0
+    real_2pt_pct = real_2pt_makes / real_2pt_attempts if real_2pt_attempts else 0.0
+    blended_2pt_pct = real_2pt_pct * two_pt_factor
+    blended_3pt_pct = player.fg3_pct * three_pt_factor
 
-    two_pt_makes = _binomial_draw(two_pt_attempts, two_pt_pct)
-    fg3m = _binomial_draw(fg3a, player.fg3_pct)
+    two_pt_makes = _binomial_draw(two_pt_attempts, blended_2pt_pct)
+    fg3m = _binomial_draw(fg3a, blended_3pt_pct)
+
+    # -- Step 3: blocks overturn some 2-point makes into misses ---------
+    two_pt_makes_blocked = _binomial_draw(two_pt_makes, block_rate)
+    two_pt_makes -= two_pt_makes_blocked
+    blocked = two_pt_makes_blocked
+
     fgm = two_pt_makes + fg3m  # always <= fga, by construction, never checked separately
 
-    ftm = _binomial_draw(fta, player.ft_pct)
-    return fgm, fg3m, fg3a, ftm
+    ftm = _binomial_draw(fta, player.ft_pct)  # free throws are uncontested -- no defense to blend/block
+    return fgm, fga, fg3m, fg3a, ftm, stolen, blocked
 
 
 def simulate_player_game(player: Player) -> Player:
@@ -480,7 +641,10 @@ def simulate_player_game(player: Player) -> Player:
     """
     fga = _negative_binomial_count(player.fga)
     fta = _negative_binomial_count(player.fta)
-    fgm, fg3m, fg3a, ftm = _finish_shooting(player, fga, fta)
+    # No opponent in isolated mode -- _finish_shooting's defaults (no
+    # steals, no blocks, no % adjustment) mean an "average, anonymous
+    # opponent" that doesn't change anything about this player's output.
+    fgm, fga, fg3m, fg3a, ftm, _stolen, _blocked = _finish_shooting(player, fga, fta)
 
     reb = _negative_binomial_count(player.reb)
     real_oreb_rate = player.oreb / player.reb if player.reb else 0.0
@@ -542,16 +706,16 @@ class GameResult:
         return sum(p.pts for p in self.away_players)
 
 
-def _simulate_team_game(team: Team) -> List[Player]:
+def _simulate_team_defaults(team: Team) -> tuple:
     """
-    The real production path for simulating one team's game. Unlike
-    simulate_player_game (which treats every player as fully
-    independent), this ties the whole roster together through a shared,
-    realistic 240-minute budget, and scales every other stat off each
-    player's ACTUAL simulated minutes rather than their flat per-game
-    average. See the module docstring for why this was necessary (team
-    score realism) and what it also fixes for free (a fouled-out player
-    now genuinely produces less of everything, not just fewer minutes).
+    Everything about a team's game that does NOT depend on who they're
+    playing: who's active tonight, their minutes, fouls, rebounds, and
+    assists. (Shooting, steals, and blocks DO depend on the opponent's
+    real defense -- that's _resolve_team_offense, below.)
+
+    Returns (active_players, minutes, pf_values, final_reb, final_ast,
+    final_tov) -- final_tov here is only the "ordinary" (non-steal)
+    turnovers; _resolve_team_offense adds steal-caused ones on top.
     """
     # Step 0: who actually plays tonight? Restricting to a realistic-
     # sized active group (see _active_roster_for_game) BEFORE splitting
@@ -596,33 +760,108 @@ def _simulate_team_game(team: Team) -> List[Player]:
         # back to them.
         minutes = _cap_minutes_at_max(minutes, protected=fouled_out)
 
-    # Step 3: EVERY counting stat that a real team total should be
-    # bounded by (shots, rebounds, assists, steals, blocks, turnovers)
-    # uses the same team-total-then-split pattern as minutes: a real
-    # team doesn't just add up 9 independently-random players for any
-    # of these either -- total rebounds are bounded by total missed
-    # shots, total assists by total made shots, and so on. Splitting a
-    # realistic TEAM total across players (instead of letting each one
-    # vary fully independently) is what fixed shot-attempt team totals
-    # earlier, and the same fix applies here for the same reason.
-    final_fga = _team_split_stat(active_players, minutes, "fga", TEAM_ATTEMPTS_DISPERSION, USAGE_CONCENTRATION)
-    final_fta = _team_split_stat(active_players, minutes, "fta", TEAM_ATTEMPTS_DISPERSION, USAGE_CONCENTRATION)
+    # Step 3: rebounds/assists/(non-steal) turnovers use the same
+    # team-total-then-split pattern as minutes -- see the module
+    # docstring for why letting each player vary fully independently
+    # made team totals unrealistic.
     final_reb = _team_split_stat(active_players, minutes, "reb", TEAM_ATTEMPTS_DISPERSION, USAGE_CONCENTRATION)
     final_ast = _team_split_stat(active_players, minutes, "ast", TEAM_ATTEMPTS_DISPERSION, USAGE_CONCENTRATION)
-    final_stl = _team_split_stat(active_players, minutes, "stl", TEAM_ATTEMPTS_DISPERSION, USAGE_CONCENTRATION)
-    final_blk = _team_split_stat(active_players, minutes, "blk", TEAM_ATTEMPTS_DISPERSION, USAGE_CONCENTRATION)
     final_tov = _team_split_stat(active_players, minutes, "tov", TEAM_ATTEMPTS_DISPERSION, USAGE_CONCENTRATION)
 
-    # Step 4: finish every active player's line -- shooting makes, and
-    # OREB split out of the team-derived REB (same subset-split trick
-    # as always: guarantees oreb <= reb, never just usually true).
-    results = []
-    for player, mins, pf, fga, fta, reb, ast, stl, blk, tov in zip(
-        active_players, minutes, pf_values, final_fga, final_fta,
-        final_reb, final_ast, final_stl, final_blk, final_tov,
-    ):
-        fgm, fg3m, fg3a, ftm = _finish_shooting(player, fga, fta)
+    return active_players, minutes, pf_values, final_reb, final_ast, final_tov
 
+
+def _resolve_team_offense(
+    active_players: List[Player], minutes: List[float], defender: Team, league_avg: LeagueAverages,
+) -> tuple:
+    """
+    Resolves one team's shooting for the game AGAINST a specific
+    opponent's real defense (`defender`). Team-total shot attempts
+    still use the same total-then-split pattern as always; what's new
+    is that turning those attempts into makes now runs through
+    _finish_shooting's steal/%-blend/block mechanics for `defender`.
+
+    Returns (per_player_shot_stats, defender_credit).
+    per_player_shot_stats is a list of (fgm, fga, fg3m, fg3a, ftm, fta,
+    stolen) tuples matching active_players' order -- the REAL final
+    shooting numbers, ready to go straight into a box score (fga
+    already has any stolen attempts removed, matching how a real box
+    score counts it -- a steal isn't a missed shot, it's a turnover).
+    `stolen` is returned per player too, so the caller can add it to
+    THIS player's own turnovers. defender_credit = {"stl": total,
+    "blk": total} -- the events `defender` earned shutting this
+    offense down, which the CALLER credits to defender's own box score.
+    """
+    expected_fga = [(p.fga / p.min if p.min else 0.0) * m for p, m in zip(active_players, minutes)]
+    expected_fta = [(p.fta / p.min if p.min else 0.0) * m for p, m in zip(active_players, minutes)]
+
+    team_target_fga = _negative_binomial_count(sum(expected_fga), dispersion=TEAM_ATTEMPTS_DISPERSION)
+    team_target_fta = _negative_binomial_count(sum(expected_fta), dispersion=TEAM_ATTEMPTS_DISPERSION)
+
+    assigned_fga = _dirichlet_multinomial_split(expected_fga, team_target_fga, USAGE_CONCENTRATION)
+    assigned_fta = _dirichlet_multinomial_split(expected_fta, team_target_fta, USAGE_CONCENTRATION)
+
+    steal_rate = league_avg.steal_rate_for(defender)
+    block_rate = league_avg.block_rate_for(defender)
+    two_pt_factor = league_avg.two_pt_defense_factor(defender)
+    three_pt_factor = league_avg.three_pt_defense_factor(defender)
+
+    per_player_shot_stats = []
+    total_stolen = 0
+    total_blocked = 0
+    for player, fga, fta in zip(active_players, assigned_fga, assigned_fta):
+        fgm, final_fga, fg3m, fg3a, ftm, stolen, blocked = _finish_shooting(
+            player, fga, fta, steal_rate, block_rate, two_pt_factor, three_pt_factor,
+        )
+        # fta is untouched by steals (free throws aren't stolen, so the
+        # assigned count is already the real final count).
+        per_player_shot_stats.append((fgm, final_fga, fg3m, fg3a, ftm, fta, stolen))
+        total_stolen += stolen
+        total_blocked += blocked
+
+    return per_player_shot_stats, {"stl": total_stolen, "blk": total_blocked}
+
+
+def _split_credited_defense(
+    active_players: List[Player], minutes: List[float], credited_total: int, stat_name: str,
+) -> List[int]:
+    """
+    Splits a defensive total a team's defense ACTUALLY earned (steals
+    or blocks -- computed by _resolve_team_offense while resolving the
+    OPPONENT's shooting) across this team's own active players, weighted
+    by their real per-minute rate for that stat. Same weighting idea as
+    _team_split_stat, but the total itself is already known (a real
+    event count), so there's no separate "draw a random team total"
+    step -- only the split among players is randomized.
+    """
+    expected = [
+        (getattr(player, stat_name) / player.min if player.min else 0.0) * mins
+        for player, mins in zip(active_players, minutes)
+    ]
+    return _dirichlet_multinomial_split(expected, credited_total, USAGE_CONCENTRATION)
+
+
+def _assemble_team_players(
+    team: Team, active_players: List[Player], minutes: List[float], pf_values: List[int],
+    final_reb: List[int], final_ast: List[int], final_base_tov: List[int],
+    shot_stats: List[tuple], credited_defense: dict,
+) -> List[Player]:
+    """
+    Builds the final Player rows for one team, combining everything
+    decided elsewhere: minutes/fouls/reb/ast/base-tov (from
+    _simulate_team_defaults), shooting + steal/block byproducts (from
+    _resolve_team_offense against this game's specific opponent), and
+    this team's own STL/BLK (this team's SHARE of the defensive credit
+    it earned -- see _split_credited_defense). Also appends an explicit
+    zero-stat "DNP" row for anyone not in tonight's active group.
+    """
+    final_stl = _split_credited_defense(active_players, minutes, credited_defense["stl"], "stl")
+    final_blk = _split_credited_defense(active_players, minutes, credited_defense["blk"], "blk")
+
+    results = []
+    for player, mins, pf, reb, ast, base_tov, (fgm, fga, fg3m, fg3a, ftm, fta, stolen), stl, blk in zip(
+        active_players, minutes, pf_values, final_reb, final_ast, final_base_tov, shot_stats, final_stl, final_blk,
+    ):
         real_oreb_rate = player.oreb / player.reb if player.reb else 0.0
         oreb = _binomial_draw(reb, real_oreb_rate)
 
@@ -634,12 +873,11 @@ def _simulate_team_game(team: Team) -> List[Player]:
             fg3m=fg3m, fg3a=fg3a,
             ftm=ftm, fta=fta,
             reb=reb, oreb=oreb,
-            ast=ast, stl=stl, blk=blk, tov=tov, pf=pf,
+            ast=ast, stl=stl, blk=blk,
+            tov=base_tov + stolen,  # this player's own turnovers, including ones stolen off them
+            pf=pf,
         ))
 
-    # Step 5: anyone NOT in tonight's active group gets an explicit
-    # zero-stat line (a real, normal thing -- "DNP - Coach's Decision")
-    # rather than being silently dropped from the results.
     active_names = {p.name for p in active_players}
     for player in team.players:
         if player.name not in active_names:
@@ -648,20 +886,64 @@ def _simulate_team_game(team: Team) -> List[Player]:
     return results
 
 
-def simulate_game(home_team: Team, away_team: Team) -> GameResult:
+@dataclass
+class GameResult:
     """
-    Simulate one full game between two real Team objects: generate one
-    simulated game for every player on both rosters (via
-    _simulate_team_game, which ties each roster together through a
-    realistic shared minutes budget -- see module docstring), and
-    package the results into a GameResult. Every team-level number (the
-    score, and later the team totals shown in the box score) is
-    guaranteed to be a sum of real, individually-simulated player rows
-    -- nothing about a team is ever generated independently of its own
-    players.
+    One full simulated game between two teams. Holds every player's
+    simulated stat line for both sides -- nothing else. Scores are
+    computed properties (below), never stored, for the exact same reason
+    Player.pts is computed: a team's score must always be traceable back
+    to its own players adding up, never an independent number that could
+    disagree with them.
     """
-    home_players = _simulate_team_game(home_team)
-    away_players = _simulate_team_game(away_team)
+
+    home_team: str
+    away_team: str
+    home_players: List[Player]  # each entry is one player's SIMULATED game line
+    away_players: List[Player]
+
+    @property
+    def home_score(self) -> float:
+        """Home team's final score = sum of its players' simulated PTS.
+        Never simulated on its own -- this is what makes it impossible
+        for a team's score to disagree with its own box score."""
+        return sum(p.pts for p in self.home_players)
+
+    @property
+    def away_score(self) -> float:
+        return sum(p.pts for p in self.away_players)
+
+
+def simulate_game(home_team: Team, away_team: Team, league_avg: LeagueAverages) -> GameResult:
+    """
+    Simulate one full game between two real Team objects, now with
+    each side's defense actually affecting the other's shooting (see
+    the module docstring's DEFENSE section for why this was needed).
+
+    `league_avg` must come from compute_league_averages(all_teams) --
+    computed once (e.g. right after loader.load_teams()) and passed in,
+    not recomputed here every game.
+    """
+    home_defaults = _simulate_team_defaults(home_team)
+    away_defaults = _simulate_team_defaults(away_team)
+    home_active, home_minutes = home_defaults[0], home_defaults[1]
+    away_active, away_minutes = away_defaults[0], away_defaults[1]
+
+    # Each side's shooting is resolved against the OTHER side's real
+    # defense -- this is the cross-team dependency that didn't exist
+    # before. Resolving HOME's offense (defended by AWAY) earns AWAY
+    # its steal/block credit, and vice versa -- naming these by WHO
+    # EARNED the credit, not who's currently being resolved, so the
+    # assembly step below reads unambiguously.
+    home_shot_stats, away_defense_credit = _resolve_team_offense(home_active, home_minutes, away_team, league_avg)
+    away_shot_stats, home_defense_credit = _resolve_team_offense(away_active, away_minutes, home_team, league_avg)
+
+    home_players = _assemble_team_players(
+        home_team, *home_defaults, shot_stats=home_shot_stats, credited_defense=home_defense_credit,
+    )
+    away_players = _assemble_team_players(
+        away_team, *away_defaults, shot_stats=away_shot_stats, credited_defense=away_defense_credit,
+    )
 
     return GameResult(
         home_team=home_team.name,
