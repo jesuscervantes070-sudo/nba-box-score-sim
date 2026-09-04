@@ -143,12 +143,25 @@ TOTAL_GAME_MINUTES = 240
 # NBA history" without being flatly impossible. See module docstring.
 TEAM_ATTEMPTS_DISPERSION = 2000
 
-# How tightly a Dirichlet-Multinomial split sticks to each player's real
-# expected share, for BOTH the minutes split and the attempts split.
-# Higher = tighter (closer to real shares every game); lower = looser
-# (more game-to-game variation in who gets how much of the shared
-# total). Tuned by testing -- see module docstring.
+# How tightly the shot-ATTEMPTS Dirichlet-Multinomial split sticks to
+# each player's real expected share. Higher = tighter (closer to real
+# shares every game); lower = looser (more game-to-game variation in
+# who gets how many shots). Tuned by testing -- see module docstring.
 USAGE_CONCENTRATION = 150
+
+# A SEPARATE, much tighter concentration used only for the MINUTES
+# split -- found by testing that sharing USAGE_CONCENTRATION between
+# minutes and attempts was a mistake: minutes and shot attempts aren't
+# the same kind of randomness. A coach's rotation plan is fairly
+# stable game to game (tight variance), while how many shots a player
+# takes WITHIN their minutes can swing more freely. Sharing one knob
+# was producing a player logging all 48 minutes of a game 2.2% of the
+# time -- in real basketball that's essentially never. Tightening this
+# specific value brought it down to a small fraction of a percent
+# (a floor that a Dirichlet-Multinomial split can't fully eliminate,
+# same idea as the Negative Binomial floor discussed earlier -- but
+# far closer to realistic than sharing the looser attempts value did).
+MINUTES_CONCENTRATION = 3000
 
 
 def _negative_binomial_count(mean: float, dispersion: float = DISPERSION) -> int:
@@ -373,7 +386,7 @@ def _simulate_team_minutes(active_players: List[Player]) -> List[float]:
     see the module docstring.
     """
     real_minutes = [p.min for p in active_players]
-    minutes = [float(m) for m in _dirichlet_multinomial_split(real_minutes, TOTAL_GAME_MINUTES, USAGE_CONCENTRATION)]
+    minutes = [float(m) for m in _dirichlet_multinomial_split(real_minutes, TOTAL_GAME_MINUTES, MINUTES_CONCENTRATION)]
     return _cap_minutes_at_max(minutes)
 
     return minutes
@@ -400,17 +413,31 @@ def _simulate_fouls(player: Player, minutes: float) -> tuple:
     return raw_pf, False
 
 
-def _minutes_scaled_count(player: Player, real_total: float, minutes: float) -> int:
+def _team_split_stat(
+    active_players: List[Player], minutes: List[float], stat_name: str,
+    dispersion: float, concentration: float,
+) -> List[int]:
     """
-    Draw one random count for a stat, centered on what this player
-    would be EXPECTED to produce in `minutes` minutes, based on their
-    real PER-MINUTE rate -- not their flat full-game average. A player
-    who only plays half their normal minutes should produce roughly
-    half as much of everything, not their usual full amount.
+    The general version of the fix originally built just for shot
+    attempts, now reused for every counting stat that a real team total
+    should be bounded by (rebounds, assists, steals, blocks, turnovers,
+    as well as fga/fta): rather than letting each player's count vary
+    fully independently (which stacks way more randomness into a team
+    total than real basketball ever shows -- see the module docstring),
+    decide a realistic TEAM total first, then split it across players.
+
+    Each player's SHARE of that total is based on their real per-minute
+    rate for `stat_name`, scaled by their ACTUAL simulated minutes
+    tonight -- so a player who played extra (or fewer) minutes naturally
+    gets a bigger (or smaller) expected share, not their flat full-game
+    average regardless of tonight's minutes.
     """
-    real_rate = real_total / player.min if player.min else 0.0
-    expected = real_rate * minutes
-    return _negative_binomial_count(expected)
+    expected = [
+        (getattr(player, stat_name) / player.min if player.min else 0.0) * mins
+        for player, mins in zip(active_players, minutes)
+    ]
+    team_target = _negative_binomial_count(sum(expected), dispersion=dispersion)
+    return _dirichlet_multinomial_split(expected, team_target, concentration)
 
 
 def _finish_shooting(player: Player, fga: int, fta: int) -> tuple:
@@ -569,37 +596,35 @@ def _simulate_team_game(team: Team) -> List[Player]:
         # back to them.
         minutes = _cap_minutes_at_max(minutes, protected=fouled_out)
 
-    # Step 3: team-level shot attempts, based on each player's
-    # MINUTES-SCALED expected attempts (their real per-minute rate x
-    # tonight's actual minutes) rather than their flat real average --
-    # so a player who played extra (or fewer) minutes tonight naturally
-    # takes proportionally more (or fewer) shots. The team TOTAL is its
-    # own separately-tuned random draw (TEAM_ATTEMPTS_DISPERSION), then
-    # divided across players by their expected share (USAGE_CONCENTRATION).
-    expected_fga = [(p.fga / p.min if p.min else 0.0) * m for p, m in zip(active_players, minutes)]
-    expected_fta = [(p.fta / p.min if p.min else 0.0) * m for p, m in zip(active_players, minutes)]
-
-    team_target_fga = _negative_binomial_count(sum(expected_fga), dispersion=TEAM_ATTEMPTS_DISPERSION)
-    team_target_fta = _negative_binomial_count(sum(expected_fta), dispersion=TEAM_ATTEMPTS_DISPERSION)
-
-    final_fga = _dirichlet_multinomial_split(expected_fga, team_target_fga, USAGE_CONCENTRATION)
-    final_fta = _dirichlet_multinomial_split(expected_fta, team_target_fta, USAGE_CONCENTRATION)
+    # Step 3: EVERY counting stat that a real team total should be
+    # bounded by (shots, rebounds, assists, steals, blocks, turnovers)
+    # uses the same team-total-then-split pattern as minutes: a real
+    # team doesn't just add up 9 independently-random players for any
+    # of these either -- total rebounds are bounded by total missed
+    # shots, total assists by total made shots, and so on. Splitting a
+    # realistic TEAM total across players (instead of letting each one
+    # vary fully independently) is what fixed shot-attempt team totals
+    # earlier, and the same fix applies here for the same reason.
+    final_fga = _team_split_stat(active_players, minutes, "fga", TEAM_ATTEMPTS_DISPERSION, USAGE_CONCENTRATION)
+    final_fta = _team_split_stat(active_players, minutes, "fta", TEAM_ATTEMPTS_DISPERSION, USAGE_CONCENTRATION)
+    final_reb = _team_split_stat(active_players, minutes, "reb", TEAM_ATTEMPTS_DISPERSION, USAGE_CONCENTRATION)
+    final_ast = _team_split_stat(active_players, minutes, "ast", TEAM_ATTEMPTS_DISPERSION, USAGE_CONCENTRATION)
+    final_stl = _team_split_stat(active_players, minutes, "stl", TEAM_ATTEMPTS_DISPERSION, USAGE_CONCENTRATION)
+    final_blk = _team_split_stat(active_players, minutes, "blk", TEAM_ATTEMPTS_DISPERSION, USAGE_CONCENTRATION)
+    final_tov = _team_split_stat(active_players, minutes, "tov", TEAM_ATTEMPTS_DISPERSION, USAGE_CONCENTRATION)
 
     # Step 4: finish every active player's line -- shooting makes, and
-    # every other counting stat scaled off their actual simulated
-    # minutes.
+    # OREB split out of the team-derived REB (same subset-split trick
+    # as always: guarantees oreb <= reb, never just usually true).
     results = []
-    for player, mins, pf, fga, fta in zip(active_players, minutes, pf_values, final_fga, final_fta):
+    for player, mins, pf, fga, fta, reb, ast, stl, blk, tov in zip(
+        active_players, minutes, pf_values, final_fga, final_fta,
+        final_reb, final_ast, final_stl, final_blk, final_tov,
+    ):
         fgm, fg3m, fg3a, ftm = _finish_shooting(player, fga, fta)
 
-        reb = _minutes_scaled_count(player, player.reb, mins)
         real_oreb_rate = player.oreb / player.reb if player.reb else 0.0
         oreb = _binomial_draw(reb, real_oreb_rate)
-
-        ast = _minutes_scaled_count(player, player.ast, mins)
-        stl = _minutes_scaled_count(player, player.stl, mins)
-        blk = _minutes_scaled_count(player, player.blk, mins)
-        tov = _minutes_scaled_count(player, player.tov, mins)
 
         results.append(Player(
             name=player.name,
