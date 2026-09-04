@@ -385,8 +385,12 @@ def run_season_flow(teams: Dict[str, Team], team_names: List[str], season: str =
     Simulates the full real season (overwriting any previously
     simulated one -- see season.py's simulate_season for why re-
     running isn't additive), then shows standings (overall or by
-    conference), an optional real-vs-simulated comparison, and an
-    optional look at one followed team's simulated season averages.
+    conference), the real-vs-simulated comparison, and the followed
+    team's simulated season averages -- all shown automatically, no
+    "do you want to see this? (y/n)" gates in front of them (removed
+    per feedback: those gates were in front of exactly the numbers
+    this whole project exists to produce, not optional side content).
+    Afterward, offers a look at any OTHER team's season averages too.
     """
     print()
     confirm = _prompt("Simulate the full season now? (y/n): ").strip().lower()
@@ -411,14 +415,41 @@ def run_season_flow(teams: Dict[str, Team], team_names: List[str], season: str =
     else:
         print_standings(standings, highlight=my_team_name)
 
-    compare = _prompt("Compare against the real final standings? (y/n): ").strip().lower()
-    if compare == "y":
-        real_standings = fetch_real_standings(season)
-        print_standings_comparison(standings, real_standings, highlight=my_team_name)
+    real_standings = fetch_real_standings(season)
+    print_standings_comparison(standings, real_standings, highlight=my_team_name)
 
-    averages = _prompt(f"View {my_team_name}'s simulated season averages vs. real? (y/n): ").strip().lower()
-    if averages == "y":
-        print_team_season_averages(conn, teams[my_team_name], season)
+    print_team_season_averages(conn, teams[my_team_name], season)
+
+    _run_season_averages_browser(conn, teams, team_names, season)
+
+
+def _run_season_averages_browser(conn, teams: Dict[str, Team], team_names: List[str], season: str) -> None:
+    """
+    Lets the user look up any OTHER team's simulated season averages,
+    one at a time, several in a row, or all of them at once -- rather
+    than being limited to just the team they followed.
+    """
+    while True:
+        print_team_list(team_names)
+        choice = _prompt(
+            "View another team's season averages? Enter a number, 'a' for all, "
+            "or press Enter to finish: "
+        ).strip().lower()
+
+        if choice == "":
+            return
+
+        if choice == "a":
+            for name in team_names:
+                print_team_season_averages(conn, teams[name], season)
+            return
+
+        if choice.isdigit() and 1 <= int(choice) <= len(team_names):
+            chosen_name = team_names[int(choice) - 1]
+            print_team_season_averages(conn, teams[chosen_name], season)
+            continue
+
+        print("Please enter a number from the list, 'a' for all, or press Enter to finish.")
 
 
 # =====================================================================
