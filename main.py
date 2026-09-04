@@ -674,6 +674,69 @@ def print_playoffs(result: dict, abbrev: Dict[str, str], highlight: Optional[str
 # SEASON AVERAGES DISPLAY
 # =====================================================================
 
+def _injury_row(row: dict, highlight: Optional[str] = None) -> str:
+    is_mine = row["team"] == highlight
+    marker = YOUR_TEAM_MARKER if is_mine else ""
+    line = (f"{row['player']:<22}{row['team']:<26}{row['start_date']:<12}"
+            f"{row['end_date']:<12}{row['games_missed']:>4}{marker}")
+    return _style(line, "bold", "cyan") if is_mine else line
+
+
+def print_injuries(injuries: List[dict], highlight: Optional[str] = None, limit: Optional[int] = 25) -> None:
+    """
+    Prints simulated injuries for the season, longest (most impactful)
+    first -- see injuries.py for how a real player's real absence
+    pattern this season gets reused, at randomized points, in a
+    simulated season. `limit` caps how many print at once by default: a
+    full season has well over a thousand short (2-3 game) absences
+    league-wide, fine to have stored, not useful to dump all at once.
+    """
+    print()
+    print(DIVIDER)
+    print(_style("SIMULATED INJURIES".center(LINE_WIDTH), "bold", "cyan"))
+    print(DIVIDER)
+    if not injuries:
+        print("No simulated injuries this season.")
+        print()
+        return
+
+    print(f"{'PLAYER':<22}{'TEAM':<26}{'START':<12}{'END':<12}{'GAMES':>4}")
+    print(SECTION)
+    shown = injuries[:limit] if limit else injuries
+    for row in shown:
+        print(_injury_row(row, highlight))
+    if limit and len(injuries) > limit:
+        print(f"... and {len(injuries) - limit} more, mostly short (2-3 game) absences "
+              f"-- filter by team below to see a team's full list.")
+    print()
+
+
+def _run_injuries_browser(conn, team_names: List[str], season: str, highlight: Optional[str] = None) -> None:
+    """
+    Lets the user drill into one team's simulated injuries (uncapped),
+    since the league-wide list above is capped for readability.
+    """
+    all_injuries = db.get_injuries(conn, season)
+    while True:
+        print_team_list(team_names)
+        choice = _prompt(
+            "View one team's full simulated injury list? Enter a number, 'a' for the "
+            "full league list (uncapped), or press Enter to finish: "
+        ).strip().lower()
+
+        if choice == "":
+            return
+        if choice == "a":
+            print_injuries(all_injuries, highlight=highlight, limit=None)
+            continue
+        if choice.isdigit() and 1 <= int(choice) <= len(team_names):
+            chosen_name = team_names[int(choice) - 1]
+            team_injuries = [row for row in all_injuries if row["team"] == chosen_name]
+            print_injuries(team_injuries, highlight=highlight, limit=None)
+            continue
+        print("Please enter a number from the list, 'a' for the full list, or press Enter to finish.")
+
+
 def print_team_season_averages(conn, team: Team, season: str) -> None:
     """
     For one team's roster: real per-game averages next to simulated
@@ -751,6 +814,9 @@ def run_season_flow(teams: Dict[str, Team], team_names: List[str], league_avg: L
     if _confirm("Simulate the playoffs too?"):
         playoff_result = run_playoffs(teams, standings, league_avg)
         print_playoffs(playoff_result, abbrev, highlight=my_team_name)
+
+    print_injuries(db.get_injuries(conn, season), highlight=my_team_name)
+    _run_injuries_browser(conn, team_names, season, highlight=my_team_name)
 
     print_team_season_averages(conn, teams[my_team_name], season)
 

@@ -25,14 +25,17 @@ import json
 import statistics
 import subprocess
 import time
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List
 
 import game_engine
-from loader import load_teams, load_schedule
+from loader import load_teams, load_schedule, load_player_injuries, load_roster_membership
 from game_engine import simulate_game, compute_league_averages
 from data_source import fetch_real_standings
+from injuries import build_season_injuries, missed_lookup
+from transactions import expand_rosters_with_real_moves
 
 BENCHMARKS_DIR = Path(__file__).parent / "benchmarks"
 
@@ -49,7 +52,8 @@ def _git_commit() -> str:
         return "unknown"
 
 
-def run_accuracy_benchmark(season: str = "2025-26", n_runs: int = 30) -> dict:
+def run_accuracy_benchmark(season: str = "2025-26", n_runs: int = 30,
+                            use_injuries: bool = False, use_real_moves: bool = False) -> dict:
     """
     Simulates `n_runs` independent full seasons (same real schedule
     every time, different random outcomes) and returns a structured
@@ -58,13 +62,48 @@ def run_accuracy_benchmark(season: str = "2025-26", n_runs: int = 30) -> dict:
     league-wide standings accuracy (MAE, correlation), and league-wide
     player shooting/scoring bias (sim minus real, aggregated the same
     "derive from summed makes/attempts" way db.py always does).
+
+    `use_injuries=True` benches injuries.py's roster-filtering into
+    every run -- a FRESH injury calendar per run (placement is
+    randomized per call, same as a real season.py run), not the same
+    one reused across all n_runs.
+
+    `use_real_moves=True` benches transactions.py's real in-season
+    trades in -- unlike injuries, this is deterministic (no randomness
+    in WHICH games a trade affects, only in what happens to the ball
+    once real rosters are set), so it's applied ONCE before the loop,
+    not re-rolled every run.
+
+    Both are independent toggles, on top of the pre-existing "before
+    injuries" baseline -- this is the "after" side of the comparison
+    this whole file exists for, see the module docstring.
     """
     teams = load_teams()
     schedule = load_schedule()
     league_avg = compute_league_averages(teams)
     real_standings = fetch_real_standings(season)
+    real_player_injuries = load_player_injuries() if use_injuries else None
 
     real_players = {p.name: p for t in teams.values() for p in t.players}
+
+    # A snapshot of each team's ORIGINAL (pre-trade-expansion) player
+    # list, by name -- injuries.build_season_injuries has to run
+    # against this unexpanded view every single run, even though trade
+    # expansion itself (below) only needs to happen once. Each player's
+    # real absence data was measured against their one real FINAL team
+    # (see data_source.fetch_player_absence_stints); reapplying it to a
+    # team added later by trade expansion would be meaningless.
+    original_players_by_team = (
+        {name: list(t.players) for name, t in teams.items()} if use_injuries else None
+    )
+
+    # Real in-season trades: deterministic, so computed once, not
+    # per-run. Mutates `teams` in place (see transactions.py) --
+    # everything below this point sees the trade-expanded rosters.
+    trade_unavailable = set()
+    if use_real_moves:
+        membership = load_roster_membership()
+        trade_unavailable = expand_rosters_with_real_moves(teams, schedule, membership)
 
     sim_wins_by_team: Dict[str, List[int]] = {name: [] for name in teams}
     # Aggregated across every simulated game, every run -- this is what
@@ -76,8 +115,26 @@ def run_accuracy_benchmark(season: str = "2025-26", n_runs: int = 30) -> dict:
     t0 = time.time()
     for _ in range(n_runs):
         wins = {name: 0 for name in teams}
+        out_lookup = set(trade_unavailable)
+        if use_injuries:
+            # Built against the pre-expansion snapshot -- see comment above.
+            original_view = {
+                name: replace(t, players=original_players_by_team[name]) for name, t in teams.items()
+            }
+            spans = build_season_injuries(original_view, schedule, real_player_injuries)
+            out_lookup |= missed_lookup(spans)
         for g in schedule:
             home, away = teams[g.home_team], teams[g.away_team]
+            if out_lookup:
+                # Same roster-filtering season.py does per game -- see
+                # its comment for why dataclasses.replace (a new Team,
+                # not a mutated shared one) matters here.
+                home = replace(home, players=[
+                    p for p in home.players if (p.name, g.game_id) not in out_lookup
+                ])
+                away = replace(away, players=[
+                    p for p in away.players if (p.name, g.game_id) not in out_lookup
+                ])
             result = simulate_game(home, away, league_avg)
             if result.home_score > result.away_score:
                 wins[g.home_team] += 1
@@ -136,6 +193,8 @@ def run_accuracy_benchmark(season: str = "2025-26", n_runs: int = 30) -> dict:
             "elapsed_seconds": round(elapsed, 1),
             "git_commit": _git_commit(),
             "defense_amplification": game_engine.DEFENSE_AMPLIFICATION,
+            "injuries_enabled": use_injuries,
+            "real_moves_enabled": use_real_moves,
             "generated_at": datetime.now(timezone.utc).isoformat(),
         },
         "standings_accuracy": {
@@ -181,15 +240,35 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--season", default="2025-26")
     parser.add_argument("--runs", type=int, default=30)
-    parser.add_argument("--label", default="pre_injury_baseline",
-                         help="output filename (without .json) under benchmarks/")
+    parser.add_argument("--with-injuries", action="store_true",
+                         help="bench injuries.py's roster-filtering into every run")
+    parser.add_argument("--with-trades", action="store_true",
+                         help="bench transactions.py's real in-season trades into every run")
+    parser.add_argument("--label", default=None,
+                         help="output filename (without .json) under benchmarks/ -- "
+                              "defaults based on which of --with-injuries/--with-trades are set")
     args = parser.parse_args()
+    # Separate defaults on purpose -- so running with a new flag combo
+    # without remembering to also pass --label can't silently overwrite
+    # an existing snapshot (like pre_injury_baseline.json) this whole
+    # comparison depends on.
+    if args.label:
+        label = args.label
+    elif args.with_injuries and args.with_trades:
+        label = "post_injury_and_trades"
+    elif args.with_trades:
+        label = "post_trades_only"
+    elif args.with_injuries:
+        label = "post_injury"
+    else:
+        label = "pre_injury_baseline"
 
-    report = run_accuracy_benchmark(season=args.season, n_runs=args.runs)
+    report = run_accuracy_benchmark(season=args.season, n_runs=args.runs,
+                                     use_injuries=args.with_injuries, use_real_moves=args.with_trades)
     print_summary(report)
 
     BENCHMARKS_DIR.mkdir(exist_ok=True)
-    out_path = BENCHMARKS_DIR / f"{args.label}.json"
+    out_path = BENCHMARKS_DIR / f"{label}.json"
     with open(out_path, "w") as f:
         json.dump(report, f, indent=2)
     print(f"\nSaved to {out_path}")

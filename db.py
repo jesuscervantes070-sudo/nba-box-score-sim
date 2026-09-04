@@ -22,6 +22,7 @@ from typing import List, Optional
 
 from models import ScheduledGame
 from game_engine import GameResult
+from injuries import InjurySpan
 
 DB_PATH = Path(__file__).parent / "cache" / "season.db"
 
@@ -52,9 +53,21 @@ CREATE TABLE IF NOT EXISTS player_game_stats (
     FOREIGN KEY (game_id) REFERENCES games(game_id)
 );
 
+CREATE TABLE IF NOT EXISTS injuries (
+    season TEXT NOT NULL,
+    player_name TEXT NOT NULL,
+    team TEXT NOT NULL,
+    start_game_id TEXT NOT NULL,
+    start_date TEXT NOT NULL,
+    end_game_id TEXT NOT NULL,
+    end_date TEXT NOT NULL,
+    games_missed INTEGER NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_pgs_game ON player_game_stats(game_id);
 CREATE INDEX IF NOT EXISTS idx_pgs_player ON player_game_stats(player_name);
 CREATE INDEX IF NOT EXISTS idx_games_season ON games(season);
+CREATE INDEX IF NOT EXISTS idx_injuries_season ON injuries(season);
 """
 
 
@@ -103,6 +116,45 @@ def insert_game(conn: sqlite3.Connection, season: str, scheduled_game: Scheduled
             )
 
     conn.commit()
+
+
+def insert_injuries(conn: sqlite3.Connection, season: str, schedule_by_id: dict, spans: List[InjurySpan]) -> None:
+    """
+    Stores one row per simulated injury span (see injuries.py) -- who,
+    which team, and the real start/end game + date. Computed all at once
+    up front (unlike games, which stream in one at a time as they're
+    simulated), so this is called once per season run rather than
+    growing incrementally.
+    """
+    cur = conn.cursor()
+    for span in spans:
+        # span.game_ids is already this team's real chronological order
+        # (see injuries._place_stints), so first/last are the real start/end.
+        start_game = schedule_by_id[span.game_ids[0]]
+        end_game = schedule_by_id[span.game_ids[-1]]
+        cur.execute(
+            "INSERT INTO injuries (season, player_name, team, start_game_id, start_date, "
+            "end_game_id, end_date, games_missed) VALUES (?,?,?,?,?,?,?,?)",
+            (season, span.player_name, span.team, start_game.game_id, start_game.date,
+             end_game.game_id, end_game.date, len(span.game_ids)),
+        )
+    conn.commit()
+
+
+def get_injuries(conn: sqlite3.Connection, season: str) -> list:
+    """
+    Every simulated injury for a season, longest first -- the ones most
+    worth knowing about first when browsing.
+    """
+    rows = conn.execute(
+        "SELECT player_name, team, start_date, end_date, games_missed "
+        "FROM injuries WHERE season = ? ORDER BY games_missed DESC",
+        (season,),
+    ).fetchall()
+    return [
+        {"player": r[0], "team": r[1], "start_date": r[2], "end_date": r[3], "games_missed": r[4]}
+        for r in rows
+    ]
 
 
 def get_standings(conn: sqlite3.Connection, season: str) -> list:

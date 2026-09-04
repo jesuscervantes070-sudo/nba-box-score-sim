@@ -18,6 +18,8 @@ ROSTER_CACHE_FILE = CACHE_DIR / "rosters.json"
 SCHEDULE_CACHE_FILE = CACHE_DIR / "schedule.json"
 TEAM_DEFENSE_CACHE_FILE = CACHE_DIR / "team_defense.json"
 TEAM_CONFERENCE_CACHE_FILE = CACHE_DIR / "team_conferences.json"
+INJURIES_CACHE_FILE = CACHE_DIR / "injuries.json"
+ROSTER_MEMBERSHIP_CACHE_FILE = CACHE_DIR / "roster_membership.json"
 
 
 def load_teams() -> Dict[str, Team]:
@@ -95,6 +97,50 @@ def load_schedule() -> List[ScheduledGame]:
         raw = json.load(f)
 
     return [ScheduledGame(**game_dict) for game_dict in raw["games"]]
+
+
+def load_player_injuries() -> Dict[str, dict]:
+    """
+    Reads cache/injuries.json: each real player's real absence pattern
+    this season -- {"games_considered": 82, "stints": [16, 1]} means their
+    team played 82 games and they missed two separate stretches, one 16
+    games long and one a single game. See data_source.py's
+    fetch_player_absence_stints for exactly what "absence" means here and
+    its caveats (injury, rest, a trade, personal reasons all look
+    identical in this data).
+
+    Returned as plain dicts, not a dataclass -- this is season-shape
+    metadata only injuries.py needs to build a SIMULATED season's injury
+    calendar, not a per-game stat that belongs on the Player model.
+    """
+    if not INJURIES_CACHE_FILE.exists():
+        raise FileNotFoundError(
+            "No cached injury data found at cache/injuries.json. "
+            "Run `python data_source.py` first to fetch it."
+        )
+    with open(INJURIES_CACHE_FILE) as f:
+        raw = json.load(f)
+    return raw["players"]
+
+
+def load_roster_membership() -> Dict[str, list]:
+    """
+    Reads cache/roster_membership.json: for each real team, every player
+    who actually suited up for them at any point this season, and the
+    first/last game (in that team's own schedule) they played for them.
+    See data_source.py's fetch_roster_membership -- this is what
+    transactions.py uses to make in-season trades real in the sim,
+    instead of every team using one static, whole-season roster
+    snapshot.
+    """
+    if not ROSTER_MEMBERSHIP_CACHE_FILE.exists():
+        raise FileNotFoundError(
+            "No cached roster membership found at cache/roster_membership.json. "
+            "Run `python data_source.py` first to fetch it."
+        )
+    with open(ROSTER_MEMBERSHIP_CACHE_FILE) as f:
+        raw = json.load(f)
+    return raw["teams"]
 
 
 def load_team_abbreviations() -> Dict[str, str]:
