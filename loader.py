@@ -97,6 +97,19 @@ def load_schedule() -> List[ScheduledGame]:
     return [ScheduledGame(**game_dict) for game_dict in raw["games"]]
 
 
+def load_team_abbreviations() -> Dict[str, str]:
+    """
+    Real 3-letter team codes (e.g. "Boston Celtics" -> "BOS"), used only
+    for compact displays -- right now, main.py's playoff bracket diagram,
+    where a full team name would blow out the width. Pulled straight
+    from nba_api's own static team list, which is bundled with the
+    package and read entirely offline (no live API call), so unlike
+    everything else in this file there's no cache file to read first.
+    """
+    from nba_api.stats.static import teams as static_teams
+    return {t["full_name"]: t["abbreviation"] for t in static_teams.get_teams()}
+
+
 if __name__ == "__main__":
     # Quick manual sanity check when running this file directly:
     # load everything, then print one team's roster so a human can eyeball
