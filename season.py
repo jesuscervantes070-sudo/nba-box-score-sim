@@ -24,7 +24,7 @@ import db
 
 
 def simulate_season(season: str = "2025-26", fresh: bool = False,
-                     use_injuries: bool = True, use_real_moves: bool = True) -> None:
+                     use_injuries: bool = True, use_real_moves: bool = True, verbose: bool = True) -> None:
     """
     Simulates every scheduled game for `season`, in real chronological
     order, and stores each result via db.py.
@@ -38,6 +38,14 @@ def simulate_season(season: str = "2025-26", fresh: bool = False,
     default on) -- mainly for benchmark_accuracy.py to isolate each
     effect on real-vs-simulated accuracy, but also handy here if either
     one is ever suspected of causing a regression.
+
+    `verbose` (on by default -- this is what `python season.py` and
+    benchmark_accuracy.py both still see) prints the "Simulated N games
+    in X.XXs" summary below. main.py's game-by-game flow turns it off:
+    that line gives away that the whole season is already fully
+    computed right before asking "want to watch it game by game?",
+    which undercuts the point (reported directly) -- main.py has its
+    own standings/box-score views to show the results with instead.
     """
     if fresh and db.DB_PATH.exists():
         db.DB_PATH.unlink()
@@ -98,8 +106,9 @@ def simulate_season(season: str = "2025-26", fresh: bool = False,
         db.insert_game(conn, season, scheduled_game, result)
     elapsed = time.time() - start
 
-    print(f"Simulated {len(schedule)} games for the {season} season in {elapsed:.2f}s.")
-    print(f"Stored in {db.DB_PATH}")
+    if verbose:
+        print(f"Simulated {len(schedule)} games for the {season} season in {elapsed:.2f}s.")
+        print(f"Stored in {db.DB_PATH}")
 
 
 if __name__ == "__main__":

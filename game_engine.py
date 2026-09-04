@@ -202,8 +202,10 @@ DISPERSION = 30
 # fouls -- a hard rule, not a tunable one.
 FOUL_OUT_LIMIT = 6
 
-# A game (ignoring overtime, which this sim doesn't model yet) is 48
-# minutes long -- nobody can play more than that here.
+# A regulation game is 48 minutes long -- nobody can play more than
+# that WITHIN regulation. Overtime (see OVERTIME_MINUTES below) is its
+# own separate period with its own separate 5-minute cap per player,
+# stacked on top of this one, not folded into it.
 MAX_MINUTES = 48.0
 
 # When a player fouls out, there's no real game clock in this sim to know
@@ -287,6 +289,17 @@ ROTATION_WEIGHT_EXPONENT = 8
 # same as before, started spreading simulated records wider than real
 # ones actually go, which made the error creep back up.
 DEFENSE_AMPLIFICATION = 5
+
+# A real NBA game that's still tied after regulation doesn't end -- it
+# plays a 5-minute overtime period (5 players x 5 minutes = 25 team-
+# minutes, the OT version of TOTAL_GAME_MINUTES/MAX_MINUTES above), and
+# keeps playing MORE of them until somebody wins. Reuses the exact same
+# tuned dispersion/concentration constants as regulation (there's no
+# separate real PER-PERIOD data this project fetches to tune fresh ones
+# against -- every real stat this sim has is a real per-GAME average),
+# just fed a much smaller fixed pool -- see _simulate_period_defaults.
+OVERTIME_MINUTES = 25
+OVERTIME_MAX_MINUTES = 5.0
 
 
 @dataclass
@@ -617,19 +630,22 @@ def _did_not_play(player: Player) -> Player:
     return Player(name=player.name, team=player.team)
 
 
-def _cap_minutes_at_max(minutes: List[float], protected: List[bool] = None) -> List[float]:
+def _cap_minutes_at_max(minutes: List[float], protected: List[bool] = None,
+                         max_minutes: float = MAX_MINUTES) -> List[float]:
     """
-    Enforce the 48-minute-per-player cap, handing any overflow back to
-    teammates still under the cap -- same as a coach subbing someone
-    else in. Shared by every place minutes get set or changed (the
-    initial team split, AND the foul-out minutes redistribution), found
-    by testing to both need it: handing freed-up or overflow minutes to
-    a player already close to 48 can push THEM over the cap too, so
-    this has to REPEAT until nobody is left over 48 (or a handful of
-    passes have been tried, as a safety net against a pathological case
-    that never fully settles -- in that rare case everyone left over is
-    just hard-clipped, which can leave the team total a hair under 240
-    rather than risk looping forever).
+    Enforce a per-player minutes cap (48 for a regulation game,
+    OVERTIME_MAX_MINUTES for one OT period -- see `max_minutes`),
+    handing any overflow back to teammates still under the cap -- same
+    as a coach subbing someone else in. Shared by every place minutes
+    get set or changed (the initial team split, AND the foul-out
+    minutes redistribution), found by testing to both need it: handing
+    freed-up or overflow minutes to a player already close to the cap
+    can push THEM over it too, so this has to REPEAT until nobody is
+    left over (or a handful of passes have been tried, as a safety net
+    against a pathological case that never fully settles -- in that
+    rare case everyone left over is just hard-clipped, which can leave
+    the team total a hair under its pool rather than risk looping
+    forever).
 
     `protected[i] = True` means player i should never receive overflow
     bonus minutes here, even if they're under the cap -- used for
@@ -643,33 +659,33 @@ def _cap_minutes_at_max(minutes: List[float], protected: List[bool] = None) -> L
     for _ in range(5):
         overflow = 0.0
         for i, m in enumerate(minutes):
-            if m > MAX_MINUTES:
-                overflow += m - MAX_MINUTES
-                minutes[i] = MAX_MINUTES
+            if m > max_minutes:
+                overflow += m - max_minutes
+                minutes[i] = max_minutes
         if overflow <= 0:
             break
-        eligible = [m < MAX_MINUTES and not protected[i] for i, m in enumerate(minutes)]
+        eligible = [m < max_minutes and not protected[i] for i, m in enumerate(minutes)]
         minutes = _redistribute_leftover_minutes(minutes, eligible, overflow)
     else:
-        minutes = [min(m, MAX_MINUTES) for m in minutes]
+        minutes = [min(m, max_minutes) for m in minutes]
     return minutes
 
 
-def _simulate_team_minutes(active_players: List[Player]) -> List[float]:
+def _simulate_team_minutes(active_players: List[Player], period_minutes: int = TOTAL_GAME_MINUTES,
+                            max_minutes: float = MAX_MINUTES) -> List[float]:
     """
     Decide how many minutes each of tonight's ACTIVE players (see
     _active_roster_for_game) gets. Minutes are the one truly fixed team
     resource in basketball -- a game always has exactly 240 total
-    player-minutes to hand out. Splitting that fixed pool by real
-    playing-time share (among only the players realistically sharing
-    the floor tonight) is what makes team-level totals realistic --
-    see the module docstring.
+    player-minutes to hand out (or, for one overtime period, exactly
+    OVERTIME_MINUTES -- see `period_minutes`). Splitting that fixed pool
+    by real playing-time share (among only the players realistically
+    sharing the floor tonight) is what makes team-level totals
+    realistic -- see the module docstring.
     """
     real_minutes = [p.min for p in active_players]
-    minutes = [float(m) for m in _dirichlet_multinomial_split(real_minutes, TOTAL_GAME_MINUTES, MINUTES_CONCENTRATION)]
-    return _cap_minutes_at_max(minutes)
-
-    return minutes
+    minutes = [float(m) for m in _dirichlet_multinomial_split(real_minutes, period_minutes, MINUTES_CONCENTRATION)]
+    return _cap_minutes_at_max(minutes, max_minutes=max_minutes)
 
 
 def _simulate_fouls(player: Player, minutes: float) -> tuple:
@@ -857,37 +873,42 @@ def simulate_player_game(player: Player) -> Player:
     )
 
 
-def _simulate_team_defaults(team: Team) -> tuple:
+def _simulate_period_defaults(active_players: List[Player], period_minutes: int, max_minutes: float) -> tuple:
     """
-    Everything about a team's game that does NOT depend on who they're
-    playing: who's active tonight, their minutes, fouls, rebounds, and
-    assists. (Shooting, steals, and blocks DO depend on the opponent's
-    real defense -- that's _resolve_team_offense, below.)
+    The period-agnostic core of _simulate_team_defaults: given an
+    already-decided group of active players and how big THIS period's
+    fixed minutes pool is (240/48 for a regulation game, OVERTIME_
+    MINUTES/OVERTIME_MAX_MINUTES for one OT period -- see
+    simulate_game), simulates their minutes, fouls, and the rebound/
+    assist/turnover team-split for just that period. Extracted so
+    regulation and overtime run through the exact same tuned math
+    instead of overtime needing its own copy of it.
 
     Returns (active_players, minutes, pf_values, final_reb, final_ast,
     final_tov) -- final_tov here is only the "ordinary" (non-steal)
     turnovers; _resolve_team_offense adds steal-caused ones on top.
     """
-    # Step 0: who actually plays tonight? Restricting to a realistic-
-    # sized active group (see _active_roster_for_game) BEFORE splitting
-    # the 240-minute pool matters a lot -- splitting it across the
-    # entire bloated roster was diluting every player's share far below
-    # their real minutes.
-    active_players = _active_roster_for_game(team)
-
-    # Step 1: how much does each ACTIVE player play tonight? A fixed
-    # 240-minute team pool, split by real playing-time share.
-    minutes = _simulate_team_minutes(active_players)
+    # Step 1: how much does each ACTIVE player play THIS period? A
+    # fixed team-minutes pool, split by real playing-time share.
+    minutes = _simulate_team_minutes(active_players, period_minutes, max_minutes)
 
     # Step 2: simulate fouls (scaled to each player's minutes this
-    # game), and cut a fouled-out player's minutes short -- handing the
-    # freed-up minutes back to their teammates, so the team's total
-    # stays at 240, same as a real coach subbing someone else in.
-    # Minutes are rounded to a whole number here (matching the whole-
-    # minute granularity every other step already uses) specifically
-    # so the freed-up amount is an exact integer too -- redistributing
-    # a rounded-off fraction of a minute was previously letting a
-    # team's total drift a hair below 240.
+    # period), and cut a fouled-out player's minutes short -- handing
+    # the freed-up minutes back to their teammates, so the period's
+    # total stays at its fixed pool, same as a real coach subbing
+    # someone else in. Minutes are rounded to a whole number here
+    # (matching the whole-minute granularity every other step already
+    # uses) specifically so the freed-up amount is an exact integer too
+    # -- redistributing a rounded-off fraction of a minute was
+    # previously letting a team's total drift a hair below its pool.
+    #
+    # Note: this only catches a player reaching FOUL_OUT_LIMIT WITHIN
+    # this one period's own random draw -- a player who enters an
+    # overtime period already close to the limit (from regulation, or
+    # an earlier OT period) is excluded from playing it AT ALL by
+    # _overtime_eligible_roster before this function is ever called;
+    # see _add_period_stats for the rare remaining case (crossing the
+    # limit mid-period on top of fouls already carried in).
     pf_values = []
     fouled_out = []
     for player, mins in zip(active_players, minutes):
@@ -906,10 +927,10 @@ def _simulate_team_defaults(team: Team) -> tuple:
         eligible = [not is_out for is_out in fouled_out]
         minutes = _redistribute_leftover_minutes(minutes, eligible, freed_minutes)
         # Handing freed-up minutes to teammates can push one of THEM
-        # over 48 (found by testing) -- re-enforce the cap, protecting
+        # over the cap (found by testing) -- re-enforce it, protecting
         # fouled-out players so this can't hand their reduced minutes
         # back to them.
-        minutes = _cap_minutes_at_max(minutes, protected=fouled_out)
+        minutes = _cap_minutes_at_max(minutes, protected=fouled_out, max_minutes=max_minutes)
 
     # Step 3: rebounds/assists/(non-steal) turnovers use the same
     # team-total-then-split pattern as minutes -- see the module
@@ -920,6 +941,26 @@ def _simulate_team_defaults(team: Team) -> tuple:
     final_tov = _team_split_stat(active_players, minutes, "tov", TEAM_ATTEMPTS_DISPERSION, USAGE_CONCENTRATION)
 
     return active_players, minutes, pf_values, final_reb, final_ast, final_tov
+
+
+def _simulate_team_defaults(team: Team) -> tuple:
+    """
+    Everything about a team's REGULATION game that does NOT depend on
+    who they're playing: who's active tonight, their minutes, fouls,
+    rebounds, and assists. (Shooting, steals, and blocks DO depend on
+    the opponent's real defense -- that's _resolve_team_offense,
+    below.) Overtime periods (see _play_overtime_period) reuse this
+    same active roster rather than picking a fresh one -- only the
+    minutes/fouls/reb/ast/tov step (_simulate_period_defaults) repeats
+    per period.
+    """
+    # Who actually plays tonight? Restricting to a realistic-sized
+    # active group (see _active_roster_for_game) BEFORE splitting the
+    # 240-minute pool matters a lot -- splitting it across the entire
+    # bloated roster was diluting every player's share far below their
+    # real minutes.
+    active_players = _active_roster_for_game(team)
+    return _simulate_period_defaults(active_players, TOTAL_GAME_MINUTES, MAX_MINUTES)
 
 
 def _resolve_team_offense(
@@ -1011,19 +1052,21 @@ def _split_credited_defense(
     return _dirichlet_multinomial_split(expected, credited_total, USAGE_CONCENTRATION)
 
 
-def _assemble_team_players(
-    team: Team, active_players: List[Player], minutes: List[float], pf_values: List[int],
+def _build_active_player_rows(
+    active_players: List[Player], minutes: List[float], pf_values: List[int],
     final_reb: List[int], final_ast: List[int], final_base_tov: List[int],
     shot_stats: List[tuple], credited_defense: dict,
 ) -> List[Player]:
     """
-    Builds the final Player rows for one team, combining everything
-    decided elsewhere: minutes/fouls/reb/ast/base-tov (from
-    _simulate_team_defaults), shooting + steal/block byproducts (from
-    _resolve_team_offense against this game's specific opponent), and
-    this team's own STL/BLK (this team's SHARE of the defensive credit
-    it earned -- see _split_credited_defense). Also appends an explicit
-    zero-stat "DNP" row for anyone not in tonight's active group.
+    Builds one period's worth of real stat rows for a team's ACTIVE
+    players only (no DNP rows -- see _assemble_team_players, which adds
+    those, and _play_overtime_period, which has no DNP list of its own
+    since it's ADDING onto an already-complete box score instead),
+    combining everything decided elsewhere: minutes/fouls/reb/ast/
+    base-tov (from _simulate_period_defaults), shooting + steal/block
+    byproducts (from _resolve_team_offense against this game's specific
+    opponent), and this team's own STL/BLK (this team's SHARE of the
+    defensive credit it earned -- see _split_credited_defense).
     """
     final_stl = _split_credited_defense(active_players, minutes, credited_defense["stl"], "stl")
     final_blk = _split_credited_defense(active_players, minutes, credited_defense["blk"], "blk")
@@ -1047,13 +1090,129 @@ def _assemble_team_players(
             tov=base_tov + stolen,  # this player's own turnovers, including ones stolen off them
             pf=pf,
         ))
+    return results
 
+
+def _assemble_team_players(
+    team: Team, active_players: List[Player], minutes: List[float], pf_values: List[int],
+    final_reb: List[int], final_ast: List[int], final_base_tov: List[int],
+    shot_stats: List[tuple], credited_defense: dict,
+) -> List[Player]:
+    """
+    Builds the final REGULATION Player rows for one team -- every
+    active player's real stat row (_build_active_player_rows) plus an
+    explicit zero-stat "DNP" row for anyone on the roster not in
+    tonight's active group.
+    """
+    results = _build_active_player_rows(
+        active_players, minutes, pf_values, final_reb, final_ast, final_base_tov, shot_stats, credited_defense,
+    )
     active_names = {p.name for p in active_players}
     for player in team.players:
         if player.name not in active_names:
             results.append(_did_not_play(player))
-
     return results
+
+
+def _overtime_eligible_roster(active_players: List[Player], current_players: List[Player]) -> List[Player]:
+    """
+    Regulation's active-roster Player TEMPLATES (real season-average
+    rates -- needed by every downstream draw, so this can't just reuse
+    tonight's box-score rows), filtered down to whoever hasn't fouled
+    out yet. `current_players` is this team's box score AS OF RIGHT NOW
+    (regulation, plus any earlier OT periods already merged in), used
+    only to check accumulated fouls -- a real NBA rule: nobody re-enters
+    after 6 personal fouls, for the rest of the game, overtime included.
+    """
+    fouls_by_name = {p.name: p.pf for p in current_players}
+    eligible = [p for p in active_players if fouls_by_name.get(p.name, 0) < FOUL_OUT_LIMIT]
+    if not eligible:
+        # Every single active player has fouled out -- essentially never
+        # happens even across several overtimes, but falls back to the
+        # full active roster rather than crashing on an empty split.
+        eligible = active_players
+    return eligible
+
+
+def _add_period_stats(base: Player, extra: Player) -> Player:
+    """
+    Adds one overtime period's stat line onto a player's running total
+    for this game -- literal addition for every counting stat (the same
+    "everything must add up" rule as the rest of this file), with one
+    hard ceiling: personal fouls can never exceed FOUL_OUT_LIMIT (a real
+    rule, not a tunable one). A player already at 5 fouls entering a
+    period who then draws 2 more in it is clamped at 6, not 7 -- they
+    fouled out PARTWAY through that period. This doesn't also try to
+    shave down their minutes/stats for the fraction of the period they
+    didn't actually play -- by the time that scenario happens, a game is
+    already deep into extra overtimes, genuinely rare and not worth the
+    extra complexity (see _overtime_eligible_roster for the very next
+    period, which correctly excludes them from here on).
+    """
+    return Player(
+        name=base.name, team=base.team,
+        min=base.min + extra.min,
+        fgm=base.fgm + extra.fgm, fga=base.fga + extra.fga,
+        fg3m=base.fg3m + extra.fg3m, fg3a=base.fg3a + extra.fg3a,
+        ftm=base.ftm + extra.ftm, fta=base.fta + extra.fta,
+        reb=base.reb + extra.reb, oreb=base.oreb + extra.oreb,
+        ast=base.ast + extra.ast, stl=base.stl + extra.stl,
+        blk=base.blk + extra.blk, tov=base.tov + extra.tov,
+        pf=min(base.pf + extra.pf, FOUL_OUT_LIMIT),
+    )
+
+
+def _merge_overtime_period(existing_players: List[Player], period_rows: List[Player]) -> List[Player]:
+    """
+    Folds one OT period's stat rows onto a team's existing box score
+    (regulation, plus any earlier OT periods already merged in) -- see
+    _add_period_stats. Anyone who didn't play THIS specific period (a
+    DNP all game, or excluded this period for fouling out -- see
+    _overtime_eligible_roster) is carried through completely unchanged.
+    """
+    period_by_name = {p.name: p for p in period_rows}
+    return [
+        _add_period_stats(existing, period_by_name[existing.name]) if existing.name in period_by_name else existing
+        for existing in existing_players
+    ]
+
+
+def _play_overtime_period(
+    home_team: Team, away_team: Team, home_active: List[Player], away_active: List[Player],
+    home_players: List[Player], away_players: List[Player], league_avg: LeagueAverages,
+) -> Tuple[List[Player], List[Player]]:
+    """
+    One more real NBA overtime period (5 minutes, 25 team-minutes)
+    between the same two teams, restricted to whoever from regulation's
+    active roster hasn't fouled out yet (_overtime_eligible_roster), run
+    through the exact same offense/defense pipeline as regulation --
+    just a smaller fixed minutes pool (see _simulate_period_defaults).
+    Returns NEW box scores with this period's stats ADDED onto what was
+    passed in (_merge_overtime_period), never replacing it -- called in
+    a loop by simulate_game for as many periods as it takes to break a
+    tie, same real "keep playing overtime until somebody wins" rule.
+    """
+    home_eligible = _overtime_eligible_roster(home_active, home_players)
+    away_eligible = _overtime_eligible_roster(away_active, away_players)
+
+    home_defaults = _simulate_period_defaults(home_eligible, OVERTIME_MINUTES, OVERTIME_MAX_MINUTES)
+    away_defaults = _simulate_period_defaults(away_eligible, OVERTIME_MINUTES, OVERTIME_MAX_MINUTES)
+
+    # Same cross-team dependency as regulation (see simulate_game): each
+    # side's shooting this period is resolved against the OTHER side's
+    # real defense.
+    home_shot_stats, away_defense_credit = _resolve_team_offense(
+        home_defaults[0], home_defaults[1], away_team, league_avg)
+    away_shot_stats, home_defense_credit = _resolve_team_offense(
+        away_defaults[0], away_defaults[1], home_team, league_avg)
+
+    home_period_rows = _build_active_player_rows(*home_defaults, shot_stats=home_shot_stats,
+                                                  credited_defense=home_defense_credit)
+    away_period_rows = _build_active_player_rows(*away_defaults, shot_stats=away_shot_stats,
+                                                  credited_defense=away_defense_credit)
+
+    return (_merge_overtime_period(home_players, home_period_rows),
+            _merge_overtime_period(away_players, away_period_rows))
 
 
 @dataclass
@@ -1071,6 +1230,13 @@ class GameResult:
     away_team: str
     home_players: List[Player]  # each entry is one player's SIMULATED game line
     away_players: List[Player]
+    # How many extra 5-minute periods this game needed (0 for a normal
+    # game decided in regulation) -- see simulate_game. Every player row
+    # above already has any OT minutes/stats folded in (_add_period_
+    # stats), so this is purely informational for display (e.g. main.py
+    # marking a final score "F/OT"), never something a score/average is
+    # computed from.
+    overtime_periods: int = 0
 
     @property
     def home_score(self) -> float:
@@ -1115,9 +1281,22 @@ def simulate_game(home_team: Team, away_team: Team, league_avg: LeagueAverages) 
         away_team, *away_defaults, shot_stats=away_shot_stats, credited_defense=away_defense_credit,
     )
 
+    # Real NBA rule: a game tied after regulation doesn't just end --
+    # it plays a real overtime period (_play_overtime_period), and keeps
+    # playing more of them until it isn't tied anymore. In practice this
+    # is essentially always 0 or 1 extra period; the loop itself doesn't
+    # cap how many it's willing to play, same as a real game never does.
+    overtime_periods = 0
+    while sum(p.pts for p in home_players) == sum(p.pts for p in away_players):
+        overtime_periods += 1
+        home_players, away_players = _play_overtime_period(
+            home_team, away_team, home_active, away_active, home_players, away_players, league_avg,
+        )
+
     return GameResult(
         home_team=home_team.name,
         away_team=away_team.name,
         home_players=home_players,
         away_players=away_players,
+        overtime_periods=overtime_periods,
     )

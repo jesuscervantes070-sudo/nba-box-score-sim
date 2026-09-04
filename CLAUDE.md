@@ -38,6 +38,13 @@ opponents' shooting (see game_engine.py).
   seasons and saves a permanent, comparable snapshot (standings MAE,
   correlation, player stat bias) to `benchmarks/*.json`, so a feature's
   actual effect on accuracy is measured, not eyeballed.
+- **Overtime**: complete — a game tied after regulation now plays real
+  5-minute overtime periods (looping until it isn't tied) instead of
+  ending in an impossible tie. See game_engine.py section below.
+- **Game-by-game replay**: complete — the followed team's season (and,
+  in the playoffs, any series they're actually in, Finals included) can
+  be paced through one game at a time instead of only ever seeing the
+  end result. See main.py section below.
 - **Not yet built**: possession-by-possession realism (deliberately low
   priority — see below).
 - Repo is on GitHub: `https://github.com/jesuscervantes070-sudo/nba-box-score-sim`
@@ -84,6 +91,23 @@ opponents' shooting (see game_engine.py).
    correlation ~0.88 vs. real standings — see `benchmarks/*.json` for the
    full comparable history (pre-injury baseline, injuries only, trades
    only, both together).
+6. **Overtime**: a game tied after regulation plays a real 5-minute,
+   25-team-minute OT period (`OVERTIME_MINUTES`/`OVERTIME_MAX_MINUTES` —
+   the OT-sized versions of `TOTAL_GAME_MINUTES`/`MAX_MINUTES`), and
+   keeps playing more of them (`simulate_game`'s own while-loop, no cap)
+   until the score isn't tied — a real game can never just end tied.
+   Reuses regulation's exact active roster, not a fresh draw, minus
+   anyone who's already fouled out (`_overtime_eligible_roster`); each
+   period's stats get ADDED onto the existing box score
+   (`_add_period_stats`), with personal fouls hard-clamped at 6 across
+   the whole game, OT included, not just within one period. Reuses
+   regulation's own tuned dispersion/concentration constants rather than
+   inventing new ones — there's no separate real PER-PERIOD data this
+   project fetches to tune fresh ones against, only real per-GAME
+   averages. Sampled at ~1.8% of games needing OT (400-game sample);
+   `GameResult.overtime_periods` is stored (`games.overtime_periods` in
+   season.db) purely for display (main.py's "FINAL/OT" and "(OT)"
+   markers), never something a score/average is computed from.
 
 ## Playoffs (playoffs.py)
 - Seeds each conference 1-10 off regular-season standings, ties broken by
@@ -133,6 +157,46 @@ opponents' shooting (see game_engine.py).
   `first_game_id: None` sentinel (meaning "zero real games here," not a
   normal restricted window).
 
+## Game-by-game replay (main.py)
+- This is a REPLAY, not a live simulation: the whole season (season.py)
+  or whole series (playoffs.simulate_series) is already fully simulated
+  and stored/held in memory by the time any of this runs, same as
+  before this feature existed — it just walks already-decided results
+  back out at a controlled pace instead of dumping them all at once.
+  Stopping early never leaves anything half-simulated. `simulate_season`
+  takes a `verbose` flag specifically so main.py can suppress its
+  "Simulated N games in X.XXs" line here — printing that right before
+  asking "want to watch it game by game?" gave away that it already
+  happened, undercutting the whole point.
+- Scoped to the followed team, same "auto-print yours, opt-in browser
+  for anyone else" pattern as moves/injuries/season averages
+  (`run_team_game_log_replay` + `_run_game_log_browser`).
+- Score line only by default (`_format_score_line`) — a full box score
+  for all 82 games at once would be unreadable. Commands at each pause:
+  Enter (next game), a number (that many games in a row), `b` (full box
+  score of the last game shown — reuses `print_box_score()` unchanged,
+  rebuilt from storage via `db.get_game_box_score`/`get_team_game_log`),
+  `t` (fast-forward, still showing every score line along the way,
+  through every game up to the real trade deadline), `e` (stop here).
+  `t` explicitly checks "already past the deadline" and says so rather
+  than silently behaving like Enter (found by testing — it originally
+  did, and looked like a bug with no explanation).
+- `TRADE_DEADLINE_DATE = "2026-02-05"` (the real 2025-26 deadline) is
+  hardcoded in main.py — same reasoning as playoffs.py's `TEAM_DIVISIONS`,
+  a fixed real-world fact not worth a fetch/cache file for.
+- Playoff series (including the Finals) get the same treatment
+  (`_replay_playoff_series`) for any series the followed team is
+  actually in — every other series in the same round still resolves
+  instantly. Matched to its round's raw series result (for the full
+  `game_log`) by winner+loser name (`_series_for_line`), NOT by list
+  position — a round's pre-formatted text lines and its raw series
+  results (`tree["round1"/"round2"/"round3"]`) aren't in the same order.
+- `print_box_score`/`_print_team_box_score` now take an optional
+  `highlight` so the followed team's name is colored there too (bold
+  cyan, same convention as everywhere else) — this was missing
+  entirely before (single-game mode, option 1, never had a followed
+  team to highlight in the first place).
+
 ## Files (all in this folder, import each other by filename)
 - `models.py` — `Player`, `Team`, `ScheduledGame` dataclasses. All
   percentages are computed `@property`s, never stored fields.
@@ -145,26 +209,37 @@ opponents' shooting (see game_engine.py).
 - `db.py` — SQLite storage (`cache/season.db`) for simulated season
   games AND simulated injuries. DNP (0-minute) player-rows are
   deliberately NOT stored, so season averages are "per game played,"
-  matching real stat convention.
-- `game_engine.py` — the actual simulation (see above). By far the
-  largest/most complex file; every tunable constant has a comment
-  explaining how and why it was tuned against real data.
+  matching real stat convention. Also the only file with a "rebuild one
+  stored game's full box score back into a real GameResult" function
+  (`get_game_box_score`) and a "walk one team's games in order"
+  function (`get_team_game_log`), both built for main.py's game-by-game
+  replay.
+- `game_engine.py` — the actual simulation (see above), including
+  overtime. By far the largest/most complex file; every tunable
+  constant has a comment explaining how and why it was tuned against
+  real data.
 - `injuries.py` — turns real absence data into a simulated season's
   injury calendar (see above).
 - `transactions.py` — makes real in-season trades real in the sim (see
   above).
 - `season.py` — simulates the full real 1,230-game schedule (~1 second).
+  `simulate_season`'s `verbose` flag (see Game-by-game replay above)
+  only ever gets turned off by main.py's interactive flow — every other
+  caller (direct `python season.py`, benchmark_accuracy.py) still wants
+  the printed summary.
 - `playoffs.py` — seeding, play-in, bracket, Finals (see above).
 - `benchmark_accuracy.py` — runs N full seasons, saves a permanent
   accuracy snapshot to `benchmarks/*.json`.
-- `main.py` — the playable text CLI. Flow for a full season: standings
-  (overall/by conference) → real-vs-sim comparison → the followed team's
-  real in-season moves, injuries (healed vs. still-out-for-playoffs
-  split), and season averages (each with an opt-in browser for another
-  team) → playoffs (optional, round by round) → Finals averages. Real-vs-
-  sim numbers are colored by ACCURACY (how close, not direction — a
-  decrease can be green if it's a small one) — green/yellow/red, same
-  convention as the standings comparison.
+- `main.py` — the playable text CLI. Flow for a full season: simulate →
+  optional game-by-game replay of the followed team's season (see
+  above) → standings (overall/by conference) → real-vs-sim comparison →
+  the followed team's real in-season moves, injuries (healed vs.
+  still-out-for-playoffs split), and season averages (each with an
+  opt-in browser for another team) → playoffs (optional, round by
+  round, any of the followed team's own series replayed game by game)
+  → Finals averages. Real-vs-sim numbers are colored by ACCURACY (how
+  close, not direction — a decrease can be green if it's a small one)
+  — green/yellow/red, same convention as the standings comparison.
 
 ## Deferred / open, in the user's stated priority order
 1. **Trades made accuracy slightly worse** in the original benchmark

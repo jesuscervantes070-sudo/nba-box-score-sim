@@ -20,7 +20,7 @@ import sqlite3
 from pathlib import Path
 from typing import List, Optional
 
-from models import ScheduledGame
+from models import Player, ScheduledGame
 from game_engine import GameResult
 from injuries import InjurySpan
 
@@ -42,7 +42,12 @@ CREATE TABLE IF NOT EXISTS games (
     home_team TEXT NOT NULL,
     away_team TEXT NOT NULL,
     home_score INTEGER NOT NULL,
-    away_score INTEGER NOT NULL
+    away_score INTEGER NOT NULL,
+    -- How many extra 5-minute periods this game needed (0 = decided in
+    -- regulation) -- see GameResult.overtime_periods in game_engine.py.
+    -- home_score/away_score already have any OT stats folded in; this
+    -- is purely a display flag (e.g. main.py showing "F/OT").
+    overtime_periods INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS player_game_stats (
@@ -100,10 +105,10 @@ def insert_game(conn: sqlite3.Connection, season: str, scheduled_game: Scheduled
     """
     cur = conn.cursor()
     cur.execute(
-        "INSERT INTO games (game_id, season, date, home_team, away_team, home_score, away_score) "
-        "VALUES (?,?,?,?,?,?,?)",
+        "INSERT INTO games (game_id, season, date, home_team, away_team, home_score, away_score, "
+        "overtime_periods) VALUES (?,?,?,?,?,?,?,?)",
         (scheduled_game.game_id, season, scheduled_game.date,
-         result.home_team, result.away_team, result.home_score, result.away_score),
+         result.home_team, result.away_team, result.home_score, result.away_score, result.overtime_periods),
     )
 
     col_list = ", ".join(STAT_COLS)
@@ -210,6 +215,72 @@ def get_team_games(conn: sqlite3.Connection, season: str, team: str) -> list:
         else:
             games.append((home, away_score, home_score))
     return games
+
+
+def get_team_game_log(conn: sqlite3.Connection, season: str, team: str) -> list:
+    """
+    One team's stored games this season in real chronological order --
+    game_id, date, opponent, home/away, and the final score. Built for
+    main.py's game-by-game replay: unlike get_team_games (which just
+    hands playoffs.py's tiebreakers an unordered bag of (opponent,
+    mine, theirs) tuples), this needs to walk a team's actual schedule
+    in order, one game at a time.
+    """
+    rows = conn.execute(
+        "SELECT game_id, date, home_team, away_team, home_score, away_score, overtime_periods "
+        "FROM games WHERE season = ? AND (home_team = ? OR away_team = ?) "
+        "ORDER BY date, game_id",
+        (season, team, team),
+    ).fetchall()
+
+    log = []
+    for game_id, date, home, away, home_score, away_score, overtime_periods in rows:
+        is_home = home == team
+        log.append({
+            "game_id": game_id,
+            "date": date,
+            "opponent": away if is_home else home,
+            "is_home": is_home,
+            "my_score": home_score if is_home else away_score,
+            "opp_score": away_score if is_home else home_score,
+            "overtime_periods": overtime_periods,
+        })
+    return log
+
+
+def get_game_box_score(conn: sqlite3.Connection, game_id: str) -> Optional[GameResult]:
+    """
+    Rebuilds one already-stored game's full box score as a real
+    GameResult, straight from its stored player rows -- so it can be
+    handed to main.py's print_box_score() unchanged (the same function
+    a freshly-simulated single game already uses), instead of that
+    function needing a second, parallel "print a game from the
+    database" version. Nothing is re-simulated here: GameResult.
+    home_score/away_score still get computed by summing these same
+    Player rows (see game_engine.GameResult), so a replayed score can
+    never disagree with the box score it's replayed alongside.
+    """
+    game_row = conn.execute(
+        "SELECT home_team, away_team, overtime_periods FROM games WHERE game_id = ?", (game_id,)
+    ).fetchone()
+    if not game_row:
+        return None
+    home_team, away_team, overtime_periods = game_row
+
+    col_list = ", ".join(STAT_COLS)
+    rows = conn.execute(
+        f"SELECT player_name, team, {col_list} FROM player_game_stats WHERE game_id = ?",
+        (game_id,),
+    ).fetchall()
+
+    home_players, away_players = [], []
+    for player_name, team, *stat_values in rows:
+        player = Player(name=player_name, team=team, **dict(zip(STAT_COLS, stat_values)))
+        (home_players if team == home_team else away_players).append(player)
+
+    return GameResult(home_team=home_team, away_team=away_team,
+                       home_players=home_players, away_players=away_players,
+                       overtime_periods=overtime_periods)
 
 
 def get_player_season_averages(conn: sqlite3.Connection, player_name: str, season: Optional[str] = None) -> dict:

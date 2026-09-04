@@ -38,6 +38,15 @@ SECTION = "-" * LINE_WIDTH
 # or using a screen reader.
 YOUR_TEAM_MARKER = "  <-- YOUR TEAM"
 
+# The real 2025-26 NBA trade deadline (Thursday, Feb 5, 2026, 3pm ET --
+# https://www.hoopsrumors.com/2025/08/2026-nba-trade-deadline-set-for-february-5.html).
+# Only used as a jump target in the game-by-game replay below ("catch me
+# up to the deadline"), same spirit as playoffs.py's hardcoded
+# TEAM_DIVISIONS -- a fixed real-world fact, not worth a whole fetch/
+# cache file for. Matches ScheduledGame.date's ISO format so it can be
+# compared against a stored game's date directly, as a plain string.
+TRADE_DEADLINE_DATE = "2026-02-05"
+
 
 # =====================================================================
 # COLOR (optional -- everything below degrades to plain text)
@@ -338,8 +347,15 @@ def _format_player_row(p: Player) -> str:
     return "  ".join(f"{v:{align}{width}}" for v, (_, align, width) in zip(values, BOX_SCORE_COLUMNS))
 
 
-def _print_team_box_score(team_name: str, players, score: float) -> None:
-    print(f"{team_name} ({score:.0f})")
+def _print_team_box_score(team_name: str, players, score: float, highlight: Optional[str] = None) -> None:
+    header = f"{team_name} ({score:.0f})"
+    # Same "your team" bold-cyan already used on its standings row, moves
+    # row, and playoff bracket label -- box scores were the one place
+    # this was missing (reported directly): single-game mode (option 1)
+    # never had a followed team to highlight, so this was never built
+    # here at all until the replay feature started calling it FROM a
+    # followed-team context.
+    print(_style(header, "bold", "cyan") if team_name == highlight else header)
     print(SECTION)
     print(_box_score_header_row())
     print(SECTION)
@@ -354,14 +370,18 @@ def _print_team_box_score(team_name: str, players, score: float) -> None:
     print()
 
 
-def print_box_score(result: GameResult) -> None:
+def print_box_score(result: GameResult, highlight: Optional[str] = None) -> None:
     print()
     print(DIVIDER)
-    final_line = f"FINAL: {result.home_team} {result.home_score:.0f} - {result.away_score:.0f} {result.away_team}"
-    print(final_line.center(LINE_WIDTH))
+    final_line = (f"FINAL{_ot_suffix(result.overtime_periods)}: {result.home_team} {result.home_score:.0f} - "
+                  f"{result.away_score:.0f} {result.away_team}")
+    # Highlight AFTER centering, not before -- _style's own docstring
+    # warns that its invisible color codes would throw off .center()'s
+    # width math if they were already in the string being centered.
+    print(_highlight_team(final_line.center(LINE_WIDTH), highlight))
     print(DIVIDER)
     print()
-    _print_team_box_score(result.home_team, result.home_players, result.home_score)
+    _print_team_box_score(result.home_team, result.home_players, result.home_score, highlight)
     # A terminal always jumps to show whatever was JUST printed -- there's
     # no way for a plain print()-based script to keep it scrolled to the
     # top instead. Pausing here breaks one huge wall of text into two
@@ -370,7 +390,217 @@ def print_box_score(result: GameResult) -> None:
     # score before the second one pushes it further up.
     _prompt("Press Enter to see the other team's box score...")
     print()
-    _print_team_box_score(result.away_team, result.away_players, result.away_score)
+    _print_team_box_score(result.away_team, result.away_players, result.away_score, highlight)
+
+
+# =====================================================================
+# GAME-BY-GAME REPLAY (season + playoff series)
+# =====================================================================
+# IMPORTANT: this is a REPLAY, not a live simulation. By the time any of
+# this runs, the whole season (season.py) or the whole series
+# (playoffs.simulate_series) is already fully simulated and stored/held
+# in memory -- same as it always was. All this section does is walk
+# already-decided results back out at a controlled pace instead of
+# dumping them all at once. That means stopping early (typing 'e') never
+# leaves anything half-simulated -- standings/seeding are exactly as
+# correct as if this whole section didn't exist.
+
+def _parse_replay_command(raw: str) -> Tuple[str, int]:
+    """
+    Parses one line typed at a replay prompt into (action, count).
+    Blank = the next single game; a plain number = that many games in a
+    row before pausing again; 'b'/'t'/'e' are the box-score/jump-to-
+    trade-deadline/stop-here commands (see run_team_game_log_replay and
+    _replay_playoff_series). 'deadline' only makes sense for a whole
+    season, not a single playoff series -- the playoff replay treats it
+    as invalid, same as any other unrecognized input.
+    """
+    raw = raw.strip().lower()
+    if raw == "":
+        return ("next", 1)
+    if raw.isdigit():
+        return ("next", max(1, int(raw)))
+    if raw in ("b", "box"):
+        return ("box", 0)
+    if raw in ("t", "deadline"):
+        return ("deadline", 0)
+    if raw in ("e", "end"):
+        return ("end", 0)
+    return ("invalid", 0)
+
+
+def _ot_suffix(overtime_periods: int) -> str:
+    """'' for a game decided in regulation, '/OT' for one overtime
+    period, '/2OT'/'/3OT'/... for more -- the real broadcast convention
+    for marking a final score, used both on a score line and on a full
+    box score's FINAL line (see print_box_score). See game_engine.
+    GameResult.overtime_periods -- a game literally can't end tied
+    anymore (a real NBA rule this sim now models, see game_engine.py's
+    OVERTIME_MINUTES), so this is purely informational, not something
+    any score/average is computed from."""
+    if not overtime_periods:
+        return ""
+    return "/OT" if overtime_periods == 1 else f"/{overtime_periods}OT"
+
+
+def _format_score_line(label: str, opponent: str, my_score: float, opp_score: float, is_home: bool,
+                        overtime_periods: int = 0) -> str:
+    """
+    One score-line of a replay -- e.g. '2025-11-04 vs Miami Heat   W 108-102 (OT)'.
+    Colored green/red by win/loss, not by accuracy -- the one place in
+    this file color means "who won" rather than "how close to real,"
+    since a replayed game has no "real" number to compare against.
+    """
+    vs_at = "vs" if is_home else "@ "
+    won = my_score > opp_score
+    result = _style("W", "bold", "green") if won else _style("L", "bold", "red")
+    ot = f" ({_ot_suffix(overtime_periods).lstrip('/')})" if overtime_periods else ""
+    return f"  {label:<11}{vs_at} {opponent:<26} {result} {my_score:.0f}-{opp_score:.0f}{ot}"
+
+
+def run_team_game_log_replay(conn, team_name: str, season: str, highlight: Optional[str] = None) -> None:
+    """
+    Paces through one team's stored season, one game at a time, instead
+    of only ever seeing it summarized in the standings. Score line only
+    by default (a full box score for all 82 games at once would be
+    unreadable) -- 'b' pulls up the full box score for whichever game
+    was JUST shown, reusing print_box_score() unchanged (see
+    db.get_game_box_score's docstring), so a replayed box score looks
+    identical to a freshly-simulated one.
+
+    Commands at each pause: Enter (next game), a number (that many games
+    in a row), 'b' (box score of the last game shown), 't' (fast-forward
+    -- still showing every score line along the way -- through every
+    game up to the real trade deadline), 'e' (stop here).
+    """
+    log = db.get_team_game_log(conn, season, team_name)
+    if not log:
+        print(f"No simulated games stored for {team_name}.")
+        return
+
+    header = f"-- {team_name.upper()}: {season} GAME BY GAME --"
+    print()
+    print(_style(header, "bold", "cyan") if team_name == highlight else _style(header, "bold"))
+    print(SECTION)
+
+    pos = 0  # index of the next not-yet-shown game
+    last_shown_id: Optional[str] = None
+    while pos < len(log):
+        raw = _prompt(
+            f"[{pos}/{len(log)} shown] Enter=next, N=skip N, b=box score, "
+            f"t=jump to trade deadline, e=end: "
+        )
+        action, count = _parse_replay_command(raw)
+
+        if action == "invalid":
+            print("Please enter a blank line, a number, 'b', 't', or 'e'.")
+            continue
+        if action == "end":
+            break
+        if action == "box":
+            if last_shown_id is None:
+                print("No game shown yet -- press Enter first to see one.")
+                continue
+            print_box_score(db.get_game_box_score(conn, last_shown_id), highlight)
+            continue
+        if action == "deadline":
+            # If the very next not-yet-shown game is already ON/AFTER the
+            # deadline, there's nothing left to fast-forward THROUGH --
+            # say so and re-prompt, rather than silently falling through
+            # to the code below and showing 1 game, which looked exactly
+            # like pressing Enter with no explanation (reported directly).
+            if log[pos]["date"] >= TRADE_DEADLINE_DATE:
+                print("Already past the trade deadline -- Enter for the next game, "
+                      "or a number to skip ahead.")
+                continue
+            end_pos = pos
+            while end_pos < len(log) and log[end_pos]["date"] < TRADE_DEADLINE_DATE:
+                end_pos += 1
+            count = end_pos - pos
+
+        shown = log[pos: pos + count]
+        for game in shown:
+            print(_format_score_line(game["date"], game["opponent"], game["my_score"], game["opp_score"],
+                                      game["is_home"], game["overtime_periods"]))
+        if shown:
+            last_shown_id = shown[-1]["game_id"]
+        pos += len(shown)
+
+    print(SECTION)
+    print()
+
+
+def _run_game_log_browser(conn, team_names: List[str], season: str, highlight: Optional[str] = None) -> None:
+    """
+    Lets the user watch another team's season game-by-game too, one team
+    at a time -- same "pick a number or press Enter to finish" pattern
+    as the moves/injuries/season-averages browsers. No 'a' for "all 30
+    teams" here, unlike those -- replaying every team's full season game
+    by game at once isn't something anyone actually wants.
+    """
+    while True:
+        print_team_list(team_names)
+        choice = _prompt(
+            "Watch another team's season game-by-game? Enter a number, "
+            "or press Enter to finish: "
+        ).strip()
+        if choice == "":
+            return
+        if choice.isdigit() and 1 <= int(choice) <= len(team_names):
+            run_team_game_log_replay(conn, team_names[int(choice) - 1], season, highlight=highlight)
+            continue
+        print("Please enter a number from the list, or press Enter to finish.")
+
+
+def _replay_playoff_series(series: dict, matchup_label: str, final_line: str, highlight: Optional[str]) -> None:
+    """
+    Paces through one already-decided playoff series game by game,
+    instead of only ever printing the final 'X def. Y, 4-2' line. Only
+    ever called for a series the followed team actually played in (see
+    _print_conference_bracket), so every game in `series["game_log"]`
+    has `highlight` as either the home or away team the whole way
+    through -- no need for a "not your series" fallback branch.
+
+    Reads game_log straight out of memory (playoffs.py never writes to
+    season.db -- see that module's docstring), not the database -- so
+    'b' hands print_box_score() a GameResult it already has, unlike the
+    season replay above, which has to rebuild one from storage.
+    """
+    print()
+    print(_style(f"  {matchup_label}", "bold"))
+    game_log = series["game_log"]
+
+    pos = 0
+    last_shown = None
+    while pos < len(game_log):
+        raw = _prompt(f"  Game {pos + 1}/{len(game_log)}: Enter=next, N=skip N, b=box score, e=end: ")
+        action, count = _parse_replay_command(raw)
+
+        if action in ("invalid", "deadline"):
+            print("  Please enter a blank line, a number, 'b', or 'e'.")
+            continue
+        if action == "end":
+            break
+        if action == "box":
+            if last_shown is None:
+                print("  No game shown yet -- press Enter first to see one.")
+                continue
+            print_box_score(last_shown, highlight)
+            continue
+
+        shown = game_log[pos: pos + count]
+        for i, result in enumerate(shown, start=pos + 1):
+            is_home = result.home_team == highlight
+            opp = result.away_team if is_home else result.home_team
+            my_score = result.home_score if is_home else result.away_score
+            opp_score = result.away_score if is_home else result.home_score
+            print(_format_score_line(f"Game {i}", opp, my_score, opp_score, is_home, result.overtime_periods))
+        if shown:
+            last_shown = shown[-1]
+        pos += len(shown)
+
+    print()
+    print(_format_playoff_line(final_line, highlight))
 
 
 # =====================================================================
@@ -625,6 +855,32 @@ def _render_conference_tree(tree: dict, abbrev: Dict[str, str], highlight: Optio
     return rows
 
 
+def _series_for_line(line: str, series_list: List[dict]) -> Optional[dict]:
+    """
+    Finds which simulate_series() result produced one 'X def. Y, N-M'
+    line, by matching the winner+loser names _DEF_LINE_RE already knows
+    how to pull out of it. Needed because a round's raw series results
+    (tree["round1"]/["round2"]/["round3"], which carry the full game_log
+    a replay needs) aren't in the same order as that round's PRE-
+    FORMATTED text lines (round_logs) -- see run_conference_bracket's r1
+    vs. tree["round1"] ordering -- so matching by list position would
+    quietly pair a line with the wrong series.
+    """
+    match = _DEF_LINE_RE.match(line)
+    if not match:
+        return None
+    # _DEF_LINE_RE's winner group includes the space right after the
+    # colon (harmless where it's normally used -- _colorize_series_line
+    # just re-embeds it unchanged -- but it means an exact-equality
+    # compare against a clean team name needs a .strip() first).
+    _, winner, loser, _, _ = match.groups()
+    winner, loser = winner.strip(), loser.strip()
+    for series in series_list:
+        if {series["winner"], series["loser"]} == {winner, loser}:
+            return series
+    return None
+
+
 def _print_conference_bracket(conf_result: dict, abbrev: Dict[str, str], highlight: Optional[str] = None) -> None:
     """One conference's play-in, then each round in turn -- paused
     BETWEEN every stage (not just between conferences, see
@@ -633,19 +889,36 @@ def _print_conference_bracket(conf_result: dict, abbrev: Dict[str, str], highlig
     diagram prints as a recap at the very end, once every round's
     winner is actually known -- it can't be drawn any earlier than
     that (its connector lines ARE those winners), so showing it
-    upfront would either be blank or spoil rounds not revealed yet."""
+    upfront would either be blank or spoil rounds not revealed yet.
+
+    Whichever series the followed team is actually playing in gets
+    replayed game by game (_replay_playoff_series) instead of just
+    printing its final score line -- every OTHER series in the same
+    round still prints instantly, same "scoped to your team" rule as
+    the regular-season replay above."""
     print()
     print(_style(f"-- {conf_result['conference']} Play-In Tournament --", "bold"))
     for line in conf_result["play_in_log"]:
         print(_format_play_in_line(line, highlight))
 
-    for round_lines in conf_result["round_logs"]:
+    tree = conf_result["tree"]
+    # Lined up with round_logs in [round1, round2, round3] order --
+    # that outer ordering IS reliable (see run_conference_bracket), only
+    # the series WITHIN a round need _series_for_line's name matching.
+    round_series = [tree["round1"], tree["round2"], [tree["round3"]]]
+
+    for round_lines, series_list in zip(conf_result["round_logs"], round_series):
         _prompt("Press Enter for the next round...")
         print()
         header, *series_lines = round_lines
         print(_style(header, "bold"))
         for line in series_lines:
-            print(_format_playoff_line(line, highlight))
+            series = _series_for_line(line, series_list)
+            if series and highlight in (series["winner"], series["loser"]):
+                matchup_label, _, _ = line.partition(":")
+                _replay_playoff_series(series, matchup_label.strip(), line, highlight)
+            else:
+                print(_format_playoff_line(line, highlight))
 
     _prompt("Press Enter to see the bracket recap...")
     print()
@@ -723,11 +996,19 @@ def print_playoffs(result: dict, abbrev: Dict[str, str], highlight: Optional[str
     print(SECTION)
     print(_style("-- NBA FINALS --", "bold"))
     print(_highlight_team(f"  {result['east']['champion']} vs {result['west']['champion']}", highlight))
-    print(_format_playoff_line(
+    final_line = (
         f"  {finals['winner']} def. {finals['loser']}, "
-        f"{finals['wins'][finals['winner']]}-{finals['wins'][finals['loser']]}",
-        highlight,
-    ))
+        f"{finals['wins'][finals['winner']]}-{finals['wins'][finals['loser']]}"
+    )
+    # Same "your team's series gets replayed game by game" rule as every
+    # conference round (see _print_conference_bracket) -- the Finals is
+    # just as much "the playoffs" as any earlier round, so it shouldn't
+    # be the one series that's always instant regardless of who's in it.
+    if highlight in (finals["winner"], finals["loser"]):
+        _replay_playoff_series(finals, f"{result['east']['champion']} vs {result['west']['champion']}",
+                                final_line, highlight)
+    else:
+        print(_format_playoff_line(final_line, highlight))
     print(SECTION)
     print()
     print(_style(f"NBA CHAMPION: {result['champion']}".center(LINE_WIDTH), "bold", "yellow"))
@@ -972,9 +1253,24 @@ def run_season_flow(teams: Dict[str, Team], team_names: List[str], league_avg: L
     if not _confirm("Simulate the full season now?"):
         return
 
-    simulate_season(season=season, fresh=True)
+    # verbose=False -- see simulate_season's docstring: printing "N games
+    # simulated in X.XXs" right before asking "want to watch it game by
+    # game?" undercut that question (reported directly).
+    simulate_season(season=season, fresh=True, verbose=False)
 
     conn = db.init_db()
+
+    # Optional, BEFORE standings -- watching the season happen game by
+    # game naturally comes before seeing how it all turned out, not
+    # after. Gated by a confirm (unlike the auto-printed views below)
+    # since pacing through 82 games is a real time commitment, not a
+    # quick list -- see run_team_game_log_replay's docstring; the
+    # season itself is already fully simulated and stored either way,
+    # so skipping this changes nothing about the numbers that follow.
+    if _confirm(f"Watch {my_team_name}'s season game by game before seeing the standings?"):
+        run_team_game_log_replay(conn, my_team_name, season, highlight=my_team_name)
+        _run_game_log_browser(conn, team_names, season, highlight=my_team_name)
+
     standings = db.get_standings(conn, season)
 
     view = _prompt("View standings by conference, or overall? (c/o): ").strip().lower()
