@@ -14,52 +14,66 @@ from typing import Dict, List
 from models import Player, Team, ScheduledGame
 
 CACHE_DIR = Path(__file__).parent / "cache"
-ROSTER_CACHE_FILE = CACHE_DIR / "rosters.json"
-SCHEDULE_CACHE_FILE = CACHE_DIR / "schedule.json"
-TEAM_DEFENSE_CACHE_FILE = CACHE_DIR / "team_defense.json"
-TEAM_CONFERENCE_CACHE_FILE = CACHE_DIR / "team_conferences.json"
-INJURIES_CACHE_FILE = CACHE_DIR / "injuries.json"
-ROSTER_MEMBERSHIP_CACHE_FILE = CACHE_DIR / "roster_membership.json"
+
+# Default season every load function falls back to when the caller
+# doesn't specify one -- keeps every existing call site (main.py,
+# etc.) working unchanged while the season-picker UI for backtesting
+# older seasons gets built out. Bump this when the next real season's
+# cache becomes the default one to play.
+DEFAULT_SEASON = "2025-26"
 
 
-def load_teams() -> Dict[str, Team]:
+def _season_cache_dir(season: str) -> Path:
+    """Same layout data_source.py caches into: cache/<season>/ -- see
+    data_source._season_cache_dir. Doesn't create the directory (unlike
+    that one) -- a MISSING season here should fail loudly (see the
+    FileNotFoundErrors below), not silently create an empty folder."""
+    return CACHE_DIR / season
+
+
+def load_teams(season: str = DEFAULT_SEASON) -> Dict[str, Team]:
     """
-    Reads cache/rosters.json, cache/team_defense.json, and
-    cache/team_conferences.json, and returns a dict mapping each
-    team's name to a real Team object -- real Player objects for its
-    roster, plus its own real defensive stats and conference. All
-    three files get merged here so every caller gets one fully-
-    populated Team object, rather than every caller having to remember
-    to load and merge each piece separately.
+    Reads cache/<season>/rosters.json, team_defense.json, and
+    team_conferences.json, and returns a dict mapping each team's name
+    to a real Team object -- real Player objects for its roster, plus
+    its own real defensive stats and conference. All three files get
+    merged here so every caller gets one fully-populated Team object,
+    rather than every caller having to remember to load and merge each
+    piece separately.
 
     Returns a dict (not a list) so calling code can look up a team
     directly by name, e.g. teams["Los Angeles Lakers"], instead of
     looping through a list every time to find the one it wants.
     """
-    if not ROSTER_CACHE_FILE.exists():
+    season_dir = _season_cache_dir(season)
+    roster_file = season_dir / "rosters.json"
+    defense_file = season_dir / "team_defense.json"
+    conference_file = season_dir / "team_conferences.json"
+
+    if not roster_file.exists():
         # Fail loudly with a clear next step, instead of a confusing
         # crash somewhere later when the code tries to use data that
         # was never there.
         raise FileNotFoundError(
-            "No cached data found at cache/rosters.json. "
-            "Run `python data_source.py` first to fetch rosters/stats."
+            f"No cached data found at {roster_file}. "
+            f"Run `python data_source.py --season {season}` first to fetch rosters/stats."
         )
-    if not TEAM_DEFENSE_CACHE_FILE.exists():
+    if not defense_file.exists():
         raise FileNotFoundError(
-            "No cached team defense data found at cache/team_defense.json. "
-            "Run `python data_source.py` first to fetch it."
+            f"No cached team defense data found at {defense_file}. "
+            f"Run `python data_source.py --season {season}` first to fetch it."
         )
-    if not TEAM_CONFERENCE_CACHE_FILE.exists():
+    if not conference_file.exists():
         raise FileNotFoundError(
-            "No cached team conference data found at cache/team_conferences.json. "
-            "Run `python data_source.py` first to fetch it."
+            f"No cached team conference data found at {conference_file}. "
+            f"Run `python data_source.py --season {season}` first to fetch it."
         )
 
-    with open(ROSTER_CACHE_FILE) as f:
+    with open(roster_file) as f:
         raw = json.load(f)  # raw is now a plain Python dict -- not Player/Team objects yet
-    with open(TEAM_DEFENSE_CACHE_FILE) as f:
+    with open(defense_file) as f:
         raw_defense = json.load(f)["teams"]
-    with open(TEAM_CONFERENCE_CACHE_FILE) as f:
+    with open(conference_file) as f:
         raw_conference = json.load(f)["teams"]
 
     teams: Dict[str, Team] = {}
@@ -81,65 +95,69 @@ def load_teams() -> Dict[str, Team]:
     return teams
 
 
-def load_schedule() -> List[ScheduledGame]:
+def load_schedule(season: str = DEFAULT_SEASON) -> List[ScheduledGame]:
     """
-    Reads cache/schedule.json and returns the real regular-season
-    schedule as a list of ScheduledGame objects, in the same
+    Reads cache/<season>/schedule.json and returns the real regular-
+    season schedule as a list of ScheduledGame objects, in the same
     chronological order data_source.py already sorted them into.
     """
-    if not SCHEDULE_CACHE_FILE.exists():
+    schedule_file = _season_cache_dir(season) / "schedule.json"
+    if not schedule_file.exists():
         raise FileNotFoundError(
-            "No cached schedule found at cache/schedule.json. "
-            "Run `python data_source.py` first to fetch it."
+            f"No cached schedule found at {schedule_file}. "
+            f"Run `python data_source.py --season {season}` first to fetch it."
         )
 
-    with open(SCHEDULE_CACHE_FILE) as f:
+    with open(schedule_file) as f:
         raw = json.load(f)
 
     return [ScheduledGame(**game_dict) for game_dict in raw["games"]]
 
 
-def load_player_injuries() -> Dict[str, dict]:
+def load_player_injuries(season: str = DEFAULT_SEASON) -> Dict[str, dict]:
     """
-    Reads cache/injuries.json: each real player's real absence pattern
-    this season -- {"games_considered": 82, "stints": [{"start": 0,
-    "length": 16}, {"start": 40, "length": 1}]} means their team played
-    82 games and they missed two separate stretches: one 16 games long
-    starting at the literal first game of the season, one a single game
-    starting at index 40. See data_source.py's fetch_player_absence_stints
-    for exactly what "absence" means here and its caveats (injury, rest,
-    a trade, personal reasons all look identical in this data).
+    Reads cache/<season>/injuries.json: each real player's real absence
+    pattern this season -- {"games_considered": 82, "stints": [{"start":
+    0, "length": 16}, {"start": 40, "length": 1}]} means their team
+    played 82 games and they missed two separate stretches: one 16
+    games long starting at the literal first game of the season, one a
+    single game starting at index 40. See data_source.py's
+    fetch_player_absence_stints for exactly what "absence" means here
+    and its caveats (injury, rest, a trade, personal reasons all look
+    identical in this data).
 
     Returned as plain dicts, not a dataclass -- this is season-shape
     metadata only injuries.py needs to build a SIMULATED season's injury
     calendar, not a per-game stat that belongs on the Player model.
     """
-    if not INJURIES_CACHE_FILE.exists():
+    injuries_file = _season_cache_dir(season) / "injuries.json"
+    if not injuries_file.exists():
         raise FileNotFoundError(
-            "No cached injury data found at cache/injuries.json. "
-            "Run `python data_source.py` first to fetch it."
+            f"No cached injury data found at {injuries_file}. "
+            f"Run `python data_source.py --season {season}` first to fetch it."
         )
-    with open(INJURIES_CACHE_FILE) as f:
+    with open(injuries_file) as f:
         raw = json.load(f)
     return raw["players"]
 
 
-def load_roster_membership() -> Dict[str, list]:
+def load_roster_membership(season: str = DEFAULT_SEASON) -> Dict[str, list]:
     """
-    Reads cache/roster_membership.json: for each real team, every player
-    who actually suited up for them at any point this season, and the
-    first/last game (in that team's own schedule) they played for them.
-    See data_source.py's fetch_roster_membership -- this is what
-    transactions.py uses to make in-season trades real in the sim,
-    instead of every team using one static, whole-season roster
-    snapshot.
+    Reads cache/<season>/roster_membership.json: for each real team,
+    every player who actually suited up for them at any point this
+    season, and the first/last game (in that team's own schedule) they
+    played for them. See data_source.py's fetch_roster_membership --
+    this is what transactions.py uses to make in-season trades real in
+    the sim, instead of every team using one static, whole-season
+    roster snapshot.
     """
-    if not ROSTER_MEMBERSHIP_CACHE_FILE.exists():
+    membership_file = _season_cache_dir(season) / "roster_membership.json"
+    if not membership_file.exists():
         raise FileNotFoundError(
-            "No cached roster membership found at cache/roster_membership.json. "
-            "Run `python data_source.py` first to fetch it."
+            f"No cached roster membership found at {membership_file}. "
+            f"Run `python data_source.py --season {season}` first to fetch it."
         )
-    with open(ROSTER_MEMBERSHIP_CACHE_FILE) as f:
+    with open(membership_file) as f:
         raw = json.load(f)
     return raw["teams"]
 

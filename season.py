@@ -50,8 +50,8 @@ def simulate_season(season: str = "2025-26", fresh: bool = False,
     if fresh and db.DB_PATH.exists():
         db.DB_PATH.unlink()
 
-    teams = load_teams()
-    schedule = load_schedule()
+    teams = load_teams(season)
+    schedule = load_schedule(season)
     conn = db.init_db()
 
     # Real, league-wide baselines (what's an average defense, an
@@ -72,7 +72,7 @@ def simulate_season(season: str = "2025-26", fresh: bool = False,
     # FINAL team (see data_source.fetch_player_absence_stints), so it
     # would be meaningless if reapplied to a team added later below.
     if use_injuries:
-        real_injuries = load_player_injuries()
+        real_injuries = load_player_injuries(season)
         injury_spans = build_season_injuries(teams, schedule, real_injuries)
         out_lookup |= missed_lookup(injury_spans)
         db.insert_injuries(conn, season, {g.game_id: g for g in schedule}, injury_spans)
@@ -82,7 +82,7 @@ def simulate_season(season: str = "2025-26", fresh: bool = False,
     # ever lists their FINAL team), and restricts their NEW team's pool
     # to only their real post-trade games. See transactions.py.
     if use_real_moves:
-        membership = load_roster_membership()
+        membership = load_roster_membership(season)
         out_lookup |= expand_rosters_with_real_moves(teams, schedule, membership)
 
     start = time.time()

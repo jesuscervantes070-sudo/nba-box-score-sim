@@ -78,11 +78,11 @@ def run_accuracy_benchmark(season: str = "2025-26", n_runs: int = 30,
     injuries" baseline -- this is the "after" side of the comparison
     this whole file exists for, see the module docstring.
     """
-    teams = load_teams()
-    schedule = load_schedule()
+    teams = load_teams(season)
+    schedule = load_schedule(season)
     league_avg = compute_league_averages(teams)
     real_standings = fetch_real_standings(season)
-    real_player_injuries = load_player_injuries() if use_injuries else None
+    real_player_injuries = load_player_injuries(season) if use_injuries else None
 
     real_players = {p.name: p for t in teams.values() for p in t.players}
 
@@ -102,7 +102,7 @@ def run_accuracy_benchmark(season: str = "2025-26", n_runs: int = 30,
     # everything below this point sees the trade-expanded rosters.
     trade_unavailable = set()
     if use_real_moves:
-        membership = load_roster_membership()
+        membership = load_roster_membership(season)
         trade_unavailable = expand_rosters_with_real_moves(teams, schedule, membership)
 
     sim_wins_by_team: Dict[str, List[int]] = {name: [] for name in teams}

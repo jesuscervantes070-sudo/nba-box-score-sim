@@ -45,8 +45,16 @@ opponents' shooting (see game_engine.py).
   in the playoffs, any series they're actually in, Finals included) can
   be paced through one game at a time instead of only ever seeing the
   end result. See main.py section below.
+- **Multi-season backtesting**: complete — every real NBA season this
+  project's data source actually has, 1996-97 through 2025-26 (30
+  seasons, all with real injuries + real trades on), has been fetched,
+  simulated, and benchmarked against real standings. 1996-97 is a real,
+  hard floor (the stats API itself has nothing before it), not a
+  stopping point chosen along the way. See "Multi-season backtesting"
+  section below.
 - **Not yet built**: possession-by-possession realism (deliberately low
-  priority — see below).
+  priority — see below); an offseason bridge connecting one backtested
+  season to the next (drafts/free agency — see Deferred below).
 - Repo is on GitHub: `https://github.com/jesuscervantes070-sudo/nba-box-score-sim`
 
 ## Core design principle (do not violate)
@@ -202,15 +210,113 @@ opponents' shooting (see game_engine.py).
   entirely before (single-game mode, option 1, never had a followed
   team to highlight in the first place).
 
+## Multi-season backtesting (data_source.py, loader.py)
+- The point: run the exact same pipeline (real data → simulate → compare
+  to real) against as many past seasons as the data actually supports,
+  as a validation/tuning set bigger than just 2025-26 — do the tuned
+  constants (`DISPERSION`, `DEFENSE_AMPLIFICATION=5`, etc.) generalize,
+  or were they quietly overfit to one season's quirks? Backtesting a
+  season a season was NEVER tuned against and getting comparable (often
+  BETTER) accuracy is real evidence for "generalizes," not "overfit."
+- **Every cache file is now season-scoped**: `cache/<season>/rosters.json`
+  etc., not one shared set of filenames — `_season_cache_dir` in
+  data_source.py, mirrored by loader.py's `_season_cache_dir` (same
+  layout, doesn't create the dir — a missing season should fail loudly).
+  Every `load_*`/`build_and_cache_*` function takes `season` (defaulting
+  to `DEFAULT_SEASON = "2025-26"`, so every existing call site keeps
+  working unchanged). `season.py`/`benchmark_accuracy.py` thread it
+  through to their loader calls now too — previously accepted a
+  `season` argument but silently ignored it for anything except the
+  db label, always loading whatever the single shared cache held.
+  `main.py` still has no season-picker UI — deliberately out of scope
+  for this round (backtesting was proven out via scripts first).
+- **The regular-season game filter got replaced with something far more
+  robust**: used to be a hardcoded `gameLabel` whitelist, tuned only
+  against 2025-26 — broke the instant a second season got fetched
+  (2024-25 came back with 1,233 games instead of 1,230; the extra 3
+  were a real event, "Rising Stars Championship," that 2025-26 happens
+  to call "Rising Stars Final" instead). Replaced with
+  `REGULAR_SEASON_GAME_ID_DIGIT`: a real NBA game_id's 3rd digit IS the
+  game type (`2`=regular season, `1`=preseason, `3`=All-Star, `4`=
+  playoffs, `5`=play-in, `6`=the one Emirates Cup Championship game),
+  true across every season checked. Verified byte-identical to the old
+  filter's result on 2025-26 before trusting it anywhere else.
+- **`HISTORICAL_TEAM_NAMES`**: `commonteamroster` (the roster endpoint)
+  has no team-name field at all, only a numeric team_id — so rosters
+  were always labeled with that team's CURRENT name, wrong for any
+  season before a real relocation/rename (e.g. 2013-14 came back
+  "Charlotte Hornets" from the roster file while schedule/defense/
+  standings all correctly said "Charlotte Bobcats," a mismatch that
+  crashes `season.py` with a KeyError on every game for that team). A
+  small hardcoded table (team_id → real season-range → real name),
+  same "stable fact, not worth fetch infrastructure" reasoning as
+  `NBA_API_TEAM_NAME_FIXES` and playoffs.py's `TEAM_DIVISIONS` — covers
+  every real rename/relocation in the backtestable range: Bobcats/
+  Hornets, the original Hornets' Charlotte→New Orleans→Pelicans path
+  (including the post-Katrina "New Orleans/Oklahoma City Hornets"
+  seasons), Sonics→Thunder, Nets NJ→Brooklyn, Grizzlies Vancouver→
+  Memphis, Bullets→Wizards.
+- **`_active_roster_for_game`'s weighted draw got a numerical-safety
+  floor**: `ROTATION_WEIGHT_EXPONENT=8` applied to a long tail of real
+  sub-minute bench players can numerically collapse one entry to an
+  exact (or rounding-swallowed) zero once normalized — `np.random.
+  choice(replace=False)` then raises "Fewer non-zero entries in p than
+  size." Hit once backtesting 2007-08; not specific to old data, any
+  season's injury/trade-reduced roster could hit it by chance. Fixed
+  with the same `+ 1e-9` floor pattern `_dirichlet_multinomial_split`
+  already uses for the identical class of problem. Confirmed no
+  accuracy change on 2025-26 (MAE 7.40→7.51, inside normal noise).
+- **Real historical schedule anomalies, all verified as correct, not
+  bugs**: 1,229 games for 2012-13 (a real Sandy Hook cancellation never
+  made up), 990 for 2011-12 (the real 66-game lockout season), 725 for
+  1998-99 (the real 50-game lockout season), 1,189 across the real
+  29-team era (1995-96 through 2003-04, before the Bobcats expansion
+  brought the league to 30), 1,059 with a real 64-75-games-per-team
+  spread for 2019-20 (cut short by COVID, never made uniform).
+- **1996-97 is the real floor, not a chosen stopping point**:
+  `leaguedashplayerstats` (where every player's real per-game stat line
+  comes from) returns real rows starting exactly there and zero rows
+  for every season checked before it (1995-96, 1994-95, 1990-91) — a
+  limit of the data source itself, nothing to fix in this project's code.
+- **Full 30-season accuracy range** (30-run benchmark each, real
+  injuries + real trades on, `benchmarks/<season>_backtest.json`):
+  MAE 6.48–10.38 (avg 8.42), correlation .688–.919 (avg .812).
+  Doesn't decline steadily with age — it tracks how extreme each
+  specific season's real defensive spread happened to be, the exact
+  mechanism `DEFENSE_AMPLIFICATION`'s multiplicative blend struggles
+  with at the tails (see Deferred below), checked directly across four
+  different seasons' worst-missed team every time.
+- **Not built yet, deliberately**: an "offseason bridge" between two
+  consecutive backtested seasons (diff two seasons' real rosters —
+  anyone new who wasn't anywhere in the league last season is a rookie/
+  draftee, anyone new who WAS on a different team is a free-agent
+  signing, anyone missing either retired or left the league — same
+  "compare real game-log evidence" method `roster_membership.json`
+  already uses for in-season trades, just across seasons instead of
+  within one) and a season-picker in main.py's UI. Both need the
+  season-scoped caching above to exist first, which now does.
+- **Playoffs format changed shape across this range too, unhandled**:
+  no play-in tournament at all before 2019-20 (a different one-off
+  format that specific year, the current 7-10-seed version only from
+  2020-21 on), and the first round was best-of-5, not best-of-7, before
+  the 2003 playoffs. Doesn't affect anything above (backtesting only
+  ever calls `benchmark_accuracy.py`, which never touches
+  `playoffs.py`) — noted for whenever an old season's real postseason
+  gets simulated, not just its regular season.
+
 ## Files (all in this folder, import each other by filename)
 - `models.py` — `Player`, `Team`, `ScheduledGame` dataclasses. All
   percentages are computed `@property`s, never stored fields.
 - `data_source.py` — fetches + caches real rosters, per-game stats,
   schedule, team defense, conferences, injuries, and roster membership
-  via `nba_api`. Run `python data_source.py` (`--refresh` to force
-  re-fetch).
+  via `nba_api`, one subfolder per season (`cache/<season>/`). Run
+  `python data_source.py --season 2013-14` (`--refresh` to force
+  re-fetch; season defaults to 2025-26). See "Multi-season backtesting"
+  above for the historical-team-name table and the game_id-digit
+  regular-season filter this file also owns.
 - `loader.py` — the ONLY file that reads the cache/*.json files
-  directly; everything else works with real Player/Team objects.
+  directly; everything else works with real Player/Team objects. Every
+  `load_*` function takes a `season` (default `DEFAULT_SEASON`).
 - `db.py` — SQLite storage (`cache/season.db`) for simulated season
   games AND simulated injuries. DNP (0-minute) player-rows are
   deliberately NOT stored, so season averages are "per game played,"
@@ -220,9 +326,10 @@ opponents' shooting (see game_engine.py).
   function (`get_team_game_log`), both built for main.py's game-by-game
   replay.
 - `game_engine.py` — the actual simulation (see above), including
-  overtime. By far the largest/most complex file; every tunable
-  constant has a comment explaining how and why it was tuned against
-  real data.
+  overtime and the active-roster draw's numerical-safety floor (see
+  "Multi-season backtesting" above). By far the largest/most complex
+  file; every tunable constant has a comment explaining how and why it
+  was tuned against real data.
 - `injuries.py` — turns real absence data into a simulated season's
   injury calendar (see above).
 - `transactions.py` — makes real in-season trades real in the sim (see
@@ -233,8 +340,10 @@ opponents' shooting (see game_engine.py).
   caller (direct `python season.py`, benchmark_accuracy.py) still wants
   the printed summary.
 - `playoffs.py` — seeding, play-in, bracket, Finals (see above).
-- `benchmark_accuracy.py` — runs N full seasons, saves a permanent
-  accuracy snapshot to `benchmarks/*.json`.
+- `benchmark_accuracy.py` — runs N full seasons of any single season
+  (`--season`, defaults to 2025-26), saves a permanent accuracy
+  snapshot to `benchmarks/*.json`. This is what every multi-season
+  backtest run above actually is: 30 separate calls, one per season.
 - `main.py` — the playable text CLI. Flow for a full season: simulate →
   optional game-by-game replay of the followed team's season (see
   above) → standings (overall/by conference) → real-vs-sim comparison →
@@ -247,18 +356,42 @@ opponents' shooting (see game_engine.py).
   — green/yellow/red, same convention as the standings comparison.
 
 ## Deferred / open, in the user's stated priority order
-1. **Trades made accuracy slightly worse** in the original benchmark
-   (trades-only: MAE 8.48 vs. 7.99 baseline) — flagged, not yet
-   investigated. Worth digging into before trusting that number.
-2. **Possession-by-possession realism** — explicitly low priority. Safe
+1. **Two accuracy issues, deliberately left alone until they can be
+   fixed together against the full 30-season backtest set, not
+   season by season:**
+   - **Trades/real-roster-movement made accuracy slightly worse**
+     (original single-season finding: trades-only MAE 8.48 vs. 7.99
+     baseline). Root cause dug into and confirmed real: teams with the
+     heaviest real roster churn that season (e.g. Utah Jazz, Atlanta
+     Hawks in 2025-26) get systematically UNDER-simulated, because
+     traded-in/remaining players keep their own real per-minute rate
+     unchanged rather than the real "usage bump" a team gives its
+     pieces after losing a star — a genuine modeling gap, not a bug.
+   - **`DEFENSE_AMPLIFICATION`'s multiplicative blend breaks down at
+     the tails** — found via backtesting: a team on the weak-defense
+     tail gets its opponents' shooting multiplied into impossible
+     territory (60%+ team FG nights). Confirmed the SAME mechanism
+     explains the single worst-missed team in every one of 4 checked
+     seasons (2025-26 Lakers, 2024-25 Grizzlies, 2023-24 Kings, 2022-23
+     Heat) — this is why standings MAE ranges 6.48-10.38 across the 30
+     backtested seasons instead of sitting near 2025-26's 7.4 always.
+2. **An offseason bridge + season-picker UI** for the now-30-season
+   backtest set (see "Multi-season backtesting" above) — diffing two
+   seasons' rosters to show real draft/free-agency movement between
+   them, and letting main.py actually pick which season to play.
+3. **Playoffs on an old season** would need real era-specific rules
+   restored (no play-in before 2019-20, best-of-5 first round before
+   2003) — see "Multi-season backtesting" above. Not needed for
+   anything built so far; backtesting never touches `playoffs.py`.
+4. **Possession-by-possession realism** — explicitly low priority. Safe
    to defer indefinitely: `simulate_game()` is a swappable box for
    however a game gets produced, so nothing above it needs to change.
-3. **Narrative/MVP-tracking features** — mentioned once as a maybe, no
+5. **Narrative/MVP-tracking features** — mentioned once as a maybe, no
    concrete plan yet.
-4. **Playoff series box stats** (browsable, not just Finals averages) —
-   explicitly "not necessary right now" per the user, more UI work than
-   value at the moment.
-5. **Key-injury highlighting** (e.g. flag high-PPG players specifically)
+6. **Playoff series box stats** (browsable, not just Finals averages) —
+   wanted; not yet built. (Earlier note here said the user called this
+   unnecessary — that was wrong, corrected 2026-09-04.)
+7. **Key-injury highlighting** (e.g. flag high-PPG players specifically)
    — explicitly deferred, only worth doing if it's ever quick.
 
 ## User context / preferences

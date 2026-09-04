@@ -5,14 +5,17 @@ underlying data source sites like basketball-reference mirror) and caches
 the result locally as JSON, so the rest of the project can just read a file
 instead of hitting the network every time.
 
-Both the roster AND the stats come from the SAME season (2025-26, the last
-full season) on purpose -- every player on a 2025-26 roster necessarily
-played that season, so every single player is guaranteed to have a real
-stat line. No rookies-with-no-stats edge case to handle here at all.
+Both the roster AND the stats always come from the SAME season on purpose
+-- every player on THAT season's roster necessarily played that season,
+so every single player is guaranteed to have a real stat line for it. No
+rookies-with-no-stats edge case to handle here at all.
 
-(Later, once the next NBA season is underway and rookies start building up
-real per-game numbers of their own, this can be pointed at that season
-instead -- but that's a future update, not something to build now.)
+Every cache file lives under cache/<season>/ (see _season_cache_dir), not
+one shared set of filenames -- fetching a second season never overwrites
+another one's cache. This is what backtesting past seasons is actually
+built on: `python data_source.py --season 2024-25` fetches and caches
+that season entirely independently of whatever's already cached for
+2025-26, and both can be loaded and simulated side by side.
 
 Install once:
     pip install nba_api
@@ -29,12 +32,51 @@ from pathlib import Path
 
 CACHE_DIR = Path(__file__).parent / "cache"
 CACHE_DIR.mkdir(exist_ok=True)
-ROSTER_CACHE = CACHE_DIR / "rosters.json"
-SCHEDULE_CACHE = CACHE_DIR / "schedule.json"
-TEAM_DEFENSE_CACHE = CACHE_DIR / "team_defense.json"
-TEAM_CONFERENCE_CACHE = CACHE_DIR / "team_conferences.json"
-INJURIES_CACHE = CACHE_DIR / "injuries.json"
-ROSTER_MEMBERSHIP_CACHE = CACHE_DIR / "roster_membership.json"
+
+
+def _season_cache_dir(season: str) -> Path:
+    """
+    Every season's fetched data lives in its own subfolder
+    (cache/2025-26/, cache/2024-25/, ...) instead of one shared set of
+    filenames. This is what makes backtesting past seasons possible at
+    all -- fetching a second season used to silently overwrite the
+    first one's cache; now each season simulated keeps its own
+    permanent, independent snapshot, and multiple seasons can sit
+    side by side (needed for the offseason player-movement diff too --
+    that's a comparison BETWEEN two seasons' cached rosters).
+    """
+    season_dir = CACHE_DIR / season
+    season_dir.mkdir(exist_ok=True)
+    return season_dir
+
+
+# One small path-building function per cache file, all rooted under
+# _season_cache_dir -- every build_and_cache_* function below already
+# takes `season` as a parameter, so this is just "where does this
+# season's copy of this file live," not a new argument to thread
+# through anywhere.
+def _roster_cache_path(season: str) -> Path:
+    return _season_cache_dir(season) / "rosters.json"
+
+
+def _schedule_cache_path(season: str) -> Path:
+    return _season_cache_dir(season) / "schedule.json"
+
+
+def _team_defense_cache_path(season: str) -> Path:
+    return _season_cache_dir(season) / "team_defense.json"
+
+
+def _team_conference_cache_path(season: str) -> Path:
+    return _season_cache_dir(season) / "team_conferences.json"
+
+
+def _injuries_cache_path(season: str) -> Path:
+    return _season_cache_dir(season) / "injuries.json"
+
+
+def _roster_membership_cache_path(season: str) -> Path:
+    return _season_cache_dir(season) / "roster_membership.json"
 
 # Maps our field names -> the NBA stats API's "Opponent" column names.
 # These are real per-game stats about what a team's REAL OPPONENTS did
@@ -51,26 +93,31 @@ DEFENSE_FIELD_MAP = {
 # The real schedule endpoint (ScheduleLeagueV2) returns EVERY game the
 # league plays -- preseason, All-Star weekend, the play-in tournament,
 # every playoff round -- not just the 1,230 games (30 teams x 82 / 2)
-# that actually count toward the regular-season standings. These
-# gameLabel values were checked directly against the real 2025-26 data
-# and confirmed to be everything that ISN'T a real regular-season game.
-NON_REGULAR_SEASON_LABELS = {
-    "Preseason", "All-Star", "All-Star Championship",
-    "Rising Stars Semifinal", "Rising Stars Final",
-    "East First Round", "West First Round",
-    "East Conf. Semifinals", "West Conf. Semifinals",
-    "East Conf. Finals", "West Conf. Finals",
-    "NBA Finals", "SoFi Play-In Tournament",
-}
-
-# The Emirates NBA Cup is a real wrinkle: its group-stage, quarterfinal,
-# and semifinal games ALL count toward the real regular-season standings
-# (checked directly against the data -- excluding them undercounted the
-# season by dozens of games). Only the single Championship game at the
-# very end doesn't count -- it's an exhibition-style final at a neutral
-# site, identified by this specific (gameLabel, gameSubLabel) pair.
-NBA_CUP_LABEL = "Emirates NBA Cup"
-NBA_CUP_FINAL_SUBLABEL = "Championship"
+# that actually count toward the regular-season standings.
+#
+# USED TO filter this by a hardcoded set of `gameLabel` strings, tuned
+# only against 2025-26 -- broke the moment a second real season got
+# fetched for backtesting: 2024-25 uses "Rising Stars Championship"
+# where 2025-26 uses "Rising Stars Final" for the exact same event,
+# so those 1-2 games silently slipped through as "regular season"
+# (found by testing: fetching 2024-25 came back with 1233 games
+# instead of the expected 1230, and the extra 3 traced to real Rising
+# Stars mini-tournament games under "teams" named things like "Global
+# Stars"/"Rising Stars" -- not real NBA teams at all).
+#
+# Fixed with something far more robust than a label whitelist that
+# needs updating every time an event gets renamed: a real NBA game_id
+# is 10 digits, and the 3RD digit is a season-type code (checked
+# directly against 2025-26 AND 2024-25's full label lists) --
+# '1'=preseason, '2'=regular season, '3'=All-Star weekend, '4'=
+# playoffs, '5'=play-in, '6'=the one exhibition-style Emirates NBA Cup
+# Championship game (its earlier group-stage/quarterfinal/semifinal
+# rounds are all '2' -- they DO count toward the real standings, only
+# the neutral-site Cup Final doesn't). Verified byte-for-byte identical
+# to the old label-based filter's result on 2025-26 (same exact 1230
+# games, not just the same count) before replacing it -- see
+# REGULAR_SEASON_GAME_ID_DIGIT below.
+REGULAR_SEASON_GAME_ID_DIGIT = "2"
 
 # Some nba_api endpoints spell one team's name differently ("LA
 # Clippers") than every other endpoint used in this project ("Los
@@ -82,6 +129,48 @@ NBA_CUP_FINAL_SUBLABEL = "Championship"
 NBA_API_TEAM_NAME_FIXES = {
     "LA Clippers": "Los Angeles Clippers",
 }
+
+# Real NBA teams that relocated/renamed -- found by testing while
+# backtesting 2013-14: commonteamroster's response has NO team-name
+# field at all (checked directly -- only a numeric TeamID), so
+# fetch_team_rosters had no choice but to label every team with its
+# CURRENT name (from nba_api's static team list) regardless of season.
+# For 2013-14 that meant rosters.json said "Charlotte Hornets" while
+# the SAME season's schedule/defense/standings endpoints (which DO
+# carry a season-accurate name) all correctly said "Charlotte
+# Bobcats" -- a silent mismatch that would make season.py's own
+# `teams[scheduled_game.home_team]` raise a KeyError on every real
+# Bobcats game. Small, hardcoded, season-ranged overrides for the few
+# real relocations/renames within the range this project backtests --
+# same "stable fact, not worth fetch infrastructure" reasoning as
+# NBA_API_TEAM_NAME_FIXES above. Keyed by team_id (stable across a
+# rename; the franchise's real per-game numbers keep flowing to the
+# same id), season ranges are real-world, inclusive on both ends.
+HISTORICAL_TEAM_NAMES = {
+    1610612766: [("2004-05", "2013-14", "Charlotte Bobcats")],  # -> Charlotte Hornets 2014-15+
+    1610612740: [
+        ("1988-89", "2001-02", "Charlotte Hornets"),  # the ORIGINAL Hornets, before relocating
+        ("2002-03", "2004-05", "New Orleans Hornets"),
+        ("2005-06", "2006-07", "New Orleans/Oklahoma City Hornets"),  # post-Katrina relocation
+        ("2007-08", "2012-13", "New Orleans Hornets"),
+    ],  # -> New Orleans Pelicans 2013-14+
+    1610612760: [("1996-97", "2007-08", "Seattle SuperSonics")],  # -> Oklahoma City Thunder 2008-09+
+    1610612751: [("1977-78", "2011-12", "New Jersey Nets")],  # -> Brooklyn Nets 2012-13+
+    1610612763: [("1995-96", "2000-01", "Vancouver Grizzlies")],  # -> Memphis Grizzlies 2001-02+
+    1610612764: [("1974-75", "1996-97", "Washington Bullets")],  # -> Washington Wizards 1997-98+
+}
+
+
+def _historical_team_name(team_id: int, season: str, current_name: str) -> str:
+    """`current_name` (from nba_api's static, always-current team list)
+    unless `season` falls inside one of this team_id's real relocation/
+    rename eras above -- see HISTORICAL_TEAM_NAMES's docstring. Season
+    strings compare correctly as plain text here (both bounds and the
+    season argument are always "YYYY-YY", same 4-digit-year format)."""
+    for start, end, name in HISTORICAL_TEAM_NAMES.get(team_id, []):
+        if start <= season <= end:
+            return name
+    return current_name
 
 # Maps OUR field names (matching models.py's Player fields) -> the NBA
 # stats API's column names. Keeping this in one place means if the API
@@ -112,7 +201,11 @@ def fetch_team_rosters(season: str):
     rosters = {}
     for t in static_teams.get_teams():
         roster_df = commonteamroster.CommonTeamRoster(team_id=t["id"], season=season).get_data_frames()[0]
-        rosters[t["full_name"]] = roster_df["PLAYER"].tolist()
+        # See HISTORICAL_TEAM_NAMES -- t["full_name"] is always this
+        # team's CURRENT name, wrong for a season before a real
+        # relocation/rename.
+        team_name = _historical_team_name(t["id"], season, t["full_name"])
+        rosters[team_name] = roster_df["PLAYER"].tolist()
         time.sleep(0.6)  # stay polite to the API -- don't hammer it
     return rosters
 
@@ -140,8 +233,9 @@ def fetch_team_defense(season: str):
 
 
 def build_and_cache_team_defense(season: str = "2025-26", force: bool = False) -> None:
-    if TEAM_DEFENSE_CACHE.exists() and not force:
-        print(f"Team defense cache already exists at {TEAM_DEFENSE_CACHE}. Use --refresh to force an update.")
+    cache_path = _team_defense_cache_path(season)
+    if cache_path.exists() and not force:
+        print(f"Team defense cache already exists at {cache_path}. Use --refresh to force an update.")
         return
 
     print(f"Fetching {season} real opponent-shooting (defense) stats...")
@@ -150,10 +244,10 @@ def build_and_cache_team_defense(season: str = "2025-26", force: bool = False) -
     if len(defense) != 30:
         print(f"WARNING: expected 30 teams, got {len(defense)} -- double check the season string.")
 
-    with open(TEAM_DEFENSE_CACHE, "w") as f:
+    with open(cache_path, "w") as f:
         json.dump({"season": season, "teams": defense}, f, indent=2)
 
-    print(f"Cached defensive stats for {len(defense)} teams -> {TEAM_DEFENSE_CACHE}")
+    print(f"Cached defensive stats for {len(defense)} teams -> {cache_path}")
 
 
 def fetch_real_standings(season: str) -> dict:
@@ -193,8 +287,9 @@ def fetch_team_conferences(season: str) -> dict:
 
 
 def build_and_cache_team_conferences(season: str = "2025-26", force: bool = False) -> None:
-    if TEAM_CONFERENCE_CACHE.exists() and not force:
-        print(f"Team conference cache already exists at {TEAM_CONFERENCE_CACHE}. Use --refresh to force an update.")
+    cache_path = _team_conference_cache_path(season)
+    if cache_path.exists() and not force:
+        print(f"Team conference cache already exists at {cache_path}. Use --refresh to force an update.")
         return
 
     print(f"Fetching {season} team conference assignments...")
@@ -203,10 +298,10 @@ def build_and_cache_team_conferences(season: str = "2025-26", force: bool = Fals
     if len(conferences) != 30:
         print(f"WARNING: expected 30 teams, got {len(conferences)} -- double check the season string.")
 
-    with open(TEAM_CONFERENCE_CACHE, "w") as f:
+    with open(cache_path, "w") as f:
         json.dump({"season": season, "teams": conferences}, f, indent=2)
 
-    print(f"Cached conference assignments for {len(conferences)} teams -> {TEAM_CONFERENCE_CACHE}")
+    print(f"Cached conference assignments for {len(conferences)} teams -> {cache_path}")
 
 
 def _fetch_normalized_game_log(season: str):
@@ -472,17 +567,22 @@ def build_and_cache_player_history(season: str = "2025-26", force: bool = False)
     they're both derived from literally the same rows, so there's no
     reason to hit the API for it twice.
     """
-    if INJURIES_CACHE.exists() and ROSTER_MEMBERSHIP_CACHE.exists() and not force:
+    injuries_path = _injuries_cache_path(season)
+    membership_path = _roster_membership_cache_path(season)
+    roster_path = _roster_cache_path(season)
+    schedule_path = _schedule_cache_path(season)
+
+    if injuries_path.exists() and membership_path.exists() and not force:
         print(f"Injuries + roster-membership caches already exist. Use --refresh to force an update.")
         return
 
-    if not ROSTER_CACHE.exists() or not SCHEDULE_CACHE.exists():
+    if not roster_path.exists() or not schedule_path.exists():
         print("Needs rosters.json and schedule.json first -- run this script normally to build those, then re-run.")
         return
 
-    with open(ROSTER_CACHE) as f:
+    with open(roster_path) as f:
         rosters = json.load(f)["teams"]
-    with open(SCHEDULE_CACHE) as f:
+    with open(schedule_path) as f:
         schedule_games = json.load(f)["games"]
 
     print(f"Fetching {season} league-wide player game log (shared by injuries + roster history)...")
@@ -490,19 +590,19 @@ def build_and_cache_player_history(season: str = "2025-26", force: bool = False)
 
     print("Computing real per-player absence stints...")
     absences = fetch_player_absence_stints(df, rosters, schedule_games)
-    with open(INJURIES_CACHE, "w") as f:
+    with open(injuries_path, "w") as f:
         json.dump({"season": season, "players": absences}, f, indent=2)
     with_absences = sum(1 for a in absences.values() if a["stints"])
     print(f"Cached real absence data for {len(absences)} players "
-          f"({with_absences} had at least one real absence) -> {INJURIES_CACHE}")
+          f"({with_absences} had at least one real absence) -> {injuries_path}")
 
     print("Computing real per-team roster membership...")
     membership = fetch_roster_membership(df, rosters, schedule_games)
-    with open(ROSTER_MEMBERSHIP_CACHE, "w") as f:
+    with open(membership_path, "w") as f:
         json.dump({"season": season, "teams": membership}, f, indent=2)
     traded = _count_traded_players(membership)
     print(f"Cached roster membership for {len(membership)} teams "
-          f"({traded} players appeared on 2+ teams -- real in-season trades) -> {ROSTER_MEMBERSHIP_CACHE}")
+          f"({traded} players appeared on 2+ teams -- real in-season trades) -> {membership_path}")
 
 
 def fetch_schedule(season: str):
@@ -516,8 +616,9 @@ def fetch_schedule(season: str):
     from nba_api.stats.endpoints import scheduleleaguev2
     df = scheduleleaguev2.ScheduleLeagueV2(season=season, timeout=30).get_data_frames()[0]
 
-    is_regular_season = ~df["gameLabel"].isin(NON_REGULAR_SEASON_LABELS)
-    is_cup_final = (df["gameLabel"] == NBA_CUP_LABEL) & (df["gameSubLabel"] == NBA_CUP_FINAL_SUBLABEL)
+    # See REGULAR_SEASON_GAME_ID_DIGIT's comment for why this is a
+    # game_id digit check, not a gameLabel whitelist.
+    is_regular_season = df["gameId"].str[2] == REGULAR_SEASON_GAME_ID_DIGIT
     # Sorting by "gameDate" (a "10/02/2025 00:00:00" string) was a real
     # bug caught by testing -- MM/DD/YYYY doesn't sort correctly as
     # plain text (e.g. "01/01/2026" sorts before "12/31/2025", since
@@ -525,7 +626,7 @@ def fetch_schedule(season: str):
     # "gameDateEst" is ISO format ("2025-10-02T00:00:00Z"), which DOES
     # sort correctly as a plain string -- using that instead for both
     # sorting and the date actually stored.
-    regular_season = df[is_regular_season & ~is_cup_final].sort_values(["gameDateEst", "gameId"])
+    regular_season = df[is_regular_season].sort_values(["gameDateEst", "gameId"])
 
     def _team_name(city: str, name: str) -> str:
         full_name = f"{city} {name}"
@@ -545,8 +646,9 @@ def fetch_schedule(season: str):
 
 
 def build_and_cache_schedule(season: str = "2025-26", force: bool = False) -> None:
-    if SCHEDULE_CACHE.exists() and not force:
-        print(f"Schedule cache already exists at {SCHEDULE_CACHE}. Use --refresh to force an update.")
+    cache_path = _schedule_cache_path(season)
+    if cache_path.exists() and not force:
+        print(f"Schedule cache already exists at {cache_path}. Use --refresh to force an update.")
         return
 
     print(f"Fetching {season} regular-season schedule...")
@@ -559,17 +661,19 @@ def build_and_cache_schedule(season: str = "2025-26", force: bool = False) -> No
         # count to be worth a human noticing rather than silently
         # trusting it.
         print(f"WARNING: expected {expected} regular-season games, got {len(games)} -- "
-              f"double check NON_REGULAR_SEASON_LABELS still covers this season correctly.")
+              f"a real schedule change (e.g. a canceled/rescheduled game), or REGULAR_SEASON_GAME_ID_DIGIT "
+              f"needs a second look for this season -- worth checking which before trusting this season's data.")
 
-    with open(SCHEDULE_CACHE, "w") as f:
+    with open(cache_path, "w") as f:
         json.dump({"season": season, "games": games}, f, indent=2)
 
-    print(f"Cached {len(games)} regular-season games -> {SCHEDULE_CACHE}")
+    print(f"Cached {len(games)} regular-season games -> {cache_path}")
 
 
 def build_and_cache(season: str = "2025-26", force: bool = False) -> None:
-    if ROSTER_CACHE.exists() and not force:
-        print(f"Cache already exists at {ROSTER_CACHE}. Use --refresh to force an update.")
+    cache_path = _roster_cache_path(season)
+    if cache_path.exists() and not force:
+        print(f"Cache already exists at {cache_path}. Use --refresh to force an update.")
         return
 
     print(f"Fetching {season} player season stats...")
@@ -596,10 +700,10 @@ def build_and_cache(season: str = "2025-26", force: bool = False) -> None:
             team_players.append(entry)
         teams_data[team_name] = team_players
 
-    with open(ROSTER_CACHE, "w") as f:
+    with open(cache_path, "w") as f:
         json.dump({"season": season, "teams": teams_data}, f, indent=2)
 
-    print(f"Cached {len(teams_data)} teams -> {ROSTER_CACHE}")
+    print(f"Cached {len(teams_data)} teams -> {cache_path}")
     if missing:
         print(f"({len(missing)} players had no {season} stat line at all, skipped: "
               f"{', '.join(missing[:5])}{'...' if len(missing) > 5 else ''})")

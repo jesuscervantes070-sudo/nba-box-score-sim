@@ -601,6 +601,22 @@ def _active_roster_for_game(team: Team) -> List[Player]:
         weights = np.ones(len(team.players))
     weights = weights ** ROTATION_WEIGHT_EXPONENT
     weights = weights / weights.sum()
+    # A tiny positive floor on every entry, same reasoning (and same
+    # 1e-6 size) as _dirichlet_multinomial_split's alpha floor below --
+    # found by testing while backtesting old seasons: a long tail of
+    # real sub-minute bench players, raised to ROTATION_WEIGHT_EXPONENT
+    # (8), can numerically collapse one or more entries to an exact
+    # (or effectively-zero, swallowed-by-rounding) 0.0 once normalized.
+    # np.random.choice(replace=False) then raises "Fewer non-zero
+    # entries in p than size" -- a real, if rare, crash (hit once in
+    # 2007-08's data; nothing about it is specific to old data, any
+    # season's injury/trade-reduced roster for one game could hit it).
+    # This floor is negligible next to any real player's actual share
+    # (their weight is already the dominant term), so it doesn't
+    # change who's likely to make the active roster, only guarantees
+    # every player has SOME nonzero chance, however small.
+    weights = weights + 1e-9
+    weights = weights / weights.sum()
 
     # A weighted shuffle: draws every player once, in an order where
     # higher real minutes make an EARLIER draw more likely -- not a
