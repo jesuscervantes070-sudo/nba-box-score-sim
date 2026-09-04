@@ -1,18 +1,21 @@
 """
-Turns the raw JSON data that data_source.py cached (cache/rosters.json)
-into actual Player/Team objects the rest of the project can use.
+Turns the raw JSON data that data_source.py cached (cache/rosters.json,
+cache/schedule.json) into actual objects the rest of the project can
+use.
 
-This is the ONLY file that should ever open rosters.json directly --
-everywhere else in the project should just work with real Player/Team
-objects, never raw dicts pulled straight from the JSON file.
+This is the ONLY file that should ever open those cache files directly
+-- everywhere else in the project should just work with real Player/
+Team/ScheduledGame objects, never raw dicts pulled straight from JSON.
 """
 import json
 from pathlib import Path
-from typing import Dict
+from typing import Dict, List
 
-from models import Player, Team
+from models import Player, Team, ScheduledGame
 
-CACHE_FILE = Path(__file__).parent / "cache" / "rosters.json"
+CACHE_DIR = Path(__file__).parent / "cache"
+ROSTER_CACHE_FILE = CACHE_DIR / "rosters.json"
+SCHEDULE_CACHE_FILE = CACHE_DIR / "schedule.json"
 
 
 def load_teams() -> Dict[str, Team]:
@@ -24,7 +27,7 @@ def load_teams() -> Dict[str, Team]:
     directly by name, e.g. teams["Los Angeles Lakers"], instead of
     looping through a list every time to find the one it wants.
     """
-    if not CACHE_FILE.exists():
+    if not ROSTER_CACHE_FILE.exists():
         # Fail loudly with a clear next step, instead of a confusing
         # crash somewhere later when the code tries to use data that
         # was never there.
@@ -33,7 +36,7 @@ def load_teams() -> Dict[str, Team]:
             "Run `python data_source.py` first to fetch rosters/stats."
         )
 
-    with open(CACHE_FILE) as f:
+    with open(ROSTER_CACHE_FILE) as f:
         raw = json.load(f)  # raw is now a plain Python dict -- not Player/Team objects yet
 
     teams: Dict[str, Team] = {}
@@ -50,6 +53,24 @@ def load_teams() -> Dict[str, Team]:
     return teams
 
 
+def load_schedule() -> List[ScheduledGame]:
+    """
+    Reads cache/schedule.json and returns the real regular-season
+    schedule as a list of ScheduledGame objects, in the same
+    chronological order data_source.py already sorted them into.
+    """
+    if not SCHEDULE_CACHE_FILE.exists():
+        raise FileNotFoundError(
+            "No cached schedule found at cache/schedule.json. "
+            "Run `python data_source.py` first to fetch it."
+        )
+
+    with open(SCHEDULE_CACHE_FILE) as f:
+        raw = json.load(f)
+
+    return [ScheduledGame(**game_dict) for game_dict in raw["games"]]
+
+
 if __name__ == "__main__":
     # Quick manual sanity check when running this file directly:
     # load everything, then print one team's roster so a human can eyeball
@@ -63,3 +84,8 @@ if __name__ == "__main__":
         print(f"{p.name:<22} MIN {p.min:>4.1f}  PTS {p.pts:>5.1f}  "
               f"REB {p.reb:>4.1f} (OREB {p.oreb:.1f})  AST {p.ast:>4.1f}  "
               f"FG% {p.fg_pct:.3f}")
+
+    schedule = load_schedule()
+    print(f"\nLoaded {len(schedule)} scheduled games.")
+    print("First game:", schedule[0])
+    print("Last game:", schedule[-1])

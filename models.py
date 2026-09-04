@@ -118,3 +118,17 @@ class Team:
             if player.name == name:
                 return player
         return None
+
+
+@dataclass
+class ScheduledGame:
+    """
+    One entry on the real season schedule: a date and two team names.
+    Just plain data -- unlike Player, nothing here is computed, so
+    there's no reason for this to be more than a few fields.
+    """
+
+    game_id: str
+    date: str       # ISO format, e.g. "2025-10-21"
+    home_team: str
+    away_team: str
