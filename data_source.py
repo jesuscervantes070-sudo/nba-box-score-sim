@@ -30,6 +30,41 @@ from pathlib import Path
 CACHE_DIR = Path(__file__).parent / "cache"
 CACHE_DIR.mkdir(exist_ok=True)
 ROSTER_CACHE = CACHE_DIR / "rosters.json"
+SCHEDULE_CACHE = CACHE_DIR / "schedule.json"
+
+# The real schedule endpoint (ScheduleLeagueV2) returns EVERY game the
+# league plays -- preseason, All-Star weekend, the play-in tournament,
+# every playoff round -- not just the 1,230 games (30 teams x 82 / 2)
+# that actually count toward the regular-season standings. These
+# gameLabel values were checked directly against the real 2025-26 data
+# and confirmed to be everything that ISN'T a real regular-season game.
+NON_REGULAR_SEASON_LABELS = {
+    "Preseason", "All-Star", "All-Star Championship",
+    "Rising Stars Semifinal", "Rising Stars Final",
+    "East First Round", "West First Round",
+    "East Conf. Semifinals", "West Conf. Semifinals",
+    "East Conf. Finals", "West Conf. Finals",
+    "NBA Finals", "SoFi Play-In Tournament",
+}
+
+# The Emirates NBA Cup is a real wrinkle: its group-stage, quarterfinal,
+# and semifinal games ALL count toward the real regular-season standings
+# (checked directly against the data -- excluding them undercounted the
+# season by dozens of games). Only the single Championship game at the
+# very end doesn't count -- it's an exhibition-style final at a neutral
+# site, identified by this specific (gameLabel, gameSubLabel) pair.
+NBA_CUP_LABEL = "Emirates NBA Cup"
+NBA_CUP_FINAL_SUBLABEL = "Championship"
+
+# The schedule endpoint spells one team's name differently ("LA
+# Clippers") than every other endpoint used in this project ("Los
+# Angeles Clippers") -- checked directly, it's the only mismatch left
+# once non-regular-season games are filtered out. Without this fix,
+# the Clippers' schedule entries wouldn't match their roster/stats
+# entries anywhere else in the project.
+SCHEDULE_TEAM_NAME_FIXES = {
+    "LA Clippers": "Los Angeles Clippers",
+}
 
 # Maps OUR field names (matching models.py's Player fields) -> the NBA
 # stats API's column names. Keeping this in one place means if the API
@@ -63,6 +98,68 @@ def fetch_team_rosters(season: str):
         rosters[t["full_name"]] = roster_df["PLAYER"].tolist()
         time.sleep(0.6)  # stay polite to the API -- don't hammer it
     return rosters
+
+
+def fetch_schedule(season: str):
+    """
+    The real regular-season schedule for `season`: a list of dicts, one
+    per game, each {game_id, date, home_team, away_team} -- home_team/
+    away_team are full team names matching the keys used everywhere
+    else in this project (models.Team.name, the rosters.json keys),
+    sorted into real chronological order.
+    """
+    from nba_api.stats.endpoints import scheduleleaguev2
+    df = scheduleleaguev2.ScheduleLeagueV2(season=season, timeout=30).get_data_frames()[0]
+
+    is_regular_season = ~df["gameLabel"].isin(NON_REGULAR_SEASON_LABELS)
+    is_cup_final = (df["gameLabel"] == NBA_CUP_LABEL) & (df["gameSubLabel"] == NBA_CUP_FINAL_SUBLABEL)
+    # Sorting by "gameDate" (a "10/02/2025 00:00:00" string) was a real
+    # bug caught by testing -- MM/DD/YYYY doesn't sort correctly as
+    # plain text (e.g. "01/01/2026" sorts before "12/31/2025", since
+    # '0' < '1'), which put January games before December ones.
+    # "gameDateEst" is ISO format ("2025-10-02T00:00:00Z"), which DOES
+    # sort correctly as a plain string -- using that instead for both
+    # sorting and the date actually stored.
+    regular_season = df[is_regular_season & ~is_cup_final].sort_values(["gameDateEst", "gameId"])
+
+    def _team_name(city: str, name: str) -> str:
+        full_name = f"{city} {name}"
+        return SCHEDULE_TEAM_NAME_FIXES.get(full_name, full_name)
+
+    games = []
+    for _, row in regular_season.iterrows():
+        games.append({
+            "game_id": row["gameId"],
+            # "2025-10-02T00:00:00Z" -> "2025-10-02" -- there's no real
+            # game-time info worth storing, just the date.
+            "date": row["gameDateEst"].split("T")[0],
+            "home_team": _team_name(row["homeTeam_teamCity"], row["homeTeam_teamName"]),
+            "away_team": _team_name(row["awayTeam_teamCity"], row["awayTeam_teamName"]),
+        })
+    return games
+
+
+def build_and_cache_schedule(season: str = "2025-26", force: bool = False) -> None:
+    if SCHEDULE_CACHE.exists() and not force:
+        print(f"Schedule cache already exists at {SCHEDULE_CACHE}. Use --refresh to force an update.")
+        return
+
+    print(f"Fetching {season} regular-season schedule...")
+    games = fetch_schedule(season)
+
+    expected = 30 * 82 // 2
+    if len(games) != expected:
+        # Not necessarily wrong (a real schedule can shift slightly due
+        # to in-season changes), but different enough from the expected
+        # count to be worth a human noticing rather than silently
+        # trusting it.
+        print(f"WARNING: expected {expected} regular-season games, got {len(games)} -- "
+              f"double check NON_REGULAR_SEASON_LABELS still covers this season correctly.")
+
+    with open(SCHEDULE_CACHE, "w") as f:
+        json.dump({"season": season, "games": games}, f, indent=2)
+
+    print(f"Cached {len(games)} regular-season games -> {SCHEDULE_CACHE}")
 
 
 def build_and_cache(season: str = "2025-26", force: bool = False) -> None:
@@ -106,6 +203,7 @@ def build_and_cache(season: str = "2025-26", force: bool = False) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--refresh", action="store_true", help="force re-fetch even if cache exists")
-    parser.add_argument("--season", default="2025-26", help="season to pull roster + stats from, e.g. 2025-26")
+    parser.add_argument("--season", default="2025-26", help="season to pull roster + stats + schedule from, e.g. 2025-26")
     args = parser.parse_args()
     build_and_cache(season=args.season, force=args.refresh)
+    build_and_cache_schedule(season=args.season, force=args.refresh)
