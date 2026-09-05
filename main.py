@@ -1213,6 +1213,17 @@ def _accuracy_color(real: float, sim: float) -> str:
     return "green" if pct_off <= 0.10 else "yellow" if pct_off <= 0.25 else "red"
 
 
+def _consistency_color(rating: int) -> str:
+    """
+    Colour for the CONS column. NOT the same meaning as _accuracy_color
+    above (which is "how close did the sim land") -- this one is "is
+    this player steady or erratic," a fact about the player himself.
+    Green = reliable, red = wildly streaky, matching how the numbers
+    read rather than how accurate anything is.
+    """
+    return "green" if rating >= 67 else "yellow" if rating >= 34 else "red"
+
+
 def print_team_season_averages(conn, team: Team, season: str) -> None:
     """
     For one team's roster: real per-game averages vs. simulated season
@@ -1234,7 +1245,7 @@ def print_team_season_averages(conn, team: Team, season: str) -> None:
     print(DIVIDER)
     print(f"{team.name.upper()} -- REAL VS. SIMULATED SEASON AVERAGES".center(LINE_WIDTH))
     print(DIVIDER)
-    print(f"{'PLAYER':<25}{'GP':>4}  {'PTS':>8}  {'REB':>8}  {'AST':>8}  {'FG%':>8}")
+    print(f"{'PLAYER':<25}{'GP':>4}{'CONS':>6}  {'PTS':>8}  {'REB':>8}  {'AST':>8}  {'FG%':>8}")
     print(SECTION)
 
     for player in sorted(team.players, key=lambda p: -p.pts):
@@ -1247,8 +1258,23 @@ def print_team_season_averages(conn, team: Team, season: str) -> None:
         if not avg:
             print(f"{name_s}{'--':>4}  (no simulated games played)")
             continue
-        print(f"{name_s}{avg['games_played']:>4}")
-        print(f"{'  real':<25}{'':>4}  {player.pts:>8.1f}  {player.reb:>8.1f}  "
+        # CONS = this player's real scoring consistency, 1-99 (see
+        # models.Player.consistency_rating). It sits on the NAME row
+        # rather than the real/sim rows on purpose: unlike everything
+        # else in this table it isn't a real-vs-simulated comparison,
+        # it's one fact about the player that the simulation below is
+        # driven BY. "--" means genuinely not rated (too few games, or
+        # too few points for the rating to mean anything), never zero.
+        rating = player.consistency_rating
+        if rating is None:
+            # Left uncoloured on purpose -- "--" is the absence of a
+            # rating, not a bad one, and colouring it would read as a
+            # judgement about the player.
+            rating_s = f"{'--':>6}"
+        else:
+            rating_s = _style(f"{rating:>6}", _consistency_color(rating))
+        print(f"{name_s}{avg['games_played']:>4}{rating_s}")
+        print(f"{'  real':<25}{'':>4}{'':>6}  {player.pts:>8.1f}  {player.reb:>8.1f}  "
               f"{player.ast:>8.1f}  {player.fg_pct * 100:>7.1f}%")
 
         pts_s = _style(f"{avg['pts']:>8.1f}", _accuracy_color(player.pts, avg['pts']))
@@ -1256,7 +1282,9 @@ def print_team_season_averages(conn, team: Team, season: str) -> None:
         ast_s = _style(f"{avg['ast']:>8.1f}", _accuracy_color(player.ast, avg['ast']))
         fg_s = _style(f"{avg['fg_pct'] * 100:>7.1f}%",
                       _accuracy_color(player.fg_pct * 100, avg['fg_pct'] * 100))
-        print(f"{'  sim':<25}{'':>4}  {pts_s}  {reb_s}  {ast_s}  {fg_s}")
+        print(f"{'  sim':<25}{'':>4}{'':>6}  {pts_s}  {reb_s}  {ast_s}  {fg_s}")
+    print("  CONS = scoring consistency, 1-99: how steady this player's real scoring was")
+    print("  game to game. 99 = steadier than 99% of real NBA scorers, 1 = the most erratic.")
     print()
 
 

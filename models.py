@@ -11,6 +11,55 @@ from dataclasses import dataclass, field
 from typing import List, Optional
 
 
+# How the 1-99 CONSISTENCY rating is scaled (see Player.consistency_rating).
+#
+# A rating needs something to be a rating RELATIVE TO, and this is it: the
+# real distribution of scoring spread across 5,566 player-seasons -- every
+# player with 40+ games and 8+ points per game in all 30 cached seasons.
+# The pair of lists below is that distribution's shape: SPREADS[i] is the
+# spread value that REFERENCE_PERCENTILES[i] percent of real players came
+# in under. So a rating is simply "steadier than N% of real NBA rotation
+# players," which is why it needs no invented anchors and means the same
+# thing in 1997 as in 2025.
+#
+# Deliberately finer at both ends than in the middle: the streakiest 5% of
+# players span a huge range (2.23 all the way to 3.87), so an even 5-point
+# grid crushed all of them together into ratings of 5-9 and threw away
+# real differences between them.
+#
+# One pooled table rather than one per season, checked before choosing:
+# league-average spread drifts from 1.72 in 1996-97 to 1.79 in 2025-26
+# (scoring really has got streakier, mostly three-pointers), but that
+# drift is only about half the player-to-player spread within any one
+# season -- small enough that a pooled scale stays fair, and being
+# comparable across eras is worth more here.
+CONSISTENCY_REFERENCE_PERCENTILES = (
+    0, 1, 2, 3, 5, 7.5, 10, 15, 20, 30, 40, 50,
+    60, 70, 80, 85, 90, 92.5, 95, 97, 98, 99, 100,
+)
+CONSISTENCY_REFERENCE_SPREADS = (
+    1.007, 1.236, 1.297, 1.326, 1.374, 1.413, 1.440, 1.489, 1.529, 1.597, 1.661, 1.725,
+    1.791, 1.862, 1.952, 2.014, 2.103, 2.153, 2.227, 2.309, 2.368, 2.464, 3.873,
+)
+
+# Below this many real games the measurement is mostly noise, so no
+# rating is shown at all rather than a confident-looking wrong one.
+# (The SIM handles small samples differently -- it shrinks them toward
+# the league average instead of discarding them, see game_engine's
+# CONSISTENCY_SHRINK_GAMES -- because it still has to simulate that
+# player either way, while a display can simply decline to guess.)
+MIN_GAMES_FOR_CONSISTENCY_RATING = 20
+
+# And below this many points per game there is nothing meaningful to
+# rate. The reference distribution above was built from players
+# averaging 8+ points, so anyone under that isn't being compared against
+# his own kind -- and more importantly, "consistent" stops meaning
+# anything for a player who scores 0 or 2 most nights. Without this a
+# 1.2 ppg deep bench player rates 98, the steadiest scorer in the
+# league, which is true arithmetic and nonsense basketball.
+MIN_PPG_FOR_CONSISTENCY_RATING = 8.0
+
+
 @dataclass
 class Player:
     """
@@ -73,6 +122,12 @@ class Player:
     scoring_spread: Optional[float] = None
     scoring_spread_games: int = 0
 
+    # The DISPLAY half of the same measurement: how much his points
+    # bounced WITHOUT minutes taken out. See consistency_rating below
+    # for why the shown rating uses this one while the sim uses
+    # scoring_spread above.
+    scoring_spread_raw: Optional[float] = None
+
     # -- Computed properties: NEVER stored, always calculated ----------
     # A @property lets us call these like plain fields (player.pts, not
     # player.pts()), but under the hood they're just little functions that
@@ -83,6 +138,63 @@ class Player:
     def dreb(self) -> float:
         """Defensive rebounds = total rebounds minus offensive rebounds."""
         return self.reb - self.oreb
+
+    @property
+    def consistency_rating(self) -> Optional[int]:
+        """
+        This player's scoring consistency as a 1-99 rating, the way a
+        basketball game would show it: 99 = the steadiest scorer in the
+        league, 1 = the most erratic. Computed fresh from the measured
+        spread every time, never stored -- same rule as every percentage
+        in this class.
+
+        It means something exact: a rating of 90 says he was steadier
+        than 90% of real NBA rotation players (see the reference table
+        above), so it can be read literally rather than vibed at.
+
+        Returns None, not a number, when there is no honest answer --
+        too few real games, or a season cached before this was measured.
+        Callers should print "--" rather than inventing a value.
+
+        USES scoring_spread_raw, NOT the scoring_spread the sim runs on,
+        and this is deliberate. The sim needs minutes stripped out
+        because it already draws minutes itself, and counting them twice
+        would make players wilder than they really are. But a person
+        WATCHING a player experiences the opposite: someone you cannot
+        predict because you don't know if he'll play 12 minutes or 32
+        genuinely is unpredictable to watch. The rating describes what
+        you see; scoring_spread describes what the sim must add.
+        """
+        spread = self.scoring_spread_raw
+        if (spread is None
+                or self.scoring_spread_games < MIN_GAMES_FOR_CONSISTENCY_RATING
+                or self.pts < MIN_PPG_FOR_CONSISTENCY_RATING):
+            return None
+
+        # Walk the reference table to find where this player's spread
+        # falls, then read off the percentile between its two nearest
+        # entries. (Plain loop + linear interpolation rather than a
+        # library call, so this file keeps needing nothing but Python.)
+        spreads = CONSISTENCY_REFERENCE_SPREADS
+        percentiles = CONSISTENCY_REFERENCE_PERCENTILES
+        if spread <= spreads[0]:
+            percentile = percentiles[0]
+        elif spread >= spreads[-1]:
+            percentile = percentiles[-1]
+        else:
+            percentile = percentiles[-1]
+            for i in range(len(spreads) - 1):
+                low, high = spreads[i], spreads[i + 1]
+                if low <= spread <= high:
+                    # How far between the two table entries this spread
+                    # sits, applied to the gap between their percentiles.
+                    position = (spread - low) / (high - low) if high > low else 0.0
+                    percentile = percentiles[i] + position * (percentiles[i + 1] - percentiles[i])
+                    break
+
+        # A HIGH spread is a BAD rating, hence 99 minus. The 0.98 keeps
+        # the result inside 1-99 rather than reaching 0.
+        return int(round(max(1.0, min(99.0, 99 - 0.98 * percentile))))
 
     @property
     def pts(self) -> float:

@@ -47,6 +47,9 @@ def _consistency_fields(raw_consistency: dict, player_name: str) -> dict:
     return {
         "scoring_spread": entry["spread_rate"],
         "scoring_spread_games": entry["games"],
+        # The display half -- see Player.consistency_rating for why the
+        # shown rating uses the raw spread and the sim uses the other.
+        "scoring_spread_raw": entry["spread_raw"],
     }
 
 
