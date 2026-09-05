@@ -633,16 +633,51 @@ opponents' shooting (see game_engine.py).
      2-pointers overturned into misses, inflating everyone's shooting.
      See `_available_rate_relative`, which now rates per MINUTE so that
      WHO is missing matters and HOW MANY doesn't.
-   - **The remaining known gap is star scoring distributions.** `DISPERSION`
-     is uniform for every player, so a superstar's 60-point night is no
-     likelier, relative to their own average, than a role player's 25.
-     Real basketball almost certainly disagrees. NOT fixable yet, and
-     the reason matters: this project only ever fetches per-game
-     AVERAGES, never game logs, so there is no real distribution to tune
-     a shape against — doing it now would mean guessing, which is the
-     one thing that has never worked here. It needs
-     `playergamelogs` fetched and cached first (a data project), then a
-     tuning project against it.
+   - **PLAYER CONSISTENCY — the biggest remaining gap, and now measured
+     rather than suspected. This is the next thing to build.** `DISPERSION`
+     = 30 is one global constant, so every player is equally streaky
+     relative to their own average. Real players are not, and the gap is
+     large. Checked against real 2023-24 game logs (`playergamelogs`,
+     26,401 rows, ~1 second to fetch — it was assumed unavailable for a
+     while, wrongly):
+
+       big games per season   real    sim   ratio
+         30+                  1106   1130   1.02x   (right)
+         40+                   162    210   1.30x   (too many)
+         50+                    20     28   1.40x   (too many)
+         60+                     7      4   0.57x   (too FEW)
+
+     So the tail is both too fat in the middle and too short at the end:
+     the sim hands out routine 45s while real basketball's genuinely
+     legendary nights are rarer AND more extreme.
+
+     Per player it's worse, and in both directions — real game-to-game
+     standard deviation is a genuine trait the sim flattens:
+
+       player      real avg/sd   sim avg/sd   real high / sim high
+       SGA          30.1/6.9      30.9/11.3      43 / 70
+       Doncic       33.9/8.7      31.5/10.5      73 / 62
+       Brunson      28.7/10.1     25.5/8.7       61 / 49
+       Booker       27.1/10.1     25.2/8.7       62 / 50
+
+     SGA was a metronome in 2023-24 (sd 6.9, never above 43) and the sim
+     makes him the league's most erratic scorer AND gives him a 70-point
+     game. Booker and Brunson really were volatile (sd 10.1, with 62 and
+     61-point nights) and the sim makes them steadier than they were.
+
+     The fix is a per-player CONSISTENCY derived from their real
+     game-to-game variance, replacing the single global DISPERSION for
+     scoring. Plan: (1) fetch and cache real game logs per season, the
+     same shape as every other fetch in data_source.py; (2) derive each
+     player's real spread; (3) make dispersion player-specific; (4)
+     validate against the exact table above — the 30+/40+/50+/60+ counts
+     and the per-player sd — NOT against standings, which cannot see any
+     of this.
+
+     Worth noting this is also the first thing here that will be FELT
+     rather than measured: a steady star staying steady and a streaky
+     one actually erupting is the difference between a season that reads
+     like real basketball and one that reads like an average.
 2. **An offseason bridge + season-picker UI** for the now-30-season
    backtest set (see "Multi-season backtesting" above) — diffing two
    seasons' rosters to show real draft/free-agency movement between
