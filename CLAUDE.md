@@ -362,6 +362,23 @@ opponents' shooting (see game_engine.py).
   `playoffs.py`) — noted for whenever an old season's real postseason
   gets simulated, not just its regular season.
 
+## Individual defensive impact — verified, no work needed
+Checked directly (2023-24): removing Rudy Gobert from Minnesota raises
+opponent FG% from 46.71% to 48.68%, +1.98 percentage points, with team
+blocks falling 4.43 → 3.57 per game. Real DPOY-level rim protection is
+worth roughly 1.5-3 points of opponent FG%, so this is calibrated, not
+just directionally right.
+
+The chain that produces it: `_available_rate_relative` rates each team's
+steal/block generation PER MINUTE among available players, so losing a
+great shot-blocker genuinely lowers the rate (losing an average one
+doesn't); fewer blocks means fewer made 2-pointers overturned into
+misses; opponents shoot better. `SHORTHANDED_PENALTY` adds to it.
+
+Worth knowing this only works because of the steal/block roster-filtering
+fix — before it, a short-handed team's whole defence was miscounted, so
+this test would have measured the bug rather than Gobert.
+
 ## Accuracy tuning (sweep_constants.py)
 - **The problem it found**: every tuned constant in game_engine.py was
   chosen honestly, by testing against real data — but almost all against
