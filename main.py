@@ -16,7 +16,7 @@ import re
 import sys
 from typing import Dict, List, Optional, Tuple
 
-from loader import load_teams, load_team_abbreviations, load_roster_membership, load_league_pace_variation
+from loader import load_teams, load_team_abbreviations, load_roster_membership, load_league_pace_variation, DEFAULT_SEASON
 from models import Player, Team
 from game_engine import simulate_game, compute_league_averages, GameResult, LeagueAverages
 from data_source import fetch_real_standings
@@ -1413,7 +1413,13 @@ def _run_season_averages_browser(conn, teams: Dict[str, Team], team_names: List[
 
 def main() -> None:
     print_welcome()
-    teams = load_teams()
+    # ONE season for the whole run, chosen here and threaded everywhere
+    # below. It used to be defaulted independently in two places
+    # (load_teams' own default and run_season_flow's), which is exactly
+    # the sort of duplicated default that drifts apart -- and is the
+    # single seam a season picker needs when one gets built.
+    season = DEFAULT_SEASON
+    teams = load_teams(season)
     team_names = sorted(teams.keys())  # alphabetical, so it's easy to scan
 
     # Real, league-wide baselines (what's an average defense, an
@@ -1435,7 +1441,7 @@ def main() -> None:
         if choice == "1":
             run_single_game_flow(teams, team_names, league_avg)
         elif choice == "2":
-            run_season_flow(teams, team_names, league_avg, abbrev)
+            run_season_flow(teams, team_names, league_avg, abbrev, season)
         elif choice == "3":
             print("Thanks for playing!")
             break
