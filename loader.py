@@ -31,6 +31,25 @@ def _season_cache_dir(season: str) -> Path:
     return CACHE_DIR / season
 
 
+def _consistency_fields(raw_consistency: dict, player_name: str) -> dict:
+    """
+    The two scoring-consistency fields for one player, ready to hand to
+    Player(**...) -- or an empty dict if this player has no measured
+    spread (too few real games, or a season cached before the file
+    existed), which leaves Player's own defaults in place.
+
+    Kept as its own function purely so the roster-building line in
+    load_teams stays readable.
+    """
+    entry = raw_consistency.get(player_name)
+    if not entry:
+        return {}
+    return {
+        "scoring_spread": entry["spread_rate"],
+        "scoring_spread_games": entry["games"],
+    }
+
+
 def load_teams(season: str = DEFAULT_SEASON) -> Dict[str, Team]:
     """
     Reads cache/<season>/rosters.json, team_defense.json, and
@@ -76,6 +95,18 @@ def load_teams(season: str = DEFAULT_SEASON) -> Dict[str, Team]:
     with open(conference_file) as f:
         raw_conference = json.load(f)["teams"]
 
+    # How streaky each player's real scoring was. Unlike the three files
+    # above this one is OPTIONAL: it was added after every season was
+    # already cached, so a season fetched before it existed simply has
+    # no such file. Missing means "no player has a measured spread,"
+    # which the sim already handles by falling back to the league
+    # average -- not a reason to refuse to load the season at all.
+    raw_consistency = {}
+    consistency_file = season_dir / "player_consistency.json"
+    if consistency_file.exists():
+        with open(consistency_file) as f:
+            raw_consistency = json.load(f)["players"]
+
     teams: Dict[str, Team] = {}
     for team_name, player_dicts in raw["teams"].items():
         # Build the roster for this one team: turn every raw player dict
@@ -84,7 +115,10 @@ def load_teams(season: str = DEFAULT_SEASON) -> Dict[str, Team]:
         # Player(name="X", min=30), instead of us typing every field by
         # hand. This works because data_source.py's FIELD_MAP already
         # guarantees the JSON keys match Player's actual field names.
-        players = [Player(**player_dict) for player_dict in player_dicts]
+        players = [
+            Player(**player_dict, **_consistency_fields(raw_consistency, player_dict["name"]))
+            for player_dict in player_dicts
+        ]
         # Same unpacking trick for the team's own real defensive stats
         # -- data_source.py's DEFENSE_FIELD_MAP guarantees these JSON
         # keys already match Team's opp_* field names.

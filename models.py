@@ -53,6 +53,26 @@ class Player:
     tov: float = 0.0    # turnovers per game
     pf: float = 0.0     # personal fouls per game -- will matter later for foul-out logic
 
+    # -- How STREAKY this player's scoring really was ------------------
+    # Measured from his real game logs (data_source.fetch_player_consistency,
+    # cached per season), not typed in by hand: how far his points swung
+    # from night to night, relative to the swing pure chance alone would
+    # produce, once the games where he simply played more or fewer minutes
+    # are accounted for. 1.0 would mean "as steady as it is physically
+    # possible to be"; real players run about 1.2 to 1.9 on this.
+    #
+    # Optional because not every player has one -- somebody with a single
+    # real game has no measurable swing at all, and older cached seasons
+    # may predate the file. None means "use the league average" (see
+    # game_engine's CONSISTENCY_WEIGHT), never "perfectly consistent".
+    #
+    # scoring_spread_games is how many real games it was measured over,
+    # kept because a 6-game measurement is real but very noisy -- the sim
+    # pulls small samples toward the league average using this count
+    # rather than trusting them equally (CONSISTENCY_SHRINK_GAMES).
+    scoring_spread: Optional[float] = None
+    scoring_spread_games: int = 0
+
     # -- Computed properties: NEVER stored, always calculated ----------
     # A @property lets us call these like plain fields (player.pts, not
     # player.pts()), but under the hood they're just little functions that

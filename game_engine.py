@@ -239,10 +239,21 @@ TOTAL_GAME_MINUTES = 240
 TEAM_ATTEMPTS_DISPERSION = 2000
 
 # How tightly the shot-ATTEMPTS Dirichlet-Multinomial split sticks to
-# each player's real expected share. Higher = tighter (closer to real
-# shares every game); lower = looser (more game-to-game variation in
-# who gets how many shots). Tuned by testing -- see module docstring.
-USAGE_CONCENTRATION = 150
+# each player's real expected share, for a LEAGUE-AVERAGE player --
+# CONSISTENCY_WEIGHT below moves each individual player off this
+# baseline. Higher = tighter (closer to real shares every game); lower
+# = looser (more game-to-game variation in who gets how many shots).
+#
+# Raised 150 -> 500 when per-player consistency was added, because
+# checking it against real game logs showed 150 was simply too loose:
+# at 150 simulated players' game-to-game scoring swung 8% wider than
+# real players' did, and the league produced 219 forty-point games and
+# 32 fifty-point games a season against a real 162 and 20. At 500 the
+# level lands within 2% and the tails at 210 and 25. Verified not to
+# cost standings accuracy across six seasons spanning 1996-97 to
+# 2025-26 (MAE 5.66 -> 5.58, correlation 0.894 -> 0.898, player
+# shooting and scoring bias unchanged).
+USAGE_CONCENTRATION = 500
 
 # How much faster or slower than usual a single game runs -- the one
 # pace multiplier both teams share (see _draw_shared_pace). 0.052 means
@@ -252,6 +263,52 @@ USAGE_CONCENTRATION = 150
 # night swing is the same 5.1%. Not a fitted knob -- a number real
 # basketball hands over directly.
 GAME_PACE_VARIATION = 0.052
+
+# How much of each player's OWN measured streakiness to actually use,
+# instead of treating every player as equally streaky (which is what
+# USAGE_CONCENTRATION alone does -- one number for all 450 players).
+# 0 leaves this file behaving EXACTLY as it did before this existed;
+# 1 gives every player the full spread his real game logs show.
+#
+# It works on shot VOLUME, not shooting percentage, because that is
+# where real streakiness actually lives -- measured directly against
+# 2023-24 real game logs: a player's night-to-night FG% varies only
+# 0.98x as much as pure coin flips already explain (i.e. not at all
+# beyond luck), while his SHOT COUNT varies 1.15x. "He was ice cold
+# tonight" is mostly "he took eight shots tonight." Scoring streakiness
+# and shot-volume streakiness measure as the same underlying trait
+# (correlation +1.00 once each is corrected for how noisily it is
+# measured), so moving this one lever moves the thing we actually want.
+CONSISTENCY_WEIGHT = 12.0
+
+# Why this number is so much larger than 1: it is an exponent on how
+# streaky a player is RELATIVE to the league, and the lever it drives is
+# a weak one. The usage split is only responsible for about a fifth of a
+# player's game-to-game scoring swing -- the rest comes from the shared
+# team shot total, his minutes, and the plain coin-flip luck of whether
+# shots drop, none of which can be made player-specific (real FG% does
+# not vary between players beyond chance, which is the whole finding
+# above). So moving a player's spread by a given amount takes roughly
+# five times more push on this one lever than the naive variance
+# relationship suggests, and the shrinkage brake below deliberately
+# compresses the range first. 12 is what makes the sim's spread of
+# player-to-player streakiness actually match real basketball's
+# (measured ratio 0.95, where 1.00 is exact), not a free knob.
+
+# Small-sample brake. A player's measured streakiness is real but noisy:
+# tested across all 30 cached seasons, a player's spread in one season
+# predicts his spread in the NEXT one at r = 0.43 over 2,585 player-
+# seasons (out of sample -- different teammates, opponents, a summer in
+# between; points-per-game carries at 0.82 for scale, and streakiness
+# carries better for stars, 0.49). Real, but far from perfectly
+# measured, so a 6-game sample must not be trusted like a 70-game one.
+#
+# Each player's value is pulled toward the league average by this many
+# "phantom average games": at 80, a 6-game measurement counts for about
+# 7% of its own value and a full 75-game season for about 48%. The
+# number comes from that same carryover -- a reliability of 0.43 at
+# roughly 60 games implies a brake of about 80 -- not from a guess.
+CONSISTENCY_SHRINK_GAMES = 80
 
 # A SEPARATE, much tighter concentration used only for the MINUTES
 # split -- found by testing that sharing USAGE_CONCENTRATION between
@@ -737,6 +794,14 @@ class LeagueAverages:
     # at ROSTER_AVAILABILITY_WEIGHT. 1.0 = no correction.
     availability_factor: float = 1.0
 
+    # The league-average measured scoring spread -- the reference point
+    # every player's own streakiness is expressed RELATIVE to, and the
+    # fallback for anyone who has no measured value at all. Computed
+    # from the players actually in this simulated league rather than
+    # read off the cache file, so it stays self-consistent even if a
+    # season is loaded with part of its data missing.
+    avg_scoring_spread: float = 0.0
+
     @property
     def ordinary_tov_share(self) -> float:
         """
@@ -1071,6 +1136,16 @@ def compute_league_averages(teams: Dict[str, Team]) -> LeagueAverages:
         # end (2024-25: Bulls fastest, Magic slowest).
 
     n_teams = len(teams)
+    # League-average scoring spread, over players with enough real games
+    # for the measurement to mean anything (a 3-game spread is real but
+    # mostly noise, and letting a few dozen of those set the league
+    # reference point would drag it around). Every player's streakiness
+    # is expressed relative to this, so it only has to be a consistent
+    # yardstick, not a precise population figure.
+    measured = [p.scoring_spread for t in teams.values() for p in t.players
+                if p.scoring_spread and p.scoring_spread_games >= 20]
+    avg_scoring_spread = sum(measured) / len(measured) if measured else 0.0
+
     avg_opp_2pt_pct = total_opp_2pt_m / total_opp_2pt_a if total_opp_2pt_a else 0.5
     avg_opp_3pt_pct = total_opp_3pt_m / total_opp_3pt_a if total_opp_3pt_a else 0.36
     avg_team_stl = total_stl / n_teams if n_teams else 0.0
@@ -1101,6 +1176,7 @@ def compute_league_averages(teams: Dict[str, Team]) -> LeagueAverages:
         # is exactly the target the sim's own volume should hit.
         availability_factor=_roster_availability_factor(
             teams, (sum(t.opp_fga for t in teams.values()) / n_teams) if n_teams else 0.0),
+        avg_scoring_spread=avg_scoring_spread,
         # Same "sum the real totals, then divide" rule as every other
         # percentage here -- never the mean of 30 team percentages.
         avg_team_2pt_pct=total_2pt_m / total_2pt_a if total_2pt_a else 0.0,
@@ -1135,7 +1211,48 @@ def _binomial_draw(n: int, rate: float) -> int:
     return int(_rng.binomial(n, rate))
 
 
-def _dirichlet_multinomial_split(weights: List[float], total: int, concentration: float) -> List[int]:
+def _scoring_concentrations(active_players: List[Player], league_avg: LeagueAverages) -> List[float]:
+    """
+    One usage-split concentration PER PLAYER, instead of the single
+    global USAGE_CONCENTRATION every player used to share -- this is
+    what actually makes a steady scorer steady and a streaky one
+    streaky. Lower concentration = his share of tonight's shots wobbles
+    more; higher = he takes close to his usual number every night.
+
+    Two steps, both spelled out at their constants above:
+
+      1. Pull his measured spread toward the league average, in
+         proportion to how many real games it was measured over
+         (CONSISTENCY_SHRINK_GAMES) -- a 6-game measurement barely
+         moves him, a full season moves him a lot. Anyone with no
+         measurement at all simply IS the league average.
+      2. Turn "how streaky is he compared to an average player" into a
+         concentration. Variance scales as the SQUARE of a spread, so
+         a player 1.5x streakier than average needs 2.25x the variance
+         in his share of the shots, i.e. 1/2.25 of the concentration.
+
+    At CONSISTENCY_WEIGHT = 0 every value returned is exactly
+    USAGE_CONCENTRATION, so the split below behaves precisely as it did
+    before any of this existed.
+    """
+    league = league_avg.avg_scoring_spread
+    if league <= 0 or CONSISTENCY_WEIGHT == 0:
+        return [USAGE_CONCENTRATION] * len(active_players)
+
+    concentrations = []
+    for player in active_players:
+        games = player.scoring_spread_games if player.scoring_spread else 0
+        spread = player.scoring_spread if player.scoring_spread else league
+        # Weighted average of his own measurement and the league
+        # average -- the "phantom games" brake.
+        shrunk = ((games * spread + CONSISTENCY_SHRINK_GAMES * league)
+                  / (games + CONSISTENCY_SHRINK_GAMES))
+        relative = shrunk / league
+        concentrations.append(USAGE_CONCENTRATION / relative ** (2 * CONSISTENCY_WEIGHT))
+    return concentrations
+
+
+def _dirichlet_multinomial_split(weights: List[float], total: int, concentration) -> List[int]:
     """
     Split an integer `total` across len(weights) players, using `weights`
     as each player's real/expected SHARE, but letting that share wobble
@@ -1157,6 +1274,15 @@ def _dirichlet_multinomial_split(weights: List[float], total: int, concentration
     random number, because independent draws made team totals wildly
     unrealistic once ~15 of them got added together -- see the module
     docstring for the full story of why.
+
+    `concentration` is normally ONE number shared by everybody. It can
+    also be a LIST, one value per player, which is how per-player
+    scoring consistency works (see _scoring_concentrations): the same
+    split, but a streaky scorer's share is allowed to wobble further
+    than a steady one's. Either way the team's `total` is still divided
+    exactly -- making one player wobblier moves shots to and from his
+    teammates, it never creates or destroys any, so team totals are
+    untouched by this.
     """
     if total <= 0 or not weights:
         return [0] * len(weights)
@@ -1173,8 +1299,22 @@ def _dirichlet_multinomial_split(weights: List[float], total: int, concentration
     # strictly positive -- this tiny floor guarantees that (for a
     # player with a real 0% share) without meaningfully changing any
     # real player's actual share.
-    alpha = [concentration * s + 1e-6 for s in shares]
-    nudged_shares = _rng.dirichlet(alpha)
+    if isinstance(concentration, (int, float)):
+        alpha = [concentration * s + 1e-6 for s in shares]
+        nudged_shares = _rng.dirichlet(alpha)
+    else:
+        # Per-player concentrations. numpy's dirichlet() only takes one
+        # shared tightness, so the same draw is built by hand from the
+        # Gamma distribution it's made of: a Dirichlet IS a set of Gamma
+        # draws divided by their own total. Giving each player his own
+        # shape AND matching scale keeps his EXPECTED share exactly what
+        # it was (mean = shape x scale = his real share) while letting
+        # the amount it wobbles differ per player. With every value
+        # equal this reduces to precisely the Dirichlet draw above.
+        draws = [_rng.gamma(c * s + 1e-6, 1.0 / c) for s, c in zip(shares, concentration)]
+        drawn_total = sum(draws)
+        nudged_shares = ([d / drawn_total for d in draws] if drawn_total > 0
+                         else [1.0 / len(shares)] * len(shares))
     return _rng.multinomial(total, nudged_shares).tolist()
 
 
@@ -1922,8 +2062,15 @@ def _resolve_team_offense(
         team_target_fga = max(0, round(sum(expected_fga) * possession_factor * shared_pace_draw))
         team_target_fta = max(0, round(sum(expected_fta) * possession_factor * shared_pace_draw))
 
-    assigned_fga = _dirichlet_multinomial_split(expected_fga, team_target_fga, USAGE_CONCENTRATION)
-    assigned_fta = _dirichlet_multinomial_split(expected_fta, team_target_fta, USAGE_CONCENTRATION)
+    # Per-player, not one number for everyone -- this is where a streaky
+    # scorer actually becomes streaky (see _scoring_concentrations).
+    # Free throws get the same treatment as field goals: a big night is
+    # a night a player was heavily involved, and getting to the line is
+    # part of that, not a separate thing that stays flat while his shots
+    # swing.
+    usage_concentrations = _scoring_concentrations(active_players, league_avg)
+    assigned_fga = _dirichlet_multinomial_split(expected_fga, team_target_fga, usage_concentrations)
+    assigned_fta = _dirichlet_multinomial_split(expected_fta, team_target_fta, usage_concentrations)
 
     steal_rate = league_avg.steal_rate_for(defender)
     block_rate = league_avg.block_rate_for(defender)
