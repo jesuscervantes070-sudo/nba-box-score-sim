@@ -591,10 +591,11 @@ MIN_GAMES_FOR_LEAGUE_AVERAGE = 20
 def fetch_player_consistency(df) -> dict:
     """
     How STREAKY each player's real scoring was, game to game -- the raw
-    measurement behind the eventual 1-99 consistency rating, and the
-    thing the sim is currently missing entirely (it has one global
-    DISPERSION constant, so every player is equally streaky relative to
-    their own average).
+    measurement behind the eventual 1-99 consistency rating, and what
+    game_engine's per-player usage split actually runs on (see
+    _scoring_concentrations there). Before this existed one global
+    constant made all 450 players equally streaky relative to their own
+    average.
 
     `df` is the same already-fetched league-wide player game log that
     injuries and roster membership are derived from (see

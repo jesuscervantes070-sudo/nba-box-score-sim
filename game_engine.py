@@ -196,6 +196,14 @@ _rng = np.random.default_rng()
 # frequent outlier games; larger number = tighter around the real
 # average, closer to a plain Poisson draw. See the module docstring
 # above for how this specific value was chosen.
+#
+# WHERE THIS IS ACTUALLY USED, because it is easy to assume otherwise:
+# only _simulate_fouls and the standalone simulate_player_game read it.
+# It does NOT control how streaky a player's SCORING is in a real
+# simulated game -- shot volume comes from _dirichlet_multinomial_split
+# with USAGE_CONCENTRATION / _scoring_concentrations instead. A note in
+# CLAUDE.md claimed otherwise for a long time and sent a round of
+# consistency work at the wrong constant.
 DISPERSION = 30
 
 # A real NBA player is disqualified the moment they reach 6 personal
