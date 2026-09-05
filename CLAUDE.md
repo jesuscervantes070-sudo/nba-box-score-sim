@@ -890,6 +890,28 @@ this test would have measured the bug rather than Gobert.
      their uncapped expectation BY DESIGN, so dividing by that
      expectation made every team read as fouling 2.8% less than normal
      every night. Re-measure it if any of those three change.
+   - **TEAM SCORING IDENTITIES ARE TOO SPREAD OUT — measured, cause NOT
+     found, and explicitly not worth chasing further right now.**
+     Simulated teams differ from each other in scoring far more than
+     real teams do: between-team points-per-game standard deviation is
+     7.15 against a real 4.25 (1.68x). The night-to-night half is fine
+     (14.93 vs a real 12.16, 1.23x, mostly fixed by GAME_PACE_VARIATION).
+     Standings cannot see this at all — wins come from point
+     DIFFERENTIAL, so offense and defense being over-amplified together
+     leaves the differential right while the scoring levels spread out.
+     Same blind spot that hid the pace bug and the double-counts.
+     **Already ruled out: it is not an amplification retune.** Sweeping
+     `DEFENSE_AMPLIFICATION`/`OFFENSE_AMPLIFICATION` down together
+     (1.0/0.5 → 0.75/0.375 → 0.5/0.25) barely moves the spread at all
+     (1.61x → 1.62x → 1.62x) while standings degrade sharply (MAE 5.42 →
+     5.81, correlation .890 → .871). Going to 0.25/0.125 finally reaches
+     1.38x but costs MAE 6.24 and correlation .844 — a bad trade.
+     So the cause is somewhere else and finding it is a real
+     investigation, not a knob. Written down deliberately INSTEAD of
+     being chased: this was found at the end of a long accuracy session,
+     and the honest call was to stop rather than open another
+     multi-step hunt. Pick it up fresh, or leave it — it is a realism
+     nicety, not something that blocks anything.
    - **Assist consistency is real but SEPARATE**, and unbuilt. Assist
      streakiness is measured about as reliably as scoring, but it
      correlates only +0.05 with scoring streakiness — a streaky scorer
