@@ -430,7 +430,30 @@ OFFENSE_AMPLIFICATION = 0.5
 # gain is larger than the entire offense/defense retune produced, which
 # fits the diagnosis -- this restores a real mechanism, where those
 # rebalanced ones that already existed.
-TURNOVER_POSSESSION_WEIGHT = 1.0
+# Turned OFF (1.0 -> 0) once possessions became a conserved resource.
+# This constant's premise -- that a turnover hands the OPPONENT an extra
+# possession -- is the thing PACE_COUPLING_WEIGHT's work showed to be
+# wrong: possessions alternate, so a turnover ends your own possession
+# rather than granting one. The possession arithmetic in
+# _shared_possession_scales now charges turnovers correctly (a team that
+# gives it away takes fewer shots out of the same possessions), so
+# keeping this on stacked a second, backwards effect on top of it.
+#
+# It survived that long because every sweep optimises STANDINGS, which
+# cannot see the problem -- checking the sim against real basketball's
+# own relationships is what found it. In real basketball, turnover-prone
+# teams score noticeably less (correlation of team turnovers with team
+# points: -0.44). At weight 1.0 the sim said +0.11 -- backwards. At 0 it
+# says -0.31, close to real.
+#
+# Kept rather than deleted because the machinery is sound and the
+# sweep harness can revisit it; it is simply the wrong model of a
+# turnover, so it is set to zero.
+#
+# Costs 0.23 games of standings MAE (5.25 -> 5.48 holdout). Taken
+# deliberately: a sim whose turnovers behave backwards is wrong in a way
+# a box score reveals, and win totals cannot.
+TURNOVER_POSSESSION_WEIGHT = 0.0
 
 # Real basketball's two teams ALTERNATE possessions, so both finish a
 # game with essentially the same number of them -- within one or two,
@@ -524,7 +547,17 @@ PACE_COUPLING_WEIGHT = 0.75
 # is available, while simulating rest nights sits the RIGHT player out on
 # the RIGHT night. The second is strictly better, so it takes over half
 # the work and this correction shrinks accordingly.
-ROSTER_AVAILABILITY_WEIGHT = 0.5
+# Kept at the full 1.0, deliberately, against what a standings sweep
+# alone would pick. Standings are nearly flat across this constant
+# (holdout MAE 5.40 at 0.25 vs 5.46 at 1.0 -- noise), but team SCORING is
+# not: at 0.25 a simulated team scores +4.6 points and takes +2.4 shots
+# per game more than a real one, at 1.0 it is +1.4 and +0.2.
+#
+# Same lesson as TURNOVER_POSSESSION_WEIGHT above. Win totals cannot see
+# a bias that lifts both teams equally, so tuning on standings alone will
+# happily trade a visibly wrong box score for six hundredths of a game.
+# Check both, and when they disagree this cheaply, take the basketball.
+ROSTER_AVAILABILITY_WEIGHT = 1.0
 
 # A short-handed team plays worse than the sum of its available parts.
 # Missing players are already absent from the floor, but a team down two
@@ -696,6 +729,34 @@ class LeagueAverages:
     availability_factor: float = 1.0
 
     @property
+    def ordinary_tov_share(self) -> float:
+        """
+        The fraction of a real turnover total that is NOT a steal --
+        travels, offensive fouls, stepping out, bad passes nobody
+        picked off.
+
+        Needed because a player's real turnovers-per-game ALREADY counts
+        every time they got stripped, while this sim then ADDS its own
+        simulated steals on top (see _build_active_player_rows:
+        `tov=base_tov + stolen`). That counted the same giveaways twice
+        and it was measured, not theorised: simulated turnovers ran 2.21
+        per player per game against a real 1.41, +57%, while every other
+        box-score stat sat within 0.15 of real. Scaling the ordinary-
+        turnover draw by this share first means adding the simulated
+        steals back lands on the real total.
+
+        Exactly the same correction the SIXTH DEFENSE fix applies to
+        shooting -- a real per-game number already nets out the defence
+        that really happened, so a sim reapplying that defence has to
+        take it out of the baseline first.
+        """
+        if not self.avg_team_tov:
+            return 1.0
+        share = 1 - (self.avg_team_stl / self.avg_team_tov)
+        # Never let a weird season's data invert the stat.
+        return min(max(share, 0.0), 1.0)
+
+    @property
     def avg_block_rate_per_make(self) -> float:
         """baseline_block_prob is blocks per 2-point ATTEMPT faced, but
         block_rate_for (and _finish_shooting, which applies it) work in
@@ -836,7 +897,11 @@ class LeagueAverages:
         relative = _available_rate_relative(
             defender, "stl", self.team_stl.get(defender.name),
             self.team_min.get(defender.name), self.avg_team_stl)
-        return self.baseline_steal_prob * relative
+        # S/(A+S) -- the chance a possession that WOULD have become a shot
+        # is stolen first -- not S/A. Pairs with _resolve_team_offense's
+        # gross-up; see there.
+        p = self.baseline_steal_prob
+        return (p / (1 + p) if p > -1 else p) * relative
 
     def block_rate_for(self, defender: Team) -> float:
         """Probability one already-made 2-point shot against `defender`
@@ -848,7 +913,11 @@ class LeagueAverages:
         relative = _available_rate_relative(
             defender, "blk", self.team_blk.get(defender.name),
             self.team_min.get(defender.name), self.avg_team_blk)
-        return self.avg_block_rate_per_make * relative
+        # B/(M+B) -- the chance a shot that WOULD have dropped is blocked
+        # instead -- not B/M. Has to pair exactly with _finish_shooting's
+        # gross-up for both makes and blocks to come out real; see there.
+        r = self.avg_block_rate_per_make
+        return (r / (1 + r) if r > -1 else r) * relative
 
 
 
@@ -1331,7 +1400,7 @@ def _simulate_fouls(player: Player, minutes: float) -> tuple:
 
 def _team_split_stat(
     active_players: List[Player], minutes: List[float], stat_name: str,
-    dispersion: float, concentration: float,
+    dispersion: float, concentration: float, scale: float = 1.0,
 ) -> List[int]:
     """
     The general version of the fix originally built just for shot
@@ -1347,9 +1416,13 @@ def _team_split_stat(
     tonight -- so a player who played extra (or fewer) minutes naturally
     gets a bigger (or smaller) expected share, not their flat full-game
     average regardless of tonight's minutes.
+
+    `scale` shrinks (or grows) the whole team total before it's split.
+    Only turnovers use it, to draw just the non-steal share -- see
+    LeagueAverages.ordinary_tov_share for why that's necessary.
     """
     expected = [
-        (getattr(player, stat_name) / player.min if player.min else 0.0) * mins
+        (getattr(player, stat_name) / player.min if player.min else 0.0) * mins * scale
         for player, mins in zip(active_players, minutes)
     ]
     team_target = _negative_binomial_count(sum(expected), dispersion=dispersion)
@@ -1424,9 +1497,19 @@ def _finish_shooting(
     real_2pt_pct = real_2pt_makes / real_2pt_attempts if real_2pt_attempts else 0.0
     # Gross real_2pt_pct back up to an "unblocked" baseline -- see this
     # function's docstring on `avg_block_rate_per_make` for why.
-    unblocked_2pt_pct = (
-        real_2pt_pct / (1 - avg_block_rate_per_make) if avg_block_rate_per_make < 1 else real_2pt_pct
-    )
+    # Gross up to "what this player would shoot if nothing were blocked".
+    # Write A for real 2-point attempts, M for real makes (already net of
+    # blocks) and B for real blocks: the shots that would have dropped
+    # absent blocking is M + B, so the grossed-up rate is (M+B)/A -- the
+    # real rate times (1 + B/M). avg_block_rate_per_make IS B/M.
+    #
+    # This used to divide by (1 - B/M), a different number. FG% still
+    # came out about right, because the gross-up and the block removal
+    # cancelled for the PERCENTAGE -- but the block COUNT ran ~30% above
+    # real, since blocks were drawn from an over-inflated pool of makes.
+    # Paired with block_rate_for returning B/(M+B) instead of B/M, makes
+    # and blocks now both land on their real values, not just their ratio.
+    unblocked_2pt_pct = real_2pt_pct * (1 + avg_block_rate_per_make)
     blended_2pt_pct = unblocked_2pt_pct * two_pt_factor
     blended_3pt_pct = player.fg3_pct * three_pt_factor
 
@@ -1493,7 +1576,8 @@ def simulate_player_game(player: Player) -> Player:
     )
 
 
-def _simulate_period_defaults(active_players: List[Player], period_minutes: int, max_minutes: float) -> tuple:
+def _simulate_period_defaults(active_players: List[Player], period_minutes: int, max_minutes: float,
+                               ordinary_tov_share: float = 1.0) -> tuple:
     """
     The period-agnostic core of _simulate_team_defaults: given an
     already-decided group of active players and how big THIS period's
@@ -1558,12 +1642,17 @@ def _simulate_period_defaults(active_players: List[Player], period_minutes: int,
     # made team totals unrealistic.
     final_reb = _team_split_stat(active_players, minutes, "reb", TEAM_ATTEMPTS_DISPERSION, USAGE_CONCENTRATION)
     final_ast = _team_split_stat(active_players, minutes, "ast", TEAM_ATTEMPTS_DISPERSION, USAGE_CONCENTRATION)
-    final_tov = _team_split_stat(active_players, minutes, "tov", TEAM_ATTEMPTS_DISPERSION, USAGE_CONCENTRATION)
+    # Only the NON-steal share is drawn here; the simulated steals get
+    # added back per player later (_build_active_player_rows), which is
+    # what makes the two halves sum to a real turnover total instead of
+    # double-counting. See LeagueAverages.ordinary_tov_share.
+    final_tov = _team_split_stat(active_players, minutes, "tov", TEAM_ATTEMPTS_DISPERSION,
+                                  USAGE_CONCENTRATION, scale=ordinary_tov_share)
 
     return active_players, minutes, pf_values, final_reb, final_ast, final_tov
 
 
-def _simulate_team_defaults(team: Team) -> tuple:
+def _simulate_team_defaults(team: Team, ordinary_tov_share: float = 1.0) -> tuple:
     """
     Everything about a team's REGULATION game that does NOT depend on
     who they're playing: who's active tonight, their minutes, fouls,
@@ -1580,7 +1669,8 @@ def _simulate_team_defaults(team: Team) -> tuple:
     # bloated roster was diluting every player's share far below their
     # real minutes.
     active_players = _active_roster_for_game(team)
-    return _simulate_period_defaults(active_players, TOTAL_GAME_MINUTES, MAX_MINUTES)
+    return _simulate_period_defaults(active_players, TOTAL_GAME_MINUTES, MAX_MINUTES,
+                                      ordinary_tov_share=ordinary_tov_share)
 
 
 
@@ -1599,10 +1689,20 @@ def _expected_attempt_volume(
     _resolve_team_offense's docstring for why expected_fga is grossed up
     by the league-average steal rate here.
     """
-    steal_gross_up = 1 - league_avg.baseline_steal_prob
+    # Same correction as _finish_shooting's block gross-up, for the same
+    # reason. Write A for a player's real attempts (already net of the
+    # times they got stripped) and S for those steals: the possessions
+    # that would have BECOME attempts is A + S, so the gross-up is
+    # (A+S)/A = 1 + S/A, and baseline_steal_prob IS S/A.
+    #
+    # This used to divide by (1 - S/A). Attempt volume still came out
+    # about right -- gross-up and steal removal cancelled -- but the
+    # STEAL COUNT ran high, drawn from an over-inflated pool of attempts.
+    # Paired with steal_rate_for returning S/(A+S) rather than S/A,
+    # attempts and steals both land on real instead of just their ratio.
+    steal_gross_up = 1 + league_avg.baseline_steal_prob
     expected_fga = [
-        ((p.fga / p.min if p.min else 0.0) * m) / steal_gross_up if steal_gross_up > 0 else
-        (p.fga / p.min if p.min else 0.0) * m
+        (p.fga / p.min if p.min else 0.0) * m * steal_gross_up
         for p, m in zip(active_players, minutes)
     ]
     expected_fta = [(p.fta / p.min if p.min else 0.0) * m for p, m in zip(active_players, minutes)]
@@ -1996,8 +2096,9 @@ def _play_overtime_period(
     home_eligible = _overtime_eligible_roster(home_active, home_players)
     away_eligible = _overtime_eligible_roster(away_active, away_players)
 
-    home_defaults = _simulate_period_defaults(home_eligible, OVERTIME_MINUTES, OVERTIME_MAX_MINUTES)
-    away_defaults = _simulate_period_defaults(away_eligible, OVERTIME_MINUTES, OVERTIME_MAX_MINUTES)
+    tov_share = league_avg.ordinary_tov_share
+    home_defaults = _simulate_period_defaults(home_eligible, OVERTIME_MINUTES, OVERTIME_MAX_MINUTES, tov_share)
+    away_defaults = _simulate_period_defaults(away_eligible, OVERTIME_MINUTES, OVERTIME_MAX_MINUTES, tov_share)
 
     # Same cross-team dependency as regulation (see simulate_game): each
     # side's shooting this period is resolved against the OTHER side's
@@ -2070,8 +2171,9 @@ def simulate_game(home_team: Team, away_team: Team, league_avg: LeagueAverages) 
     computed once (e.g. right after loader.load_teams()) and passed in,
     not recomputed here every game.
     """
-    home_defaults = _simulate_team_defaults(home_team)
-    away_defaults = _simulate_team_defaults(away_team)
+    tov_share = league_avg.ordinary_tov_share
+    home_defaults = _simulate_team_defaults(home_team, tov_share)
+    away_defaults = _simulate_team_defaults(away_team, tov_share)
     home_active, home_minutes = home_defaults[0], home_defaults[1]
     away_active, away_minutes = away_defaults[0], away_defaults[1]
 

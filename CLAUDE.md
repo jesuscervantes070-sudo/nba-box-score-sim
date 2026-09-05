@@ -441,9 +441,15 @@ opponents' shooting (see game_engine.py).
   0 → 0.75, `ROSTER_AVAILABILITY_WEIGHT` 0 → 0.5, `SHORTHANDED_PENALTY`
   0 → 0.15 — all swept TOGETHER at the end, because each real mechanism
   restored takes over work the defensive gain was doing by brute force
-  (it fell 5 → 2 → 1.5 → 1 as each landed). Across all 30 seasons:
-  MAE 8.45 → 5.51, correlation .810 → .883, and league-wide player FG%
-  bias +1.49pp → -0.00pp (closer to zero in 30 of 30 seasons).
+  (it fell 5 → 2 → 1.5 → 1 as each landed). Final constants:
+  `DEFENSE_AMPLIFICATION` 1, `OFFENSE_AMPLIFICATION` 0.5,
+  `TURNOVER_POSSESSION_WEIGHT` 0, `PACE_COUPLING_WEIGHT` 0.75,
+  `ROSTER_AVAILABILITY_WEIGHT` 1.0, `SHORTHANDED_PENALTY` 0.15. Across
+  all 30 seasons: MAE 8.45 → 5.67, correlation .810 → .873, player FG%
+  bias +1.49pp → -0.00pp, and every counting stat (reb/ast/stl/blk/tov/
+  pf) within 0.15 of real. Standings sat as low as 5.31 at one point --
+  the ~0.35 difference was given up DELIBERATELY, twice, to fix box
+  scores (see the standings-vs-realism entry below).
 - **Be honest that the last round was a TRADE, not a clean win.** Fixing
   the steal/block bug and simulating every real absence moved standings
   slightly the WRONG way (MAE 5.31 → 5.51, correlation .898 → .883)
@@ -474,6 +480,35 @@ opponents' shooting (see game_engine.py).
   removing a bug costs accuracy, the bug was probably standing in for a
   real effect, and the fix is to model that effect honestly rather than
   keep the bug.
+- **THE most important lesson of this whole effort: sweeping on
+  standings quietly trades away box-score realism.** Win totals are
+  structurally blind to any bias that moves BOTH teams equally, so a
+  sweep will happily accept a visibly wrong box score for a few
+  hundredths of a game. It happened three separate times:
+  `ROSTER_AVAILABILITY_WEIGHT` (a standings sweep picked 0.25, which
+  scores teams +4.6 points per game too high, over 1.0 at +1.4 -- for
+  0.06 games of MAE); `TURNOVER_POSSESSION_WEIGHT` (kept a setting where
+  turnover-prone teams SCORED MORE, the opposite of real basketball);
+  and the FG% bug, which survived because it inflated both teams. The
+  fix is not a cleverer sweep -- it is checking BOTH every time, and
+  preferring the basketball when they disagree cheaply.
+- **Check the sim against real basketball's RELATIONSHIPS, not just
+  real averages.** Comparing average-vs-average says whether the level
+  is right; it cannot see a mechanism pointing the wrong way. Correlating
+  team stats against each other and comparing that to the real
+  correlation is what caught the turnover double-count: real teams that
+  turn it over score notably less (-0.44) and the sim had essentially no
+  relationship (-0.04).
+- **Three double-counting bugs of one shape, all found this way.** A
+  player's real per-game average ALREADY nets out the defence that really
+  happened, so a sim that re-applies that defence has to remove it from
+  the baseline first -- and the code was using `/(1-x)` where the algebra
+  gives `x(1+x)`, which keeps RATIOS right while inflating COUNTS.
+  Measured: turnovers ran +57% (2.21 vs 1.41 real, because simulated
+  steals were added on top of a turnover average that already contained
+  them), blocks +31%, steals +13%. All three now land within 0.05 of
+  real. This is the same family as the SIXTH DEFENSE fix; when adding any
+  new defensive effect, check whether the real stat already contains it.
 - **The residual diagnostic is how all three mechanisms were found**, and
   it's the tool to reuse before chasing anything else: correlate each
   team's real stats against what the sim still gets wrong, and go after
