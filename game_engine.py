@@ -272,6 +272,46 @@ USAGE_CONCENTRATION = 500
 # basketball hands over directly.
 GAME_PACE_VARIATION = 0.052
 
+# How strongly a team's free throws follow the OPPONENT'S fouls. 0 leaves
+# this file behaving exactly as it did before, with free throws drawn
+# purely from each player's own real rate and connected to nothing.
+#
+# They should be connected, because they are two halves of one event: in
+# real 2023-24 games a team's free-throw attempts correlate +0.80 with
+# the fouls the other team committed. The sim was already simulating
+# fouls per player (_simulate_fouls) and never used them for anything
+# except fouling out.
+#
+# This is why simulated free throws barely moved: real free-throw
+# attempts swing 32% game to game (mean 21.7, sd 7.00) and the sim
+# managed about 16%, because the only randomness they carried was the
+# usage split and the shared pace draw. The missing variation was not a
+# missing random number -- it was a missing link to a number the sim was
+# already generating.
+FOUL_FREE_THROW_WEIGHT = 1.0
+
+# What fraction of a possession one free-throw attempt uses up -- the
+# 0.44 in the standard possession estimate this file already relies on
+# everywhere else (FGA + 0.44*FTA + TOV - OREB). Named here because it
+# now does real work rather than only appearing inside that formula: it
+# is what makes extra free throws REPLACE shots from the floor instead
+# of arriving as free extra offence.
+FREE_THROW_POSSESSION_COST = 0.44
+
+# What fraction of their UNCAPPED expected fouls simulated players
+# actually commit. It is below 1 on purpose and by design: the hard
+# 6-foul limit and FOUL_OUT_LEAK_PROBABILITY both hold the drawn total
+# under the raw expectation, which is the whole point of them.
+#
+# It matters here because _foul_pressure divides real fouls by that
+# uncapped expectation. Without correcting for this, every team looks
+# like it fouled 2.8% LESS than expected every single night, and the
+# free throws hanging off it come in 3% low league-wide (measured:
+# 21.32 -> 20.68 against a real 21.72). Measured over 1200 simulated
+# team-games; re-measure if DISPERSION, FOUL_OUT_LIMIT or
+# FOUL_OUT_LEAK_PROBABILITY ever change.
+CAPPED_FOUL_SHARE = 0.972
+
 # How much of each player's OWN measured streakiness to actually use,
 # instead of treating every player as equally streaky (which is what
 # USAGE_CONCENTRATION alone does -- one number for all 450 players).
@@ -1967,6 +2007,30 @@ def _coupling_volume(
     return (sum(expected_fga) + 0.44 * sum(expected_fta)) * factor
 
 
+def _foul_pressure(active_players: List[Player], minutes: List[float],
+                   pf_values: List[int]) -> float:
+    """
+    How foul-happy this team's night actually was, as a multiple of what
+    was expected of it: 1.0 means "exactly the fouls these players
+    normally commit in these minutes," 1.3 means a foul-plagued night.
+
+    Compared against its OWN expectation rather than a league constant,
+    so it is self-normalising -- a team of habitual foulers isn't
+    permanently flagged as having a rough night, only a team fouling
+    more than ITSELF usually does. The expectation is built exactly the
+    way _simulate_fouls builds it (each player's real fouls per minute
+    times the minutes he actually played), so the two cannot drift apart.
+    """
+    expected = sum((p.pf / p.min if p.min else 0.0) * m
+                   for p, m in zip(active_players, minutes))
+    if expected <= 0:
+        return 1.0
+    # Divided by CAPPED_FOUL_SHARE so an ordinary night reads as exactly
+    # 1.0 rather than 0.97 -- see that constant for why the raw
+    # expectation is systematically higher than what actually gets drawn.
+    return sum(pf_values) / (expected * CAPPED_FOUL_SHARE)
+
+
 def _draw_shared_pace(league_avg: LeagueAverages) -> float:
     """
     One multiplier for how fast THIS game runs, drawn once and handed to
@@ -2006,7 +2070,7 @@ def _draw_shared_pace(league_avg: LeagueAverages) -> float:
 def _resolve_team_offense(
     active_players: List[Player], minutes: List[float], attacker: Team, defender: Team,
     league_avg: LeagueAverages, shared_pace_draw: float = None,
-    volume_scale: float = 1.0,
+    volume_scale: float = 1.0, opponent_foul_pressure: float = 1.0,
 ) -> tuple:
     """
     Resolves one team's shooting for the game AGAINST a specific
@@ -2039,6 +2103,29 @@ def _resolve_team_offense(
     reproduce real attempt volume instead of double-subtracting steals.
     """
     expected_fga, expected_fta = _expected_attempt_volume(active_players, minutes, league_avg)
+
+    # You get to the line because THEY fouled you -- see
+    # FOUL_FREE_THROW_WEIGHT. Uses the OPPONENT's foul pressure, already
+    # simulated by the time this runs, which is what ties the two teams'
+    # free throws together over one game the way real officiating does.
+    # Exactly 1.0 at weight 0, leaving the draw below untouched.
+    foul_factor = max(1 + FOUL_FREE_THROW_WEIGHT * (opponent_foul_pressure - 1), 0.0)
+    extra_fta = sum(expected_fta) * (foul_factor - 1)
+    expected_fta = [fta * foul_factor for fta in expected_fta]
+
+    # ...and those extra trips to the line have to come from somewhere.
+    # A possession spent shooting free throws is a possession NOT spent
+    # taking a shot from the floor, which is why the standard possession
+    # estimate this file already uses counts a trip to the line as 0.44
+    # of one (FGA + 0.44*FTA + TOV - OREB). Without this the sim had
+    # free throws and field goals RISING TOGETHER (+0.31) where real
+    # teams trade one for the other (-0.24) -- the same "everything must
+    # add up" rule the possession coupling exists to enforce, applied to
+    # the one event that was still being added for free.
+    shot_total = sum(expected_fga)
+    if shot_total > 0 and extra_fta:
+        displaced = max(1 - (FREE_THROW_POSSESSION_COST * extra_fta) / shot_total, 0.0)
+        expected_fga = [fga * displaced for fga in expected_fga]
 
     # Extra (or fewer) possessions this team gets from how loose the
     # OPPONENT is with the ball -- see TURNOVER_POSSESSION_WEIGHT. Applied
@@ -2379,10 +2466,17 @@ def simulate_game(home_team: Team, away_team: Team, league_avg: LeagueAverages) 
     # The game's pace randomness, drawn ONCE and handed to both -- a fast
     # night is fast for both sides.
     shared_pace = _draw_shared_pace(league_avg)
+    # How many fouls each side actually committed tonight, relative to
+    # its own usual -- handed to the OTHER team, whose free throws it
+    # earns. See FOUL_FREE_THROW_WEIGHT.
+    home_foul_pressure = _foul_pressure(home_active, home_minutes, home_defaults[2])
+    away_foul_pressure = _foul_pressure(away_active, away_minutes, away_defaults[2])
     home_shot_stats, away_defense_credit = _resolve_team_offense(
-        home_active, home_minutes, home_team, away_team, league_avg, shared_pace, home_scale)
+        home_active, home_minutes, home_team, away_team, league_avg, shared_pace, home_scale,
+        opponent_foul_pressure=away_foul_pressure)
     away_shot_stats, home_defense_credit = _resolve_team_offense(
-        away_active, away_minutes, away_team, home_team, league_avg, shared_pace, away_scale)
+        away_active, away_minutes, away_team, home_team, league_avg, shared_pace, away_scale,
+        opponent_foul_pressure=home_foul_pressure)
 
     home_players = _assemble_team_players(
         home_team, *home_defaults, shot_stats=home_shot_stats, credited_defense=home_defense_credit,
