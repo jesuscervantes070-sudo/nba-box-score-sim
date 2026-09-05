@@ -27,6 +27,7 @@ Usage:
 """
 import argparse
 import json
+import math
 import time
 from pathlib import Path
 
@@ -77,6 +78,10 @@ def _injuries_cache_path(season: str) -> Path:
 
 def _roster_membership_cache_path(season: str) -> Path:
     return _season_cache_dir(season) / "roster_membership.json"
+
+
+def _player_consistency_cache_path(season: str) -> Path:
+    return _season_cache_dir(season) / "player_consistency.json"
 
 # Maps our field names -> the NBA stats API's "Opponent" column names.
 # These are real per-game stats about what a team's REAL OPPONENTS did
@@ -559,21 +564,146 @@ def _count_traded_players(membership: dict) -> int:
     return sum(1 for teams in teams_by_player.values() if len(teams) > 1)
 
 
+# A game a player suited up for but barely appeared in (MIN rounds to 0 in
+# this endpoint -- 118 such rows in 2023-24) isn't evidence about how
+# streaky a scorer they are, it's a garbage-time cameo. Dropped for the
+# same reason db.py refuses to store 0-minute rows: "per game played"
+# means games actually played.
+MIN_PLAYED_MINUTES = 1
+
+# A standard deviation needs at least two numbers to exist at all. Below
+# that there's simply nothing to measure -- those players are left out of
+# the file entirely, and whatever consumes it falls back to the league
+# average stored alongside. Note this is NOT a "trustworthy sample"
+# threshold: a 3-game spread is real but very noisy, which is why every
+# entry also carries its own `games` count, so a consumer can weight a
+# 70-game measurement more heavily than a 3-game one.
+MIN_GAMES_FOR_SPREAD = 2
+
+# Players used to compute the LEAGUE-WIDE averages (the fallback value,
+# and the target any future shrinkage pulls small samples toward). Set
+# well above MIN_GAMES_FOR_SPREAD on purpose: the league average should
+# describe a normal NBA workload, not be dragged around by the noise of
+# 40 players with four games each.
+MIN_GAMES_FOR_LEAGUE_AVERAGE = 20
+
+
+def fetch_player_consistency(df) -> dict:
+    """
+    How STREAKY each player's real scoring was, game to game -- the raw
+    measurement behind the eventual 1-99 consistency rating, and the
+    thing the sim is currently missing entirely (it has one global
+    DISPERSION constant, so every player is equally streaky relative to
+    their own average).
+
+    `df` is the same already-fetched league-wide player game log that
+    injuries and roster membership are derived from (see
+    _fetch_normalized_game_log) -- every player's every game is already
+    sitting in it, so this costs no extra API call at all.
+
+    TWO numbers per player, because they mean different things:
+
+      spread_raw   how much their POINTS bounced, full stop.
+      spread_rate  how much their points bounced once the games where
+                   they simply played more or fewer MINUTES are
+                   accounted for -- i.e. streakiness at a fixed workload.
+
+    Both are expressed relative to the bounce PURE CHANCE alone would
+    produce, so they can be compared between a 30-point scorer and a
+    10-point one. For counting events like made shots, chance alone
+    gives a standard deviation of about sqrt(average) -- so a value of
+    1.0 means "as steady as it is physically possible to be, all the
+    variation is coin flips" and 2.0 means "twice as bouncy as luck can
+    explain, something real is going on." Real players run about
+    1.2 to 2.5 on spread_raw.
+
+    WHICH ONE THE SIM SHOULD EAT: spread_rate. The sim already draws
+    every player's minutes per game (game_engine's Dirichlet-Multinomial
+    split of the team's 240), and measured against 2023-24 its minute
+    swings are already slightly WIDER than real ones (sd 6.19 vs 5.39).
+    Feeding it spread_raw would apply minute-wobble twice -- the same
+    double-counting family as the three box-score bugs already fixed
+    here. It genuinely changes who counts as streaky: GG Jackson had
+    the single highest spread_raw in 2023-24 (2.54) purely because a
+    rookie's playing time swung from 10 minutes to 35, and is ordinary
+    at 1.56 once that's removed, while Jordan Clarkson played steady
+    minutes and stays streaky either way (2.16 -> 1.88).
+
+    spread_raw is kept anyway because it's the honest number for a
+    DISPLAYED rating: a player you can't predict because you don't know
+    if he'll play 12 minutes or 32 really is unpredictable to watch.
+    Same fetch, same rows, so storing both costs nothing.
+
+    A traded player's games are pooled across both of his real teams on
+    purpose -- how streaky a scorer someone is travels with the player,
+    unlike the absence and roster-membership data above, which is
+    genuinely per-team.
+    """
+    played = df[df["MIN"] >= MIN_PLAYED_MINUTES]
+
+    players = {}
+    for name, games in played.groupby("PLAYER_NAME"):
+        pts, mins = games["PTS"], games["MIN"]
+        # A player who never scored has no scoring spread to describe,
+        # and dividing by sqrt(0) below would blow up anyway.
+        if len(games) < MIN_GAMES_FOR_SPREAD or pts.sum() <= 0:
+            continue
+
+        # The bounce luck alone would produce, used to put every player
+        # on the same scale regardless of how much they score.
+        chance = math.sqrt(pts.mean())
+
+        # Points predicted by MINUTES alone: this player's own season
+        # points-per-minute, times the minutes he actually played that
+        # night. Whatever is left over (`residual`) is the part minutes
+        # can't explain -- a genuinely hot or cold shooting night.
+        rate = pts.sum() / mins.sum()
+        residual = pts - rate * mins
+
+        players[name] = {
+            "games": int(len(games)),
+            "ppg": round(float(pts.mean()), 3),
+            "mpg": round(float(mins.mean()), 3),
+            "spread_raw": round(float(pts.std()) / chance, 4),
+            "spread_rate": round(float(residual.std()) / chance, 4),
+        }
+
+    # The fallback for anyone not in the file (too few games, no points,
+    # a rookie in a season this wasn't measured for), and the anchor any
+    # future small-sample shrinkage pulls toward.
+    regulars = [p for p in players.values() if p["games"] >= MIN_GAMES_FOR_LEAGUE_AVERAGE]
+    league = {
+        "players_counted": len(regulars),
+        "spread_raw": round(sum(p["spread_raw"] for p in regulars) / len(regulars), 4),
+        "spread_rate": round(sum(p["spread_rate"] for p in regulars) / len(regulars), 4),
+    }
+    return {"league": league, "players": players}
+
+
 def build_and_cache_player_history(season: str = "2025-26", force: bool = False) -> None:
     """
-    Builds BOTH cache/injuries.json (real absence stints) and
+    Builds ALL THREE of cache/injuries.json (real absence stints),
     cache/roster_membership.json (real per-team windows, capturing
-    in-season trades) from ONE shared league-wide game log fetch --
-    they're both derived from literally the same rows, so there's no
-    reason to hit the API for it twice.
+    in-season trades) and cache/player_consistency.json (how streaky
+    each player's real scoring was) from ONE shared league-wide game
+    log fetch -- they're all derived from literally the same rows, so
+    there's no reason to hit the API for it three times.
+
+    Each file is written only if it's actually missing (or --refresh is
+    passed), so adding a new one later backfills just that file across
+    already-cached seasons instead of silently rewriting the other two.
     """
     injuries_path = _injuries_cache_path(season)
     membership_path = _roster_membership_cache_path(season)
+    consistency_path = _player_consistency_cache_path(season)
     roster_path = _roster_cache_path(season)
     schedule_path = _schedule_cache_path(season)
 
-    if injuries_path.exists() and membership_path.exists() and not force:
-        print(f"Injuries + roster-membership caches already exist. Use --refresh to force an update.")
+    need_injuries = force or not injuries_path.exists()
+    need_membership = force or not membership_path.exists()
+    need_consistency = force or not consistency_path.exists()
+    if not (need_injuries or need_membership or need_consistency):
+        print("Injuries + roster-membership + consistency caches already exist. Use --refresh to force an update.")
         return
 
     if not roster_path.exists() or not schedule_path.exists():
@@ -588,21 +718,33 @@ def build_and_cache_player_history(season: str = "2025-26", force: bool = False)
     print(f"Fetching {season} league-wide player game log (shared by injuries + roster history)...")
     df = _fetch_normalized_game_log(season)
 
-    print("Computing real per-player absence stints...")
-    absences = fetch_player_absence_stints(df, rosters, schedule_games)
-    with open(injuries_path, "w") as f:
-        json.dump({"season": season, "players": absences}, f, indent=2)
-    with_absences = sum(1 for a in absences.values() if a["stints"])
-    print(f"Cached real absence data for {len(absences)} players "
-          f"({with_absences} had at least one real absence) -> {injuries_path}")
+    if need_injuries:
+        print("Computing real per-player absence stints...")
+        absences = fetch_player_absence_stints(df, rosters, schedule_games)
+        with open(injuries_path, "w") as f:
+            json.dump({"season": season, "players": absences}, f, indent=2)
+        with_absences = sum(1 for a in absences.values() if a["stints"])
+        print(f"Cached real absence data for {len(absences)} players "
+              f"({with_absences} had at least one real absence) -> {injuries_path}")
 
-    print("Computing real per-team roster membership...")
-    membership = fetch_roster_membership(df, rosters, schedule_games)
-    with open(membership_path, "w") as f:
-        json.dump({"season": season, "teams": membership}, f, indent=2)
-    traded = _count_traded_players(membership)
-    print(f"Cached roster membership for {len(membership)} teams "
-          f"({traded} players appeared on 2+ teams -- real in-season trades) -> {membership_path}")
+    if need_membership:
+        print("Computing real per-team roster membership...")
+        membership = fetch_roster_membership(df, rosters, schedule_games)
+        with open(membership_path, "w") as f:
+            json.dump({"season": season, "teams": membership}, f, indent=2)
+        traded = _count_traded_players(membership)
+        print(f"Cached roster membership for {len(membership)} teams "
+              f"({traded} players appeared on 2+ teams -- real in-season trades) -> {membership_path}")
+
+    if need_consistency:
+        print("Computing real per-player scoring consistency...")
+        consistency = fetch_player_consistency(df)
+        with open(consistency_path, "w") as f:
+            json.dump({"season": season, **consistency}, f, indent=2)
+        league = consistency["league"]
+        print(f"Cached scoring consistency for {len(consistency['players'])} players "
+              f"(league average spread: {league['spread_raw']:.2f} raw, "
+              f"{league['spread_rate']:.2f} minutes-adjusted) -> {consistency_path}")
 
 
 def fetch_schedule(season: str):
