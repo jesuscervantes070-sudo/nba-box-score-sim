@@ -181,7 +181,7 @@ average defense still correctly pushes below/above them. The STL/BLK
 counting stats credited to the defense still use the FULL rate,
 unchanged, so every team's own box score still looks realistic.
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, List, Tuple
 
 import numpy as np
@@ -282,13 +282,95 @@ ROTATION_WEIGHT_EXPONENT = 8
 # correlation from 0.55 to 0.87 -- but that sweep was run BEFORE the
 # SIXTH DEFENSE fix (the block/steal double-counting bug below), which
 # had been quietly doing some of this constant's job. Re-swept after
-# that fix: 5 is the new best fit (error ~6.3 -> ~7.8 games on the
+# that fix: 5 was the best fit (error ~6.3 -> ~7.8 games on the
 # corrected baseline, correlation 0.85) -- worse than the old number
 # LOOKED, but that old number was partly measuring a bug, not real
-# accuracy. Going higher (7, 8, 10) kept nudging correlation up but,
-# same as before, started spreading simulated records wider than real
-# ones actually go, which made the error creep back up.
-DEFENSE_AMPLIFICATION = 5
+# accuracy.
+#
+# Then lowered 5 -> 2, by sweep_constants.py across all 30 backtested
+# seasons instead of just 2025-26 (which is all either sweep above ever
+# saw). Every single-season sweep had missed a bias that only shows up
+# league-history-wide: at 5 the sim spread win totals ~37% WIDER than
+# real basketball does, in all 30 seasons, with no exception in either
+# direction. Correlation is blind to that -- multiplying every team's
+# distance from .500 by a constant leaves it mathematically unchanged --
+# so a sweep watching correlation and per-season error could rank all 30
+# teams nearly right and still miss every win total badly, which is
+# exactly what was happening.
+#
+# At 2 (30 seasons, 20 train / 10 holdout, fit never shown the holdout):
+# holdout win-total error 8.25 -> 6.17 games, spread ratio 1.374 -> 0.940
+# (1.0 = real), and correlation went UP, .812 -> .823. Train and holdout
+# curves both bottom at 2 independently, which is what rules out this
+# being fit to the past 30 seasons' quirks. Player FG% bias is flat
+# across every value tried (+1.31 to +1.36), so this constant is not
+# what drives that separate, still-open problem.
+#
+# Landing slightly NARROWER than real spread (0.940, not 1.000) is
+# correct, not a miss: when the ranking is imperfect, shrinking
+# predictions toward the mean beats matching the real spread exactly.
+# The value that does hit ratio 1.0 (~2.3) measurably scores worse.
+DEFENSE_AMPLIFICATION = 2
+
+# The OFFENSIVE mirror of DEFENSE_AMPLIFICATION: how much a team's own
+# real shooting quality gets exaggerated away from league average, the
+# same way the opponent's real defense already is.
+#
+# 0 means "no extra amplification" -- a player simply shoots their own
+# real percentage, which is this file's behavior for its entire history
+# before this constant existed. It is deliberately the default so the
+# machinery below is provably inert until a swept value turns it on.
+#
+# Why it needs to exist at all: fixing DEFENSE_AMPLIFICATION above
+# uncovered a second, opposite bias that the over-spread had been hiding.
+# Measured across 29 seasons, correlating each team's real offensive
+# quality with the sim's win error:
+#
+#   DEFENSE_AMPLIFICATION   corr(defense, error)   corr(offense, error)
+#            5                    +0.657                 -0.006
+#            3                    +0.334                 -0.117
+#            2                    -0.005                 -0.221
+#
+# At 5 the offense number looks like a clean zero -- but that is the
+# over-spread masking it, not offense being modeled right. Lowering the
+# defensive gain drives the defensive bias to essentially perfect
+# (-0.005) and leaves a real offensive one behind (-0.221): teams with
+# genuinely good real offenses keep getting UNDER-predicted.
+#
+# The cause is a plain asymmetry in how a simulated matchup is built. A
+# team's own offense enters at its literal real strength, while the
+# opponent's defense enters amplified -- so defense decides more of who
+# wins than it should, no matter what the defensive gain is set to. The
+# FIFTH DEFENSE fix's reasoning (a real but modest signal gets swamped by
+# this sim's own necessary per-game randomness before it can accumulate
+# over 82 games) applies just as much to offense; it had simply only ever
+# been applied to one side of the ball.
+#
+# Tuned to 0.5 by sweeping it JOINTLY with DEFENSE_AMPLIFICATION (29
+# combinations, 30 seasons, same train/holdout split). Jointly matters:
+# the two knobs trade against each other, because adding offensive gain
+# widens the simulated win spread and so pulls the best defensive gain
+# down with it. Tuning one and then the other finds whatever the first
+# pass happened to leave behind, not the best pair.
+#
+# What 0.5 buys, all on the 10 holdout seasons the fit never saw:
+#   - win-total error 6.17 -> 6.07 games
+#   - correlation with real standings .825 -> .842
+#   - the offensive bias above, -0.221, essentially to zero (-0.003),
+#     while the defensive one stays near zero too (+0.058); total
+#     structural bias 0.666 -> 0.061 against the pre-tuning engine
+#   - player FG% bias unmoved (+1.80 -> +1.78), so this buys standings
+#     accuracy without paying for it in stat lines
+#
+# Worth being clear about what this constant is NOT. Its win-total gain
+# alone is small -- the bulk of the accuracy improvement came from
+# DEFENSE_AMPLIFICATION. What it genuinely fixes is RANKING: correlation
+# rose with offensive gain at every defensive gain tried (1.5, 2, 2.5, 3)
+# on the holdout seasons, which is why it's believed to be a real effect
+# rather than the fit chasing the training seasons' quirks. Going higher
+# overshoots and inverts the bias it exists to remove: at 1.0 the
+# offensive correlation flips from -0.221 clean past zero to +0.140.
+OFFENSE_AMPLIFICATION = 0.5
 
 # A real NBA game that's still tied after regulation doesn't end -- it
 # plays a 5-minute overtime period (5 players x 5 minutes = 25 team-
@@ -321,6 +403,24 @@ class LeagueAverages:
     # shot attempt faced, blocks per 2-point attempt faced), not guessed.
     baseline_steal_prob: float
     baseline_block_prob: float
+
+    # Each team's own real 2PT/3PT shooting percentage, and the league's,
+    # for OFFENSE_AMPLIFICATION (see the offense factors below). Stored
+    # per team NAME, computed once here, rather than re-summed from a
+    # Team's players on every simulated game -- for speed, but mainly for
+    # correctness: by the time a Team reaches simulate_game its `players`
+    # list has usually been filtered down to who's actually available
+    # that night (injuries in season.py, trade windows in
+    # transactions.py). Recomputing from that filtered list would let a
+    # team's season-long offensive IDENTITY dip every time someone sits,
+    # double-counting an absence that the active-roster draw has already
+    # accounted for by removing that player's production outright. This
+    # matches how the defensive factors behave: they read Team.opp_*,
+    # real stored season fields that roster filtering never touches.
+    team_2pt_pct: Dict[str, float] = field(default_factory=dict)
+    team_3pt_pct: Dict[str, float] = field(default_factory=dict)
+    avg_team_2pt_pct: float = 0.0
+    avg_team_3pt_pct: float = 0.0
 
     @property
     def avg_block_rate_per_make(self) -> float:
@@ -357,6 +457,38 @@ class LeagueAverages:
         real_ratio = defender.opp_fg3_pct / self.avg_opp_3pt_pct if self.avg_opp_3pt_pct else 1.0
         return 1 + DEFENSE_AMPLIFICATION * (real_ratio - 1)
 
+    def two_pt_offense_factor(self, attacker: Team) -> float:
+        """>1 means `attacker` is a BETTER-than-league-average 2-point
+        shooting team, so its players shoot above their own real
+        percentages; <1 means worse. The exact mirror of
+        two_pt_defense_factor, amplified by OFFENSE_AMPLIFICATION
+        instead -- see that constant for the measured bias this exists
+        to correct.
+
+        Returns exactly 1.0 (a no-op) when OFFENSE_AMPLIFICATION is 0,
+        which is its default, and also whenever this team's real
+        shooting is unknown -- a team absent from team_2pt_pct can only
+        mean it wasn't in the roster set compute_league_averages was
+        built from, and inventing an offensive rating for it would be
+        worse than leaving it at league-average."""
+        if not OFFENSE_AMPLIFICATION or not self.avg_team_2pt_pct:
+            return 1.0
+        team_pct = self.team_2pt_pct.get(attacker.name)
+        if not team_pct:
+            return 1.0
+        real_ratio = team_pct / self.avg_team_2pt_pct
+        return 1 + OFFENSE_AMPLIFICATION * (real_ratio - 1)
+
+    def three_pt_offense_factor(self, attacker: Team) -> float:
+        """Same idea as two_pt_offense_factor, for 3-point shooting."""
+        if not OFFENSE_AMPLIFICATION or not self.avg_team_3pt_pct:
+            return 1.0
+        team_pct = self.team_3pt_pct.get(attacker.name)
+        if not team_pct:
+            return 1.0
+        real_ratio = team_pct / self.avg_team_3pt_pct
+        return 1 + OFFENSE_AMPLIFICATION * (real_ratio - 1)
+
     def steal_rate_for(self, defender: Team) -> float:
         """Probability one shot attempt against `defender` gets stolen
         before it happens, scaled by how much better/worse `defender`'s
@@ -392,6 +524,12 @@ def compute_league_averages(teams: Dict[str, Team]) -> LeagueAverages:
     total_opp_2pt_m = total_opp_2pt_a = 0.0
     total_opp_3pt_m = total_opp_3pt_a = 0.0
     total_stl = total_blk = total_fga = total_2pt_fga = 0.0
+    # Each team's OWN real shooting, for the offensive factors -- see
+    # LeagueAverages.team_2pt_pct for why these are precomputed here
+    # rather than read off a Team at simulate_game time.
+    team_2pt_pct: Dict[str, float] = {}
+    team_3pt_pct: Dict[str, float] = {}
+    total_2pt_m = total_2pt_a = total_3pt_m = total_3pt_a = 0.0
 
     for team in teams.values():
         total_opp_2pt_m += team.opp_fgm - team.opp_fg3m
@@ -408,6 +546,26 @@ def compute_league_averages(teams: Dict[str, Team]) -> LeagueAverages:
         total_fga += team_fga
         total_2pt_fga += team_fga - team_fg3a
 
+        # A team's own real shooting, summed from its real players --
+        # no new fetch needed, because a team's offense simply IS its
+        # players' real numbers (unlike its defense, which real per-
+        # player stats don't describe at all, hence Team.opp_*).
+        # Summing per-game averages across a whole roster overstates
+        # any one game's raw volume, but these are only ever read as a
+        # PERCENTAGE, where it's exactly the attempt-weighted average
+        # this project uses everywhere else.
+        team_fgm = sum(p.fgm for p in team.players)
+        team_fg3m = sum(p.fg3m for p in team.players)
+        team_2pt_m, team_2pt_a = team_fgm - team_fg3m, team_fga - team_fg3a
+        if team_2pt_a:
+            team_2pt_pct[team.name] = team_2pt_m / team_2pt_a
+        if team_fg3a:
+            team_3pt_pct[team.name] = team_fg3m / team_fg3a
+        total_2pt_m += team_2pt_m
+        total_2pt_a += team_2pt_a
+        total_3pt_m += team_fg3m
+        total_3pt_a += team_fg3a
+
     n_teams = len(teams)
     avg_opp_2pt_pct = total_opp_2pt_m / total_opp_2pt_a if total_opp_2pt_a else 0.5
     avg_opp_3pt_pct = total_opp_3pt_m / total_opp_3pt_a if total_opp_3pt_a else 0.36
@@ -423,6 +581,12 @@ def compute_league_averages(teams: Dict[str, Team]) -> LeagueAverages:
         avg_team_blk=avg_team_blk,
         baseline_steal_prob=(total_stl / n_teams) / avg_team_fga if avg_team_fga else 0.0,
         baseline_block_prob=(total_blk / n_teams) / avg_team_2pt_fga if avg_team_2pt_fga else 0.0,
+        team_2pt_pct=team_2pt_pct,
+        team_3pt_pct=team_3pt_pct,
+        # Same "sum the real totals, then divide" rule as every other
+        # percentage here -- never the mean of 30 team percentages.
+        avg_team_2pt_pct=total_2pt_m / total_2pt_a if total_2pt_a else 0.0,
+        avg_team_3pt_pct=total_3pt_m / total_3pt_a if total_3pt_a else 0.0,
     )
 
 
@@ -980,7 +1144,8 @@ def _simulate_team_defaults(team: Team) -> tuple:
 
 
 def _resolve_team_offense(
-    active_players: List[Player], minutes: List[float], defender: Team, league_avg: LeagueAverages,
+    active_players: List[Player], minutes: List[float], attacker: Team, defender: Team,
+    league_avg: LeagueAverages,
 ) -> tuple:
     """
     Resolves one team's shooting for the game AGAINST a specific
@@ -1028,8 +1193,16 @@ def _resolve_team_offense(
 
     steal_rate = league_avg.steal_rate_for(defender)
     block_rate = league_avg.block_rate_for(defender)
-    two_pt_factor = league_avg.two_pt_defense_factor(defender)
-    three_pt_factor = league_avg.three_pt_defense_factor(defender)
+    # Both sides of the matchup scale the same shooting percentage: how
+    # good `attacker` really is at scoring, and how good `defender` really
+    # is at stopping it. Multiplied together rather than picking one,
+    # because a real game is genuinely both at once -- and because at
+    # OFFENSE_AMPLIFICATION = 0 the offensive half is exactly 1.0, which
+    # leaves this line doing precisely what it did before it existed.
+    two_pt_factor = (league_avg.two_pt_defense_factor(defender)
+                     * league_avg.two_pt_offense_factor(attacker))
+    three_pt_factor = (league_avg.three_pt_defense_factor(defender)
+                       * league_avg.three_pt_offense_factor(attacker))
     avg_block_rate_per_make = league_avg.avg_block_rate_per_make
 
     per_player_shot_stats = []
@@ -1218,9 +1391,9 @@ def _play_overtime_period(
     # side's shooting this period is resolved against the OTHER side's
     # real defense.
     home_shot_stats, away_defense_credit = _resolve_team_offense(
-        home_defaults[0], home_defaults[1], away_team, league_avg)
+        home_defaults[0], home_defaults[1], home_team, away_team, league_avg)
     away_shot_stats, home_defense_credit = _resolve_team_offense(
-        away_defaults[0], away_defaults[1], home_team, league_avg)
+        away_defaults[0], away_defaults[1], away_team, home_team, league_avg)
 
     home_period_rows = _build_active_player_rows(*home_defaults, shot_stats=home_shot_stats,
                                                   credited_defense=home_defense_credit)
@@ -1287,8 +1460,10 @@ def simulate_game(home_team: Team, away_team: Team, league_avg: LeagueAverages) 
     # its steal/block credit, and vice versa -- naming these by WHO
     # EARNED the credit, not who's currently being resolved, so the
     # assembly step below reads unambiguously.
-    home_shot_stats, away_defense_credit = _resolve_team_offense(home_active, home_minutes, away_team, league_avg)
-    away_shot_stats, home_defense_credit = _resolve_team_offense(away_active, away_minutes, home_team, league_avg)
+    home_shot_stats, away_defense_credit = _resolve_team_offense(
+        home_active, home_minutes, home_team, away_team, league_avg)
+    away_shot_stats, home_defense_credit = _resolve_team_offense(
+        away_active, away_minutes, away_team, home_team, league_avg)
 
     home_players = _assemble_team_players(
         home_team, *home_defaults, shot_stats=home_shot_stats, credited_defense=home_defense_credit,

@@ -52,6 +52,15 @@ opponents' shooting (see game_engine.py).
   hard floor (the stats API itself has nothing before it), not a
   stopping point chosen along the way. See "Multi-season backtesting"
   section below.
+- **Accuracy tuning against all 30 seasons**: complete — the sim's
+  tunable constants are now fit against every backtested season at once
+  (`sweep_constants.py`), with a time-based train/holdout split, instead
+  of against 2025-26 alone. Found and fixed a bias no single season
+  could show: the sim spread win totals ~37% wider than real basketball
+  in all 30 seasons. `DEFENSE_AMPLIFICATION` 5 → 2 and a new
+  `OFFENSE_AMPLIFICATION` = 0.5 took league-wide standings MAE 8.45 →
+  6.19 (better in 29 of 29 seasons) and correlation .810 → .844. See
+  "Accuracy tuning" below.
 - **Not yet built**: possession-by-possession realism (deliberately low
   priority — see below); an offseason bridge connecting one backtested
   season to the next (drafts/free agency — see Deferred below).
@@ -94,11 +103,16 @@ opponents' shooting (see game_engine.py).
    shot (crediting STL/TOV); blocks overturn made 2-pointers into misses
    (crediting BLK); shooting % blends with the opponent's real
    opponent-FG%-allowed (`LeagueAverages`/`compute_league_averages`).
-   Verified directionally correct against real data. Latest 30-run
-   benchmark (post injuries + trades): standings MAE ~7.4 games,
-   correlation ~0.88 vs. real standings — see `benchmarks/*.json` for the
-   full comparable history (pre-injury baseline, injuries only, trades
-   only, both together).
+   Verified directionally correct against real data. A team's OWN real
+   offense is amplified the same way its opponent's defense is
+   (`OFFENSE_AMPLIFICATION`, tuned jointly with `DEFENSE_AMPLIFICATION`
+   — see "Accuracy tuning" below). Latest 30-run benchmark (post
+   injuries + trades): standings MAE ~6.2 games, correlation ~0.84 vs.
+   real standings, averaged over all 29 backtested seasons — see
+   `benchmarks/*.json` for the full comparable history (pre-injury
+   baseline, injuries only, trades only, both together, and
+   `<season>_backtest` vs `<season>_tuned` for before/after this
+   tuning).
 6. **Overtime**: a game tied after regulation plays a real 5-minute,
    25-team-minute OT period (`OVERTIME_MINUTES`/`OVERTIME_MAX_MINUTES` —
    the OT-sized versions of `TOTAL_GAME_MINUTES`/`MAX_MINUTES`), and
@@ -279,13 +293,14 @@ opponents' shooting (see game_engine.py).
   for every season checked before it (1995-96, 1994-95, 1990-91) — a
   limit of the data source itself, nothing to fix in this project's code.
 - **Full 30-season accuracy range** (30-run benchmark each, real
-  injuries + real trades on, `benchmarks/<season>_backtest.json`):
-  MAE 6.48–10.38 (avg 8.42), correlation .688–.919 (avg .812).
-  Doesn't decline steadily with age — it tracks how extreme each
-  specific season's real defensive spread happened to be, the exact
-  mechanism `DEFENSE_AMPLIFICATION`'s multiplicative blend struggles
-  with at the tails (see Deferred below), checked directly across four
-  different seasons' worst-missed team every time.
+  injuries + real trades on). Before the tuning below,
+  `benchmarks/<season>_backtest.json`: MAE 6.48–10.38 (avg 8.42),
+  correlation .688–.919 (avg .812). After, `<season>_tuned.json`:
+  MAE 4.30–7.24 (avg 6.19), correlation avg .844 — better in 29 of 29
+  seasons, and the WORST season now beats the old BEST one. Accuracy
+  never did decline steadily with age; it tracked how extreme each
+  season's real defensive spread happened to be, which is exactly the
+  over-amplification the tuning below removed.
 - **Not built yet, deliberately**: an "offseason bridge" between two
   consecutive backtested seasons (diff two seasons' real rosters —
   anyone new who wasn't anywhere in the league last season is a rookie/
@@ -303,6 +318,63 @@ opponents' shooting (see game_engine.py).
   ever calls `benchmark_accuracy.py`, which never touches
   `playoffs.py`) — noted for whenever an old season's real postseason
   gets simulated, not just its regular season.
+
+## Accuracy tuning (sweep_constants.py)
+- **The problem it found**: every tuned constant in game_engine.py was
+  chosen honestly, by testing against real data — but almost all against
+  ONE season, 2025-26. That hid a bias visible only league-history-wide:
+  at `DEFENSE_AMPLIFICATION = 5` the sim spread win totals ~37% WIDER
+  than real basketball (simulated st-dev 16.6 wins vs. a real 12.1), in
+  all 30 seasons, no exception in either direction.
+- **Why no earlier sweep could have caught it**: correlation is blind to
+  it. Multiplying every team's distance from .500 by a constant leaves
+  correlation mathematically UNCHANGED while making win-total error much
+  worse — so the sim could rank all 30 teams nearly right and still miss
+  every win total badly. `spread_ratio` (simulated win st-dev / real) is
+  tracked as its own metric for exactly this reason.
+- **A second, opposite bias underneath it**: with the spread error
+  factored out, good defenses were over-predicted and good offenses
+  under-predicted by nearly equal and opposite amounts (+0.33 / -0.31
+  correlation with win error, same sign in all 29 seasons checked). Cause
+  was a plain asymmetry: a team's own offense entered a simulated game at
+  its literal real strength while the opponent's defense entered
+  amplified 5x. Fixed by `OFFENSE_AMPLIFICATION`, the offensive mirror.
+  Total structural bias 0.666 → 0.061.
+- **Fit honestly, not curve-fit**: seasons are split by TIME, never
+  shuffled — constants fit on 1996-97→2015-16 and scored on
+  2016-17→2025-26, which the fit never sees. Results sort by HOLDOUT
+  error. The two constants were swept JOINTLY (they trade against each
+  other: offensive gain widens spread, pulling the best defensive gain
+  down), because tuning one then the other only finds whatever the first
+  pass left behind.
+- **Result**: `DEFENSE_AMPLIFICATION` 5 → 2, `OFFENSE_AMPLIFICATION` 0 →
+  0.5. Holdout MAE 8.25 → 6.07, correlation .812 → .842, spread ratio
+  1.374 → 1.018. Across all 29 comparable seasons: MAE 8.45 → 6.19,
+  better in 29 of 29.
+- **Landing slightly narrower than real spread is correct**: the MAE
+  optimum sits at ratio ~0.94-1.02, not exactly 1.0, because when the
+  ranking is imperfect, shrinking predictions toward the mean beats
+  matching real spread exactly. Values that hit 1.0 exactly score worse.
+- **`OFFENSE_AMPLIFICATION` needed no new data**: a team's offense simply
+  IS its players' real numbers, already loaded, so it's summed in
+  `compute_league_averages` — no fetch, no cache file, no new `Team`
+  field. (Unlike defense, which real per-player stats don't describe at
+  all — hence `Team.opp_*`.) Precomputed per team NAME rather than read
+  off a Team at game time, because by then its `players` list is usually
+  filtered to who's available that night; recomputing from that would let
+  a team's season-long offensive identity dip every time someone sits,
+  double-counting an absence the roster draw already handled.
+- **Its honest size**: most of the accuracy gain is `DEFENSE_AMPLIFICATION`.
+  `OFFENSE_AMPLIFICATION`'s own win-total gain is small (6.17 → 6.07);
+  what it genuinely fixes is RANKING — correlation rose with offensive
+  gain at every defensive gain tried (1.5, 2, 2.5, 3) on the holdout
+  seasons, which is why it's believed real rather than fit to quirks.
+  Going higher overshoots: at 1.0 the offensive bias flips past zero from
+  -0.221 to +0.140.
+- **Snapshots are permanent**: `benchmarks/<season>_backtest.json` is the
+  pre-tuning record and `<season>_tuned.json` the post — never overwrite
+  a snapshot to reuse its name, that destroys the comparison the file
+  exists for.
 
 ## Files (all in this folder, import each other by filename)
 - `models.py` — `Player`, `Team`, `ScheduledGame` dataclasses. All
@@ -344,6 +416,15 @@ opponents' shooting (see game_engine.py).
   (`--season`, defaults to 2025-26), saves a permanent accuracy
   snapshot to `benchmarks/*.json`. This is what every multi-season
   backtest run above actually is: 30 separate calls, one per season.
+  Takes optional pre-fetched `real_standings` so sweep_constants.py
+  doesn't re-fetch the same finished season's standings over the
+  network once per candidate setting.
+- `sweep_constants.py` — fits game_engine's constants against ALL 30
+  backtested seasons at once, with a train/holdout split, rather than
+  one season at a time. Sweeps one constant or several jointly:
+  `python3 sweep_constants.py --constant DEFENSE_AMPLIFICATION,OFFENSE_AMPLIFICATION
+  --values "1.5,2,2.5;0,0.5,1"`. Saves to `sweeps/*.json`. See "Accuracy
+  tuning" above for what it found and why the holdout split matters.
 - `main.py` — the playable text CLI. Flow for a full season: simulate →
   optional game-by-game replay of the followed team's season (see
   above) → standings (overall/by conference) → real-vs-sim comparison →
@@ -356,25 +437,28 @@ opponents' shooting (see game_engine.py).
   — green/yellow/red, same convention as the standings comparison.
 
 ## Deferred / open, in the user's stated priority order
-1. **Two accuracy issues, deliberately left alone until they can be
-   fixed together against the full 30-season backtest set, not
-   season by season:**
-   - **Trades/real-roster-movement made accuracy slightly worse**
-     (original single-season finding: trades-only MAE 8.48 vs. 7.99
-     baseline). Root cause dug into and confirmed real: teams with the
-     heaviest real roster churn that season (e.g. Utah Jazz, Atlanta
-     Hawks in 2025-26) get systematically UNDER-simulated, because
-     traded-in/remaining players keep their own real per-minute rate
-     unchanged rather than the real "usage bump" a team gives its
-     pieces after losing a star — a genuine modeling gap, not a bug.
-   - **`DEFENSE_AMPLIFICATION`'s multiplicative blend breaks down at
-     the tails** — found via backtesting: a team on the weak-defense
-     tail gets its opponents' shooting multiplied into impossible
-     territory (60%+ team FG nights). Confirmed the SAME mechanism
-     explains the single worst-missed team in every one of 4 checked
-     seasons (2025-26 Lakers, 2024-25 Grizzlies, 2023-24 Kings, 2022-23
-     Heat) — this is why standings MAE ranges 6.48-10.38 across the 30
-     backtested seasons instead of sitting near 2025-26's 7.4 always.
+1. **Accuracy issues still open.** Two things that used to head this
+   list are now FIXED — the `DEFENSE_AMPLIFICATION` tails problem (see
+   "Accuracy tuning" below), and the "trades made accuracy worse"
+   finding, which REVERSED once the constants were fixed. Retested
+   across all 30 seasons at the tuned constants: trades-only MAE 7.66
+   vs. 8.04 baseline, and 6.24 vs. 6.58 on top of injuries — i.e. real
+   roster movement now HELPS by ~0.35 games either way, where the
+   original single-season, pre-tuning measurement had it hurting by
+   +0.49 (8.48 vs. 7.99). The over-amplified defense had been
+   distorting it. The underlying modeling gap that was blamed at the
+   time is still real and still unmodeled (traded-in/remaining players
+   keep their own real per-minute rate rather than the real "usage
+   bump" a team gives its pieces after losing a star) — it just wasn't
+   costing accuracy the way the old number suggested.
+   - **Player FG% still runs ~1.8pp above real** (sim minus real,
+     league-wide). Untouched by the tuning below — verified flat
+     across every constant value swept, so it's a genuinely separate
+     problem, not a side effect. It also TRENDS with era: ~+1.1pp in
+     the late 90s rising to ~+2.0pp by 2024-25, tracking the 3-point
+     revolution. That trend is the strongest evidence yet for the
+     "give the sim era context" idea, and this is where it should be
+     aimed first — standings accuracy shows no era trend at all.
 2. **An offseason bridge + season-picker UI** for the now-30-season
    backtest set (see "Multi-season backtesting" above) — diffing two
    seasons' rosters to show real draft/free-agency movement between

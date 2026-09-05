@@ -53,7 +53,8 @@ def _git_commit() -> str:
 
 
 def run_accuracy_benchmark(season: str = "2025-26", n_runs: int = 30,
-                            use_injuries: bool = False, use_real_moves: bool = False) -> dict:
+                            use_injuries: bool = False, use_real_moves: bool = False,
+                            real_standings: Dict[str, int] = None) -> dict:
     """
     Simulates `n_runs` independent full seasons (same real schedule
     every time, different random outcomes) and returns a structured
@@ -77,11 +78,21 @@ def run_accuracy_benchmark(season: str = "2025-26", n_runs: int = 30,
     Both are independent toggles, on top of the pre-existing "before
     injuries" baseline -- this is the "after" side of the comparison
     this whole file exists for, see the module docstring.
+
+    `real_standings` is an optional escape hatch for callers that
+    benchmark the SAME season many times over (sweep_constants.py runs
+    every season once per candidate constant setting). Real standings
+    are deliberately not cached to disk -- see
+    data_source.fetch_real_standings for why -- so without this, a
+    sweep would re-fetch the identical never-changing final standings
+    of a long-finished season over the network dozens of times. Left
+    as None (every pre-existing caller), it fetches exactly as before.
     """
     teams = load_teams(season)
     schedule = load_schedule(season)
     league_avg = compute_league_averages(teams)
-    real_standings = fetch_real_standings(season)
+    if real_standings is None:
+        real_standings = fetch_real_standings(season)
     real_player_injuries = load_player_injuries(season) if use_injuries else None
 
     real_players = {p.name: p for t in teams.values() for p in t.players}
@@ -193,6 +204,10 @@ def run_accuracy_benchmark(season: str = "2025-26", n_runs: int = 30,
             "elapsed_seconds": round(elapsed, 1),
             "git_commit": _git_commit(),
             "defense_amplification": game_engine.DEFENSE_AMPLIFICATION,
+            # Recorded alongside the defensive one because the two are
+            # tuned as a PAIR (see game_engine.OFFENSE_AMPLIFICATION) --
+            # a snapshot naming only one of them can't be reproduced.
+            "offense_amplification": game_engine.OFFENSE_AMPLIFICATION,
             "injuries_enabled": use_injuries,
             "real_moves_enabled": use_real_moves,
             "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -247,6 +262,9 @@ if __name__ == "__main__":
     parser.add_argument("--label", default=None,
                          help="output filename (without .json) under benchmarks/ -- "
                               "defaults based on which of --with-injuries/--with-trades are set")
+    parser.add_argument("--overwrite", action="store_true",
+                         help="allow replacing an existing snapshot of the same name "
+                              "(refused by default -- see below)")
     args = parser.parse_args()
     # Separate defaults on purpose -- so running with a new flag combo
     # without remembering to also pass --label can't silently overwrite
@@ -269,6 +287,24 @@ if __name__ == "__main__":
 
     BENCHMARKS_DIR.mkdir(exist_ok=True)
     out_path = BENCHMARKS_DIR / f"{label}.json"
+
+    # A saved snapshot's whole value is being a PERMANENT record of how
+    # accurate the sim was at one point in its history -- the "before"
+    # half of every before/after comparison this file exists to make.
+    # Overwriting one silently destroys that, and it's an easy mistake:
+    # the flag-combo defaults above guard the four names they generate,
+    # but an explicit --label sails straight past them (which is exactly
+    # how two backtest snapshots got clobbered once and had to be
+    # restored from git). So refuse by default and make the caller say
+    # so out loud, rather than trusting whoever's running it to
+    # remember which of ~60 filenames are already taken.
+    if out_path.exists() and not args.overwrite:
+        raise SystemExit(
+            f"\n{out_path} already exists.\n"
+            f"Saved benchmarks are permanent records -- replacing one destroys the\n"
+            f"'before' side of a comparison. Pick a different --label, or pass\n"
+            f"--overwrite if you really do mean to replace it.")
+
     with open(out_path, "w") as f:
         json.dump(report, f, indent=2)
     print(f"\nSaved to {out_path}")
