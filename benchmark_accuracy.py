@@ -31,7 +31,7 @@ from pathlib import Path
 from typing import Dict, List
 
 import game_engine
-from loader import load_teams, load_schedule, load_player_injuries, load_roster_membership
+from loader import load_teams, load_schedule, load_player_injuries, load_roster_membership, load_league_pace_variation
 from game_engine import simulate_game, compute_league_averages
 from data_source import fetch_real_standings
 from injuries import build_season_injuries, missed_lookup, enforce_minimum_roster
@@ -90,7 +90,8 @@ def run_accuracy_benchmark(season: str = "2025-26", n_runs: int = 30,
     """
     teams = load_teams(season)
     schedule = load_schedule(season)
-    league_avg = compute_league_averages(teams)
+    # See season.py -- the season's own real pace swing, not a constant.
+    league_avg = compute_league_averages(teams, load_league_pace_variation(season))
     if real_standings is None:
         real_standings = fetch_real_standings(season)
     real_player_injuries = load_player_injuries(season) if use_injuries else None

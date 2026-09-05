@@ -520,6 +520,53 @@ this test would have measured the bug rather than Gobert.
   nonsense basketball). Both print "--", never a number. On a real
   roster: Gilgeous-Alexander 97, Capela and Adebayo 98, Isaiah Joe 20.
 
+## Audit: do this project's constants hold across ERAS? (do this again)
+- **Why it matters**: the single most repeated mistake in this project's
+  history is tuning against ONE season and shipping a bias visible only
+  league-history-wide. It happened with `DEFENSE_AMPLIFICATION` (tuned
+  on 2025-26, spread win totals 37% too wide in all 30 seasons) and
+  nearly again with the consistency and free-throw work, which was
+  calibrated on 2023-24 because that was the season whose real game logs
+  were loaded.
+- **The check**: fetch real game logs for a handful of seasons spanning
+  the range (1996-97, 2003-04, 2010-11, 2018-19, 2024-25) and compare
+  the real quantity each constant targets. Results:
+
+    free throws vs opponent's fouls   0.79-0.81 every era   GENERALIZES
+    free-throw swing                  30.6-32.4% every era  GENERALIZES
+    two teams' free throws correlate  0.20-0.26 every era   GENERALIZES
+    between-team scoring spread       4.04-4.59 every era   GENERALIZES
+    game pace variation               6.8% -> 5.3%          ERA-SPECIFIC
+
+  So the foul/free-throw mechanism is real basketball in every era, and
+  the one constant that did NOT hold is now measured per season (above).
+- **It also found a real BUG that had nothing to do with constants** --
+  the phantom-team problem below. Worth knowing that an era audit pays
+  for itself twice: it checks what you meant to check, and it exercises
+  code paths (old seasons, small rosters) that a modern-season workflow
+  never touches.
+
+## Teams that did not exist in a season (loader.py)
+- `commonteamroster` is keyed by team_id and happily returns an EMPTY
+  roster for a franchise not yet founded or already relocated, so
+  2002-03 and 2003-04 both loaded a "Charlotte Hornets" with no players
+  (they had moved to New Orleans in 2002-03; the Bobcats arrive in
+  2004-05). `load_teams` now skips any team with no players.
+- **This was not cosmetic.** Every league-wide average in
+  `compute_league_averages` divides a real total by `len(teams)`, so one
+  phantom team made all of them **3.3% too low across the entire real
+  29-team era** -- league-average steals, blocks, shot attempts,
+  turnovers and pace, in the eight backtested seasons from 1996-97 to
+  2003-04. Those averages are what every defensive and pace adjustment
+  is measured against, so the error propagated into the games.
+- It also crashes `_active_roster_for_game` outright (numpy
+  "probabilities do not sum to 1") if anything asks such a team to field
+  a lineup -- which is how it was found.
+- The season sim never noticed either problem because the dropped team
+  plays exactly zero real games. Verified against the schedule: 29 teams
+  and 1,189 games in those seasons, matching the real 29-team count
+  already documented above.
+
 ## Free throws come from the opponent's fouls (game_engine.py)
 - `FOUL_FREE_THROW_WEIGHT` ties each team's free-throw volume to how
   many fouls the OPPONENT actually committed tonight (`_foul_pressure`),
@@ -539,7 +586,21 @@ this test would have measured the bug rather than Gobert.
   0.900 over six seasons at 30 runs).
 
 ## Game pace (game_engine.py)
-- **`GAME_PACE_VARIATION` = 0.052**, and it replaced a real bug. The
+- **Pace variation is measured PER SEASON**, not hardcoded:
+  `data_source.fetch_league_pace_variation` derives it from the same
+  league-wide game log already fetched, caches it as
+  `cache/<season>/league_pace.json`, and it reaches the sim as
+  `LeagueAverages.pace_variation` (loaded by `load_league_pace_variation`
+  and passed in by season.py / benchmark_accuracy.py / main.py).
+  `GAME_PACE_VARIATION` is now only the FALLBACK for a season with no
+  cached file.
+  It has to be per season because it genuinely drifts: 6.8% in 1996-97,
+  6.2% in 2003-04, 5.7% in 2018-19, 5.3% in 2024-25. Hardcoding the
+  modern value gave 1990s games about a quarter too little pace
+  variation. Found by auditing whether this session's constants held
+  across ERAS rather than only on the 2023-24 season they were
+  calibrated against -- see the audit note below.
+- **`GAME_PACE_VARIATION` = 0.052 replaced a real bug.** The
   game's shared pace multiplier used to be
   `_negative_binomial_count(avg_team_poss, TEAM_ATTEMPTS_DISPERSION)`
   divided by `avg_team_poss` — drawing a COUNT with a mean near 100 and
@@ -890,6 +951,23 @@ this test would have measured the bug rather than Gobert.
      their uncapped expectation BY DESIGN, so dividing by that
      expectation made every team read as fouling 2.8% less than normal
      every night. Re-measure it if any of those three change.
+   - **THE SIM'S POSSESSION SWING IS ~40% TOO WIDE, IN EVERY ERA — the
+     sharpest statement of the gap below, and the best target to aim at.**
+     Real game-to-game possession swing runs 6.8% (1996-97) down to 5.3%
+     (2024-25); the sim produces 9.5% down to 7.9% against those. The
+     pace LEVEL is right everywhere (92.8 real vs 93.1 sim in 1996-97,
+     101.2 vs 102.7 in 2024-25, within 1.5% in every era checked), and
+     the shared pace draw is now fed each season's REAL variation — so
+     the excess comes from the other draws stacked on top of it (usage
+     splits, the active-roster draw, turnover/offensive-rebound draws),
+     not from pace itself.
+     Worth knowing: feeding the true per-season pace made 1996-97's team
+     points spread slightly WORSE (14.33 → 14.95 against a real 12.22),
+     because the too-small hardcoded constant had been partly cancelling
+     this excess. Kept the truthful number anyway — this file's own
+     lesson is that a value which looks better because something else is
+     broken is not accuracy. Standings are neutral either way (MAE 5.67
+     → 5.66 over six seasons at 30 runs).
    - **TEAM SCORING IDENTITIES ARE TOO SPREAD OUT — measured, cause NOT
      found, and explicitly not worth chasing further right now.**
      Simulated teams differ from each other in scoring far more than

@@ -31,6 +31,24 @@ def _season_cache_dir(season: str) -> Path:
     return CACHE_DIR / season
 
 
+def load_league_pace_variation(season: str = DEFAULT_SEASON):
+    """
+    This season's real game-to-game pace swing (see
+    data_source.fetch_league_pace_variation) -- e.g. 0.052 for 2023-24.
+
+    Returns None when the season has no cached file, which leaves
+    game_engine on its GAME_PACE_VARIATION default rather than failing:
+    this was added after every season was already cached, same as the
+    consistency file. Optional here, never optional in meaning -- the
+    real number genuinely differs by era (6.8% in the 1990s, 5.3% now).
+    """
+    pace_file = _season_cache_dir(season) / "league_pace.json"
+    if not pace_file.exists():
+        return None
+    with open(pace_file) as f:
+        return json.load(f).get("pace_variation")
+
+
 def _consistency_fields(raw_consistency: dict, player_name: str) -> dict:
     """
     The two scoring-consistency fields for one player, ready to hand to

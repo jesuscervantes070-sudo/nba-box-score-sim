@@ -16,7 +16,8 @@ import argparse
 import time
 from dataclasses import replace
 
-from loader import load_teams, load_schedule, load_player_injuries, load_roster_membership
+from loader import (load_teams, load_schedule, load_player_injuries, load_roster_membership,
+                    load_league_pace_variation)
 from game_engine import simulate_game, compute_league_averages
 from injuries import build_season_injuries, missed_lookup, enforce_minimum_roster
 from transactions import expand_rosters_with_real_moves
@@ -60,7 +61,9 @@ def simulate_season(season: str = "2025-26", fresh: bool = False,
     # "is this specific defense tougher or easier than average." Must
     # run BEFORE expand_rosters_with_real_moves below -- see that
     # function's docstring for why (double-counting a traded player).
-    league_avg = compute_league_averages(teams)
+    # Pass the season's own real pace swing -- it drifts by era, so a
+    # single constant would be wrong for anything but the modern game.
+    league_avg = compute_league_averages(teams, load_league_pace_variation(season))
 
     out_lookup = set()  # (player_name, game_id) pairs unavailable for that team's game
 

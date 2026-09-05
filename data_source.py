@@ -83,6 +83,10 @@ def _roster_membership_cache_path(season: str) -> Path:
 def _player_consistency_cache_path(season: str) -> Path:
     return _season_cache_dir(season) / "player_consistency.json"
 
+
+def _league_pace_cache_path(season: str) -> Path:
+    return _season_cache_dir(season) / "league_pace.json"
+
 # Maps our field names -> the NBA stats API's "Opponent" column names.
 # These are real per-game stats about what a team's REAL OPPONENTS did
 # against them -- i.e., a direct measure of that team's own defense.
@@ -681,6 +685,38 @@ def fetch_player_consistency(df) -> dict:
     return {"league": league, "players": players}
 
 
+def fetch_league_pace_variation(df) -> dict:
+    """
+    How much a single game's PACE really varied in this season -- the
+    number game_engine's shared pace draw is supposed to reproduce.
+
+    Both teams in a game share one pace (they alternate possessions), so
+    the game's pace is the two teams' average, and what matters is how
+    far a game strays from the season's typical one. Returned as a
+    RELATIVE swing (standard deviation over mean) so it is directly the
+    multiplier's spread, and stays meaningful across eras where the
+    absolute number of possessions differs a lot.
+
+    Cached per season rather than hardcoded because it genuinely drifts:
+    measured 6.8% in 1996-97 falling to 5.3% in 2024-25. A single
+    constant taken from a modern season leaves 1990s games with about a
+    quarter too little pace variation.
+
+    Possessions use the same standard estimate as everywhere else in
+    this project: FGA + 0.44*FTA + TOV - OREB.
+    """
+    per_team = df.groupby(["GAME_ID", "TEAM_NAME"])[["FGA", "FTA", "TOV", "OREB"]].sum()
+    per_team["poss"] = (per_team.FGA + 0.44 * per_team.FTA
+                        + per_team.TOV - per_team.OREB)
+    per_game = per_team.groupby("GAME_ID")["poss"].mean()
+    mean = float(per_game.mean())
+    return {
+        "games": int(len(per_game)),
+        "mean_possessions": round(mean, 3),
+        "pace_variation": round(float(per_game.std()) / mean, 5) if mean else 0.0,
+    }
+
+
 def build_and_cache_player_history(season: str = "2025-26", force: bool = False) -> None:
     """
     Builds ALL THREE of cache/injuries.json (real absence stints),
@@ -697,14 +733,16 @@ def build_and_cache_player_history(season: str = "2025-26", force: bool = False)
     injuries_path = _injuries_cache_path(season)
     membership_path = _roster_membership_cache_path(season)
     consistency_path = _player_consistency_cache_path(season)
+    pace_path = _league_pace_cache_path(season)
     roster_path = _roster_cache_path(season)
     schedule_path = _schedule_cache_path(season)
 
     need_injuries = force or not injuries_path.exists()
     need_membership = force or not membership_path.exists()
     need_consistency = force or not consistency_path.exists()
-    if not (need_injuries or need_membership or need_consistency):
-        print("Injuries + roster-membership + consistency caches already exist. Use --refresh to force an update.")
+    need_pace = force or not pace_path.exists()
+    if not (need_injuries or need_membership or need_consistency or need_pace):
+        print("Injuries + roster-membership + consistency + pace caches already exist. Use --refresh to force an update.")
         return
 
     if not roster_path.exists() or not schedule_path.exists():
@@ -746,6 +784,15 @@ def build_and_cache_player_history(season: str = "2025-26", force: bool = False)
         print(f"Cached scoring consistency for {len(consistency['players'])} players "
               f"(league average spread: {league['spread_raw']:.2f} raw, "
               f"{league['spread_rate']:.2f} minutes-adjusted) -> {consistency_path}")
+
+    if need_pace:
+        print("Computing this season's real game-to-game pace variation...")
+        pace = fetch_league_pace_variation(df)
+        with open(pace_path, "w") as f:
+            json.dump({"season": season, **pace}, f, indent=2)
+        print(f"Cached real pace variation: {pace['pace_variation'] * 100:.2f}% swing "
+              f"around {pace['mean_possessions']:.1f} possessions "
+              f"({pace['games']} games) -> {pace_path}")
 
 
 def fetch_schedule(season: str):

@@ -16,7 +16,7 @@ import re
 import sys
 from typing import Dict, List, Optional, Tuple
 
-from loader import load_teams, load_team_abbreviations, load_roster_membership
+from loader import load_teams, load_team_abbreviations, load_roster_membership, load_league_pace_variation
 from models import Player, Team
 from game_engine import simulate_game, compute_league_averages, GameResult, LeagueAverages
 from data_source import fetch_real_standings
@@ -1418,7 +1418,8 @@ def main() -> None:
 
     # Real, league-wide baselines (what's an average defense, an
     # average steal/block rate) -- computed ONCE here, not per game.
-    league_avg = compute_league_averages(teams)
+    # See season.py -- the season's own real pace swing, not a constant.
+    league_avg = compute_league_averages(teams, load_league_pace_variation(season))
     # Real 3-letter team codes, only used for the compact playoff
     # bracket diagram -- also loaded once, same reasoning as above.
     abbrev = load_team_abbreviations()

@@ -263,13 +263,21 @@ TEAM_ATTEMPTS_DISPERSION = 2000
 # shooting and scoring bias unchanged).
 USAGE_CONCENTRATION = 500
 
-# How much faster or slower than usual a single game runs -- the one
-# pace multiplier both teams share (see _draw_shared_pace). 0.052 means
-# a 5.2% game-to-game swing, measured directly off real 2023-24 games:
-# real possessions per team-game (FGA + 0.44*FTA + TOV - OREB) average
-# 100.8 with a standard deviation of 5.3, and a team's own night-to-
-# night swing is the same 5.1%. Not a fitted knob -- a number real
-# basketball hands over directly.
+# FALLBACK for how much faster or slower than usual a single game runs
+# -- the one pace multiplier both teams share (see _draw_shared_pace).
+# The REAL number is measured per season and cached
+# (data_source.fetch_league_pace_variation -> league_pace.json), and
+# reaches the sim as LeagueAverages.pace_variation; this constant is
+# only used when a season has no cached file.
+#
+# It must be per season because it genuinely drifts: measured 6.8% in
+# 1996-97, 6.2% in 2003-04, 5.3% in 2024-25. This value is the modern
+# one (2023-24: possessions per team-game, FGA + 0.44*FTA + TOV - OREB,
+# average 100.8 with a standard deviation of 5.3), so leaving it
+# hardcoded gave 1990s games about a quarter too little pace variation.
+# That was found by auditing whether this session's constants held
+# across eras rather than only on the season they were calibrated
+# against -- the same one-season trap documented throughout this file.
 GAME_PACE_VARIATION = 0.052
 
 # How strongly a team's free throws follow the OPPONENT'S fouls. 0 leaves
@@ -850,6 +858,12 @@ class LeagueAverages:
     # season is loaded with part of its data missing.
     avg_scoring_spread: float = 0.0
 
+    # This season's real game-to-game pace swing. Defaults to the
+    # module constant so every existing caller behaves exactly as
+    # before; season.py and benchmark_accuracy.py pass the real cached
+    # number for the season being simulated. See GAME_PACE_VARIATION.
+    pace_variation: float = GAME_PACE_VARIATION
+
     @property
     def ordinary_tov_share(self) -> float:
         """
@@ -1094,7 +1108,8 @@ def _roster_availability_factor(teams: Dict[str, Team], avg_real_team_fga: float
     return 1 + ROSTER_AVAILABILITY_WEIGHT * (avg_real_team_fga / simulated - 1)
 
 
-def compute_league_averages(teams: Dict[str, Team]) -> LeagueAverages:
+def compute_league_averages(teams: Dict[str, Team],
+                            pace_variation: float = None) -> LeagueAverages:
     """
     Computes real, league-wide baselines from every team's real data --
     call this ONCE (e.g. right after loader.load_teams()) and reuse the
@@ -1225,6 +1240,9 @@ def compute_league_averages(teams: Dict[str, Team]) -> LeagueAverages:
         availability_factor=_roster_availability_factor(
             teams, (sum(t.opp_fga for t in teams.values()) / n_teams) if n_teams else 0.0),
         avg_scoring_spread=avg_scoring_spread,
+        # Falls back to the module constant when a caller doesn't pass
+        # the season's real number (an old cache, or a test).
+        pace_variation=GAME_PACE_VARIATION if pace_variation is None else pace_variation,
         # Same "sum the real totals, then divide" rule as every other
         # percentage here -- never the mean of 30 team percentages.
         avg_team_2pt_pct=total_2pt_m / total_2pt_a if total_2pt_a else 0.0,
@@ -2058,12 +2076,13 @@ def _draw_shared_pace(league_avg: LeagueAverages) -> float:
     """
     if not PACE_COUPLING_WEIGHT or not league_avg.avg_team_poss:
         return None
-    if GAME_PACE_VARIATION <= 0:
+    variation = league_avg.pace_variation
+    if variation <= 0:
         return 1.0
     # Gamma(shape=k, scale=1/k) has mean exactly 1 and a relative spread
-    # of 1/sqrt(k) -- so this is "wobble the game's pace by
-    # GAME_PACE_VARIATION, centred on no change at all."
-    shape = 1.0 / (GAME_PACE_VARIATION ** 2)
+    # of 1/sqrt(k) -- so this is "wobble the game's pace by this
+    # season's real swing, centred on no change at all."
+    shape = 1.0 / (variation ** 2)
     return float(_rng.gamma(shape, 1.0 / shape))
 
 
