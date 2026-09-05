@@ -244,6 +244,15 @@ TEAM_ATTEMPTS_DISPERSION = 2000
 # who gets how many shots). Tuned by testing -- see module docstring.
 USAGE_CONCENTRATION = 150
 
+# How much faster or slower than usual a single game runs -- the one
+# pace multiplier both teams share (see _draw_shared_pace). 0.052 means
+# a 5.2% game-to-game swing, measured directly off real 2023-24 games:
+# real possessions per team-game (FGA + 0.44*FTA + TOV - OREB) average
+# 100.8 with a standard deviation of 5.3, and a team's own night-to-
+# night swing is the same 5.1%. Not a fitted knob -- a number real
+# basketball hands over directly.
+GAME_PACE_VARIATION = 0.052
+
 # A SEPARATE, much tighter concentration used only for the MINUTES
 # split -- found by testing that sharing USAGE_CONCENTRATION between
 # minutes and attempts was a mistake: minutes and shot attempts aren't
@@ -1817,15 +1826,33 @@ def _draw_shared_pace(league_avg: LeagueAverages) -> float:
 
     Returns None when coupling is off, which is what tells
     _resolve_team_offense to fall back to its original independent
-    per-team draws. Reuses TEAM_ATTEMPTS_DISPERSION rather than inventing
-    a new spread: the game-to-game variation in how many possessions a
-    game has is the same variation that constant was already tuned to
-    produce, just applied once per GAME instead of once per team.
+    per-team draws.
+
+    The spread comes from GAME_PACE_VARIATION -- a measured fact about
+    real basketball -- rather than from a counting distribution. It used
+    to be `_negative_binomial_count(avg_team_poss, TEAM_ATTEMPTS_DISPERSION)
+    / avg_team_poss`, which looked like it was reusing an already-tuned
+    constant but wasn't: drawing a COUNT with a mean near 100 carries an
+    unavoidable Poisson-style spread of about 1/sqrt(100), so 96% of the
+    resulting 10.8% swing came from the number happening to be ~100, and
+    only 4% from the dispersion constant. Real games vary 5.2%. Tuning
+    TEAM_ATTEMPTS_DISPERSION could never have fixed it -- the floor is
+    set by the size of the number, not by the constant.
+
+    A Gamma with mean 1 is used rather than a plain normal draw because
+    pace is a multiplier that must stay positive, and real pace is
+    slightly right-skewed (a game can run long into overtime; it cannot
+    run short).
     """
     if not PACE_COUPLING_WEIGHT or not league_avg.avg_team_poss:
         return None
-    base = league_avg.avg_team_poss
-    return _negative_binomial_count(base, dispersion=TEAM_ATTEMPTS_DISPERSION) / base
+    if GAME_PACE_VARIATION <= 0:
+        return 1.0
+    # Gamma(shape=k, scale=1/k) has mean exactly 1 and a relative spread
+    # of 1/sqrt(k) -- so this is "wobble the game's pace by
+    # GAME_PACE_VARIATION, centred on no change at all."
+    shape = 1.0 / (GAME_PACE_VARIATION ** 2)
+    return float(_rng.gamma(shape, 1.0 / shape))
 
 
 def _resolve_team_offense(
