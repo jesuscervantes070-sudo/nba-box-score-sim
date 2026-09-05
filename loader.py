@@ -127,6 +127,27 @@ def load_teams(season: str = DEFAULT_SEASON) -> Dict[str, Team]:
         # keys already match Team's opp_* field names.
         defense = raw_defense.get(team_name, {})
         conference = raw_conference.get(team_name, "")
+        # A team with NO players did not exist in this season, and must
+        # not be loaded as if it did. The roster endpoint is keyed by
+        # team_id and happily returns an empty roster for a franchise
+        # that had not been founded yet or had already relocated -- so
+        # 2002-03 and 2003-04 both come back with an empty "Charlotte
+        # Hornets" (they had moved to New Orleans in 2002-03; the
+        # Bobcats only arrive in 2004-05).
+        #
+        # This is not cosmetic. Every league-wide average in
+        # game_engine.compute_league_averages divides a real total by
+        # len(teams), so one phantom team made every one of them 3.3%
+        # too low for the entire real 29-team era (1995-96 through
+        # 2003-04) -- league-average steals, blocks, shot attempts,
+        # turnovers and pace all wrong, in the eight backtested seasons
+        # that fall in that range. It also crashes the active-roster
+        # draw outright if anything asks such a team to field a lineup.
+        # Verified against the schedule: the dropped team plays exactly
+        # zero real games in those seasons, which is why the sim itself
+        # never noticed.
+        if not players:
+            continue
         teams[team_name] = Team(name=team_name, players=players, conference=conference, **defense)
 
     return teams
