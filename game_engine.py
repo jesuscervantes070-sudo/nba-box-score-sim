@@ -306,11 +306,19 @@ ROTATION_WEIGHT_EXPONENT = 8
 # across every value tried (+1.31 to +1.36), so this constant is not
 # what drives that separate, still-open problem.
 #
-# Landing slightly NARROWER than real spread (0.940, not 1.000) is
-# correct, not a miss: when the ranking is imperfect, shrinking
-# predictions toward the mean beats matching the real spread exactly.
-# The value that does hit ratio 1.0 (~2.3) measurably scores worse.
-DEFENSE_AMPLIFICATION = 2
+# Landing near or slightly under real spread is correct, not a miss:
+# when the ranking is imperfect, shrinking predictions toward the mean
+# beats matching the real spread exactly.
+#
+# Lowered again, 2 -> 1.5, when TURNOVER_POSSESSION_WEIGHT was added
+# below. Giving turnovers a real possession cost widened the simulated
+# standings on its own (spread ratio 1.019 -> 1.105), so the defensive
+# gain had to come down to absorb it -- which is exactly why all three
+# constants were re-swept TOGETHER rather than bolting the new one on
+# top of values tuned back when turnovers did nothing. Final joint fit
+# (16 combinations, 30 seasons): holdout MAE 6.07 -> 5.55, correlation
+# .842 -> .871, spread ratio back to 1.025.
+DEFENSE_AMPLIFICATION = 1.5
 
 # The OFFENSIVE mirror of DEFENSE_AMPLIFICATION: how much a team's own
 # real shooting quality gets exaggerated away from league average, the
@@ -372,6 +380,50 @@ DEFENSE_AMPLIFICATION = 2
 # offensive correlation flips from -0.221 clean past zero to +0.140.
 OFFENSE_AMPLIFICATION = 0.5
 
+# A real turnover hands the ball to the other team -- so a team that
+# gives it away a lot doesn't just look worse in its own box score, it
+# feeds its opponent extra possessions to score on. This constant is how
+# much of that real effect gets applied; 0 disables it entirely.
+#
+# That link was missing for this file's entire history, and it left
+# ordinary turnovers almost purely DECORATIVE. Only STEAL-caused ones did
+# anything (they remove an attempt before it becomes a shot -- see the
+# FIFTH DEFENSE fix), which is roughly 15% of them; the other ~85% were
+# drawn as a counting stat that no other number depended on. Found by
+# correlating each team's real turnovers against what the sim still got
+# wrong after the offense/defense tuning: +0.355 across 862 team-seasons,
+# the single largest remaining signal, and in the direction this predicts
+# -- turnover-prone teams were being OVER-predicted, because coughing the
+# ball up cost them nothing.
+#
+# Note what is deliberately NOT done here: a team's own turnovers do not
+# reduce its own shot attempts. They already did, in the real data -- a
+# player's real FGA per game is what they attempted given the turnovers
+# they really committed. Subtracting again would double-count them, the
+# same trap the SIXTH DEFENSE fix documents for blocks and steals. The
+# only thing genuinely missing was the OTHER side of the exchange: the
+# possession the opponent gains. So this is applied strictly as an
+# opponent effect, and always RELATIVE to league average, so that facing
+# an exactly-average-turnover team changes nothing at all.
+#
+# Tuned to 1.0 -- and that number is the whole point. 1.0 means one real
+# turnover hands over exactly one real possession, the physically correct
+# value, with no fudge factor. It wasn't assumed: 0, 0.5, 1, 1.5, 2 and 3
+# were all swept, and then 1 vs 1.5 was re-run against every combination
+# of the other two constants. 1.0 won all 8 of those head-to-head
+# pairings, and the six best rows of the final 16-combination sweep all
+# use it. A mechanism that lands on its true real-world magnitude the
+# moment it's allowed to exist is strong evidence it was genuinely
+# MISSING, rather than a knob that happens to flatter the fit.
+#
+# Effect, on the 10 holdout seasons: MAE 6.09 -> 5.81 and correlation
+# .840 -> .865 on its own; MAE 6.07 -> 5.55 and correlation .842 -> .871
+# once DEFENSE_AMPLIFICATION was re-fit alongside it. That correlation
+# gain is larger than the entire offense/defense retune produced, which
+# fits the diagnosis -- this restores a real mechanism, where those
+# rebalanced ones that already existed.
+TURNOVER_POSSESSION_WEIGHT = 1.0
+
 # A real NBA game that's still tied after regulation doesn't end -- it
 # plays a 5-minute overtime period (5 players x 5 minutes = 25 team-
 # minutes, the OT version of TOTAL_GAME_MINUTES/MAX_MINUTES above), and
@@ -421,6 +473,17 @@ class LeagueAverages:
     team_3pt_pct: Dict[str, float] = field(default_factory=dict)
     avg_team_2pt_pct: float = 0.0
     avg_team_3pt_pct: float = 0.0
+
+    # Each team's own real turnovers per game, and the league's, for
+    # TURNOVER_POSSESSION_WEIGHT. Precomputed per team NAME for the same
+    # reason the shooting percentages above are -- a Team's `players`
+    # list is usually filtered to who's available that night by the time
+    # it reaches simulate_game, and a team's season-long giveaway rate
+    # shouldn't dip just because someone is resting. avg_team_fga is the
+    # denominator that converts "extra turnovers" into "extra shots".
+    team_tov: Dict[str, float] = field(default_factory=dict)
+    avg_team_tov: float = 0.0
+    avg_team_fga: float = 0.0
 
     @property
     def avg_block_rate_per_make(self) -> float:
@@ -489,6 +552,33 @@ class LeagueAverages:
         real_ratio = team_pct / self.avg_team_3pt_pct
         return 1 + OFFENSE_AMPLIFICATION * (real_ratio - 1)
 
+    def possession_factor_against(self, defender: Team) -> float:
+        """
+        How much MORE (>1) or less (<1) shot volume a team gets this
+        game because of how often `defender` really gives the ball away.
+
+        Scaled in POSSESSIONS, not as a ratio of turnover counts -- the
+        distinction matters and getting it wrong would be badly out by
+        an order of magnitude. A team averaging 16 turnovers against a
+        league average of 14 is 14% higher as a raw ratio, but it is
+        handing over 2 extra possessions out of roughly a hundred, so
+        the opponent's shot volume should rise by about 2%, not 14%.
+        Dividing the extra turnovers by league-average team FGA is what
+        expresses it in the right units.
+
+        Returns exactly 1.0 when TURNOVER_POSSESSION_WEIGHT is 0, and
+        for any team whose real turnovers aren't known -- an unknown
+        team is treated as exactly league-average rather than having a
+        giveaway rate invented for it.
+        """
+        if not TURNOVER_POSSESSION_WEIGHT or not self.avg_team_fga:
+            return 1.0
+        team_tov = self.team_tov.get(defender.name)
+        if team_tov is None:
+            return 1.0
+        extra_possessions = (team_tov - self.avg_team_tov) / self.avg_team_fga
+        return 1 + TURNOVER_POSSESSION_WEIGHT * extra_possessions
+
     def steal_rate_for(self, defender: Team) -> float:
         """Probability one shot attempt against `defender` gets stolen
         before it happens, scaled by how much better/worse `defender`'s
@@ -523,12 +613,13 @@ def compute_league_averages(teams: Dict[str, Team]) -> LeagueAverages:
     """
     total_opp_2pt_m = total_opp_2pt_a = 0.0
     total_opp_3pt_m = total_opp_3pt_a = 0.0
-    total_stl = total_blk = total_fga = total_2pt_fga = 0.0
+    total_stl = total_blk = total_fga = total_2pt_fga = total_tov = 0.0
     # Each team's OWN real shooting, for the offensive factors -- see
     # LeagueAverages.team_2pt_pct for why these are precomputed here
     # rather than read off a Team at simulate_game time.
     team_2pt_pct: Dict[str, float] = {}
     team_3pt_pct: Dict[str, float] = {}
+    team_tov: Dict[str, float] = {}
     total_2pt_m = total_2pt_a = total_3pt_m = total_3pt_a = 0.0
 
     for team in teams.values():
@@ -543,6 +634,7 @@ def compute_league_averages(teams: Dict[str, Team]) -> LeagueAverages:
         team_fg3a = sum(p.fg3a for p in team.players)
         total_stl += team_stl
         total_blk += team_blk
+        total_tov += sum(p.tov for p in team.players)
         total_fga += team_fga
         total_2pt_fga += team_fga - team_fg3a
 
@@ -566,6 +658,10 @@ def compute_league_averages(teams: Dict[str, Team]) -> LeagueAverages:
         total_3pt_m += team_fg3m
         total_3pt_a += team_fg3a
 
+        # Real turnovers per game, for the possession exchange -- see
+        # TURNOVER_POSSESSION_WEIGHT.
+        team_tov[team.name] = sum(p.tov for p in team.players)
+
     n_teams = len(teams)
     avg_opp_2pt_pct = total_opp_2pt_m / total_opp_2pt_a if total_opp_2pt_a else 0.5
     avg_opp_3pt_pct = total_opp_3pt_m / total_opp_3pt_a if total_opp_3pt_a else 0.36
@@ -583,6 +679,9 @@ def compute_league_averages(teams: Dict[str, Team]) -> LeagueAverages:
         baseline_block_prob=(total_blk / n_teams) / avg_team_2pt_fga if avg_team_2pt_fga else 0.0,
         team_2pt_pct=team_2pt_pct,
         team_3pt_pct=team_3pt_pct,
+        team_tov=team_tov,
+        avg_team_tov=(total_tov / n_teams) if n_teams else 0.0,
+        avg_team_fga=avg_team_fga,
         # Same "sum the real totals, then divide" rule as every other
         # percentage here -- never the mean of 30 team percentages.
         avg_team_2pt_pct=total_2pt_m / total_2pt_a if total_2pt_a else 0.0,
@@ -1185,8 +1284,20 @@ def _resolve_team_offense(
     ]
     expected_fta = [(p.fta / p.min if p.min else 0.0) * m for p, m in zip(active_players, minutes)]
 
-    team_target_fga = _negative_binomial_count(sum(expected_fga), dispersion=TEAM_ATTEMPTS_DISPERSION)
-    team_target_fta = _negative_binomial_count(sum(expected_fta), dispersion=TEAM_ATTEMPTS_DISPERSION)
+    # Extra (or fewer) possessions this team gets from how loose the
+    # OPPONENT is with the ball -- see TURNOVER_POSSESSION_WEIGHT. Applied
+    # to the team total rather than per player, because a possession is a
+    # team-level thing; who takes the extra shot is then decided by the
+    # same usage split as every other attempt. Scales free throws too: an
+    # extra possession is an extra chance to get fouled, not only to
+    # shoot. Exactly 1.0 when the weight is 0, leaving both draws
+    # bit-identical to before this existed.
+    possession_factor = league_avg.possession_factor_against(defender)
+
+    team_target_fga = _negative_binomial_count(
+        sum(expected_fga) * possession_factor, dispersion=TEAM_ATTEMPTS_DISPERSION)
+    team_target_fta = _negative_binomial_count(
+        sum(expected_fta) * possession_factor, dispersion=TEAM_ATTEMPTS_DISPERSION)
 
     assigned_fga = _dirichlet_multinomial_split(expected_fga, team_target_fga, USAGE_CONCENTRATION)
     assigned_fta = _dirichlet_multinomial_split(expected_fta, team_target_fta, USAGE_CONCENTRATION)

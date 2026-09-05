@@ -57,10 +57,22 @@ opponents' shooting (see game_engine.py).
   (`sweep_constants.py`), with a time-based train/holdout split, instead
   of against 2025-26 alone. Found and fixed a bias no single season
   could show: the sim spread win totals ~37% wider than real basketball
-  in all 30 seasons. `DEFENSE_AMPLIFICATION` 5 → 2 and a new
-  `OFFENSE_AMPLIFICATION` = 0.5 took league-wide standings MAE 8.45 →
-  6.19 (better in 29 of 29 seasons) and correlation .810 → .844. See
-  "Accuracy tuning" below.
+  in all 30 seasons. Also found that ordinary turnovers were almost
+  purely decorative. `DEFENSE_AMPLIFICATION` 5 → 1.5, a new
+  `OFFENSE_AMPLIFICATION` = 0.5, and a new `TURNOVER_POSSESSION_WEIGHT`
+  = 1.0 took league-wide standings MAE 8.45 → 5.94 (better in 28 of 29
+  seasons) and correlation .810 → .856. See "Accuracy tuning" below.
+- **How much accuracy is even left**: measured, not guessed. Two
+  INDEPENDENT simulated runs of the same season already differ from each
+  other by ~4.4 wins MAE — pure randomness, zero model error in it.
+  Adding the luck in a real 82-game season puts the irreducible floor at
+  ~4.7. So of the current 5.94, only ~1.2 games is real model error
+  (down from ~3.7 before this tuning) and ~80% of what remains is noise
+  nothing can fix. Same for correlation: the ceiling a PERFECT model
+  could reach against real standings is ~.925, because real standings
+  contain unpredictable luck — the sim is at .856, about 94% of
+  achievable. Worth knowing before chasing more: the remaining headroom
+  is ~1.2 games and ~.07 correlation, NOT 5.94 and .14.
 - **Not yet built**: possession-by-possession realism (deliberately low
   priority — see below); an offseason bridge connecting one backtested
   season to the next (drafts/free agency — see Deferred below).
@@ -106,9 +118,11 @@ opponents' shooting (see game_engine.py).
    Verified directionally correct against real data. A team's OWN real
    offense is amplified the same way its opponent's defense is
    (`OFFENSE_AMPLIFICATION`, tuned jointly with `DEFENSE_AMPLIFICATION`
-   — see "Accuracy tuning" below). Latest 30-run benchmark (post
-   injuries + trades): standings MAE ~6.2 games, correlation ~0.84 vs.
-   real standings, averaged over all 29 backtested seasons — see
+   — see "Accuracy tuning" below), and a team's real turnovers now cost
+   it real possessions (`TURNOVER_POSSESSION_WEIGHT`). Latest 30-run
+   benchmark (post injuries + trades): standings MAE ~5.9 games,
+   correlation ~0.86 vs. real standings, averaged over all 29
+   backtested seasons — see
    `benchmarks/*.json` for the full comparable history (pre-injury
    baseline, injuries only, trades only, both together, and
    `<season>_backtest` vs `<season>_tuned` for before/after this
@@ -295,9 +309,12 @@ opponents' shooting (see game_engine.py).
 - **Full 30-season accuracy range** (30-run benchmark each, real
   injuries + real trades on). Before the tuning below,
   `benchmarks/<season>_backtest.json`: MAE 6.48–10.38 (avg 8.42),
-  correlation .688–.919 (avg .812). After, `<season>_tuned.json`:
-  MAE 4.30–7.24 (avg 6.19), correlation avg .844 — better in 29 of 29
-  seasons, and the WORST season now beats the old BEST one. Accuracy
+  correlation .688–.919 (avg .812). After the offense/defense
+  retune, `<season>_tuned.json`: MAE avg 6.19, correlation avg .844.
+  After turnovers were given a possession cost too, `<season>_tov.json`:
+  MAE 4.36–7.42 (avg 5.94), correlation avg .856 — better than the
+  original in 28 of 29 seasons, and the WORST season now beats the old
+  BEST one. Accuracy
   never did decline steadily with age; it tracked how extreme each
   season's real defensive spread happened to be, which is exactly the
   over-amplification the tuning below removed.
@@ -347,10 +364,34 @@ opponents' shooting (see game_engine.py).
   other: offensive gain widens spread, pulling the best defensive gain
   down), because tuning one then the other only finds whatever the first
   pass left behind.
-- **Result**: `DEFENSE_AMPLIFICATION` 5 → 2, `OFFENSE_AMPLIFICATION` 0 →
-  0.5. Holdout MAE 8.25 → 6.07, correlation .812 → .842, spread ratio
-  1.374 → 1.018. Across all 29 comparable seasons: MAE 8.45 → 6.19,
-  better in 29 of 29.
+- **A third fix, found the same way**: with the two above landed, the
+  biggest remaining signal in what the sim still got wrong was a team's
+  real TURNOVERS (+0.355 across 862 team-seasons). Cause: ordinary
+  turnovers were almost purely decorative. Only steal-caused ones did
+  anything (~15%); the other ~85% were drawn into the box score with no
+  other number depending on them. Note what was NOT wrong — a team's own
+  turnovers should NOT reduce its own shot attempts, because a player's
+  real FGA already reflects the turnovers they really committed
+  (subtracting again is the SIXTH DEFENSE fix's double-counting trap).
+  What was genuinely missing is the other half of the exchange: the
+  possession the OPPONENT gains. So `TURNOVER_POSSESSION_WEIGHT` is
+  applied strictly as an opponent effect, relative to league average.
+  It tuned to exactly 1.0 — one turnover, one possession, the physically
+  correct value with no fudge factor — beating 1.5 in all 8 head-to-head
+  pairings against the other constants. A mechanism landing on its true
+  real-world magnitude the moment it's allowed to exist is good evidence
+  it was MISSING rather than a knob that flatters the fit.
+- **Result**: `DEFENSE_AMPLIFICATION` 5 → 1.5, `OFFENSE_AMPLIFICATION`
+  0 → 0.5, `TURNOVER_POSSESSION_WEIGHT` 0 → 1.0 (all three swept
+  TOGETHER at the end — adding possessions widened the spread, which
+  pulled the best defensive gain down from 2 to 1.5). Holdout MAE 8.25 →
+  5.55, correlation .812 → .871, spread ratio 1.374 → 1.025. Across all
+  29 comparable seasons: MAE 8.45 → 5.94, better in 28 of 29.
+- **Know the ceiling before chasing more** (see "How much accuracy is
+  even left" in Status): remaining model error is ~1.2 games and ~.07
+  correlation. Further gains have to come from finding another MISSING
+  MECHANISM, the way turnovers were — not from more knob-turning, which
+  is now firmly into diminishing returns.
 - **Landing slightly narrower than real spread is correct**: the MAE
   optimum sits at ratio ~0.94-1.02, not exactly 1.0, because when the
   ranking is imperfect, shrinking predictions toward the mean beats
