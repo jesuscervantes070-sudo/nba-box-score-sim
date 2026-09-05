@@ -555,6 +555,7 @@ ROSTER_AVAILABILITY_WEIGHT = 0.5
 # that, exactly the single-season overfit this harness exists to catch.
 SHORTHANDED_PENALTY = 0.15
 
+
 # A real NBA game that's still tied after regulation doesn't end -- it
 # plays a 5-minute overtime period (5 players x 5 minutes = 25 team-
 # minutes, the OT version of TOTAL_GAME_MINUTES/MAX_MINUTES above), and
