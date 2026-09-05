@@ -694,7 +694,23 @@ opponents' shooting (see game_engine.py).
      The user's framing is a 1-99 CONSISTENCY RATING, 2K-style but
      actually driving the sim rather than decorating it -- derived from
      what a player really did, not typed in by hand. Low spread ratio →
-     high rating.
+     high rating. Per the user: STORE THE RAW NUMBER, and leave the 1-99
+     scaling for later, when there's a real ratings system to belong to.
+     The sim should consume the raw value; the rating is a display layer.
+
+     The spread is large and obviously real (2023-24, 14+ ppg, 45+ games):
+
+       most consistent   John Collins 1.16 (15.3 ppg, sd 4.6, high 30)
+                         Bam Adebayo  1.19 (19.5 ppg, sd 5.3, high 31)
+                         SGA          1.23 (30.3 ppg, sd 6.7, high 43)
+       least consistent  Jalen Green  2.01 (20.0 ppg, sd 9.0, high 42)
+                         A. Simons    2.05 (22.6 ppg, sd 9.7, high 41)
+                         J. Clarkson  2.08 (17.4 ppg, sd 8.7, high 38)
+
+     The streakiest scorer is 79% more volatile than the steadiest.
+     Clarkson and Collins average nearly the same points and are
+     completely different players to watch -- which the sim currently
+     cannot represent at all.
 
      Worth noting this is also the first thing here that will be FELT
      rather than measured: a steady star staying steady and a streaky
