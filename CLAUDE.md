@@ -75,6 +75,11 @@ opponents' shooting (see game_engine.py).
   `TURNOVER_POSSESSION_WEIGHT` 0 → 1.0, `PACE_COUPLING_WEIGHT` 0 → 0.75,
   `ROSTER_AVAILABILITY_WEIGHT` 0 → 1.0. Holdout standings MAE 8.25 →
   5.09 and correlation .812 → .905. See "Accuracy tuning" below.
+  Since then, three more constants landed from BOX-SCORE evidence rather
+  than standings — `GAME_PACE_VARIATION` 0.052, `CONSISTENCY_WEIGHT` 12,
+  `CONSISTENCY_SHRINK_GAMES` 80, plus `USAGE_CONCENTRATION` 150 → 500.
+  All four are standings-neutral by design; see "Game pace" and "Player
+  consistency" below for what they fix and how they were measured.
 - **How much accuracy is even left**: measured, not guessed. Two
   INDEPENDENT simulated runs of the same season already differ from each
   other by ~4.4 wins MAE — pure randomness, zero model error in it.
@@ -87,6 +92,19 @@ opponents' shooting (see game_engine.py).
   98% of achievable. Worth knowing before chasing more: standings
   accuracy is essentially done. The remaining honest gap is in STAT
   realism (see Deferred), not in wins.
+- **Player consistency**: complete — every player has his own scoring
+  streakiness, measured from his real game logs and cached for all 30
+  seasons, replacing one global constant that made all 450 players
+  equally streaky. Per-player streakiness now correlates 0.74 with real
+  (was 0.26). Scoring only: defensive consistency was tested against
+  real per-game defensive ratings and REJECTED (it is mostly team and
+  playing time, repeating at 0.23 with workload removed). See "Player
+  consistency" below.
+- **Game pace**: fixed — the shared per-game pace multiplier was drawn
+  from a counting distribution, so 96% of its 10.8% swing was Poisson
+  noise from the number happening to be ~100 rather than anything about
+  basketball. Real games vary 5.2%. Simulated team points sd 17.57 →
+  13.96 against a real 12.16. See "Game pace" below.
 - **Not yet built**: possession-by-possession realism (deliberately low
   priority — see below); an offseason bridge connecting one backtested
   season to the next (drafts/free agency — see Deferred below).
@@ -379,6 +397,130 @@ Worth knowing this only works because of the steal/block roster-filtering
 fix — before it, a short-handed team's whole defence was miscounted, so
 this test would have measured the bug rather than Gobert.
 
+## Player consistency (data_source.py, game_engine.py)
+- **What it is**: every player now has his OWN scoring streakiness,
+  measured from his real game logs, instead of one global constant
+  making all 450 players equally streaky relative to their own average.
+  A steady star stays steady and a streaky one actually erupts.
+- **The raw measurement** lives in `cache/<season>/player_consistency.json`,
+  built by `fetch_player_consistency` from the SAME league-wide game log
+  that injuries and roster membership already fetch — zero extra API
+  calls. Cached for all 30 backtested seasons. Two numbers per player,
+  both relative to the swing pure chance alone would produce
+  (sqrt of the average), so a 30-point scorer and a 10-point one are
+  comparable:
+    - `spread_raw` — how much his points bounced, full stop.
+    - `spread_rate` — the same with MINUTES accounted for.
+  Real players run about 1.2 to 2.5 on `spread_raw`.
+- **The sim consumes `spread_rate`, and this matters.** The sim already
+  draws minutes per game, slightly WIDER than real (sd 6.19 vs 5.39), so
+  feeding it `spread_raw` would count minute-wobble twice — the same
+  double-counting family as the three box-score bugs. It changes who is
+  streaky: GG Jackson had the highest `spread_raw` in 2023-24 (2.54)
+  purely because a rookie's minutes swung 10 to 35, and is ordinary at
+  1.56 once that's removed. `spread_raw` is kept for the eventual 1-99
+  DISPLAY rating, where "unpredictable to watch" is the honest meaning.
+  Per the user: store the raw number, leave the 1-99 scaling for later.
+- **It works on shot VOLUME, not shooting percentage** — measured, not
+  assumed. A player's night-to-night FG% varies only 0.98x as much as
+  pure coin flips already explain (i.e. not at all beyond luck), while
+  his shot COUNT varies 1.15x. "He was ice cold tonight" is mostly "he
+  took eight shots tonight." Scoring and shot-volume streakiness are the
+  same underlying trait (+1.00 corrected for measurement noise). So the
+  lever is `_scoring_concentrations`: a per-player usage-split
+  concentration replacing the single global `USAGE_CONCENTRATION`.
+- **Correction to a long-standing note here**: this doc used to say
+  every player was equally streaky because of `DISPERSION` = 30. That
+  was wrong about the actual code — `DISPERSION` is NOT used for player
+  scoring in the team pipeline at all (only `_simulate_fouls` and the
+  standalone `simulate_player_game` still use it). A player's shot
+  volume comes from `_dirichlet_multinomial_split(..., USAGE_CONCENTRATION)`,
+  which is why that is the constant that had to move. Worth checking
+  where a constant is actually READ before planning work around it.
+- **It is a real trait, tested out of sample**: across all 30 cached
+  seasons a player's spread in one season predicts his spread in the
+  NEXT one at r = 0.43 over 2,585 player-seasons — different teammates,
+  different opponents, a summer in between. Points-per-game carries at
+  0.82 for scale; streakiness carries BETTER for stars (0.49). This is
+  the number to trust: single-season split-half estimates moved between
+  0.21 and 0.61 depending on how the population and controls were
+  sliced, which is what over-slicing one season looks like.
+- **`CONSISTENCY_SHRINK_GAMES` = 80** pulls a small sample toward the
+  league average (a 6-game measurement is real but mostly noise).
+  Derived from that same carryover, not guessed.
+- **Why `CONSISTENCY_WEIGHT` is 12 and not 1**: it is an exponent, and
+  the lever is weak. The usage split is only responsible for about a
+  FIFTH of a player's game-to-game scoring swing — the rest is the
+  shared team shot total, his minutes, and plain coin-flip shooting
+  luck, none of which can be made player-specific. So it takes roughly
+  five times more push than the naive variance relationship suggests.
+- **`USAGE_CONCENTRATION` had to be retuned 150 → 500 at the same
+  time.** Differentiating players around the old baseline made the tails
+  WORSE, because at 150 the league was already 8% too streaky. Both were
+  calibrated jointly against real 2023-24 game logs. Every target
+  improved:
+
+    per-player correlation   0.26 → 0.74
+    streakiness level        1.08 → 1.05   (1.00 = real)
+    spread across players    0.60 → 0.95   (1.00 = real)
+    40-point games/season     219 →  210   (real 162)
+    50-point games/season      32 →   25   (real 20)
+
+  And the ordering on the players that motivated this is finally right —
+  Booker and Brunson streakier than SGA, where the sim had it backwards:
+
+    player     real avg/sd    sim avg/sd (was)   real high / sim (was)
+    SGA         30.1/ 7.0     28.6/ 8.7 (11.3)      43 / 54 (70)
+    Brunson     28.7/10.1     28.1/ 9.2 ( 8.7)      61 / 58 (49)
+    Booker      27.1/10.2     26.8/11.1 ( 8.7)      62 / 68 (50)
+
+- **Scoped to SCORING only, and DEFENSIVE consistency was properly
+  tested and rejected** — not waved away. The first pass used steals and
+  blocks, which is a bad proxy for defence; the real test used per-game
+  DEFENSIVE RATING (`playergamelogs`, Advanced). Findings: 56% of a
+  player's nightly defensive rating is just his TEAM's night; what
+  remains is 0.69-correlated with minutes played even after correcting
+  for it, so the "most consistent defenders" are simply the starters
+  (Durant, Davis, Luka) and the "least consistent" are bench players
+  (McConnell, Pritchard) — a rating measured over fewer possessions
+  bounces more, the way 10 coin flips look wilder than 100. With
+  workload removed it repeats at 0.23. OFFENSIVE rating is no better
+  (0.19) and tells us nothing points doesn't (+0.06). Blocks repeat at
+  0.03 — pure noise. Assists ARE real but a separate trait (+0.05 with
+  scoring) — see Deferred.
+- **Standings unaffected**, checked across all 30 seasons:
+  `benchmarks/<season>_consistency.json` averages MAE 5.68 /
+  correlation 0.874 against `_v6`'s 5.67 / 0.873.
+
+## Game pace (game_engine.py)
+- **`GAME_PACE_VARIATION` = 0.052**, and it replaced a real bug. The
+  game's shared pace multiplier used to be
+  `_negative_binomial_count(avg_team_poss, TEAM_ATTEMPTS_DISPERSION)`
+  divided by `avg_team_poss` — drawing a COUNT with a mean near 100 and
+  treating it as a ratio. A count draw carries an unavoidable
+  Poisson-style spread of about 1/sqrt(mean), so 96% of the resulting
+  10.8% pace swing came from the number happening to be ~100, and only
+  4% from the dispersion constant it looked like it was reusing.
+  **Tuning `TEAM_ATTEMPTS_DISPERSION` could never have fixed it** — the
+  floor is set by the size of the number, not by the constant.
+- Real games vary 5.2%: possessions per team-game (FGA + 0.44*FTA + TOV
+  - OREB) average 100.8 with sd 5.3, and a team's own night-to-night
+  swing is the same 5.1%. The constant IS that measurement.
+- Effect: team shot attempts sd 9.97 → 5.90 and points sd 17.57 → 13.96
+  against real 6.72 and 12.16. Before this, 4.3% of simulated team-games
+  were under 80 points where real basketball has 0.2%, and the sim
+  produced 46- and 188-point team games (real range that season: 73 to
+  157).
+- **Standings-neutral** (MAE 5.58 → 5.62 across six seasons). A single
+  season looked like a clear win (2023-24 MAE 5.45 → 5.32) and did NOT
+  survive more seasons — recorded as neutral. The gain is entirely
+  box-score realism, which no standings metric can see: both teams share
+  the pace draw, so its excess spread cancels out of wins completely.
+  Same blind spot as the double-counts.
+- Found while calibrating player consistency — the shared pace swing was
+  drowning out each player's own game-to-game signal, so it had to be
+  right first.
+
 ## Accuracy tuning (sweep_constants.py)
 - **The problem it found**: every tuned constant in game_engine.py was
   chosen honestly, by testing against real data — but almost all against
@@ -565,10 +707,17 @@ this test would have measured the bug rather than Gobert.
 
 ## Files (all in this folder, import each other by filename)
 - `models.py` — `Player`, `Team`, `ScheduledGame` dataclasses. All
-  percentages are computed `@property`s, never stored fields.
+  percentages are computed `@property`s, never stored fields. `Player`
+  also carries `scoring_spread`/`scoring_spread_games` (see "Player
+  consistency"), both optional — `None` means "use the league average,"
+  never "perfectly consistent".
 - `data_source.py` — fetches + caches real rosters, per-game stats,
-  schedule, team defense, conferences, injuries, and roster membership
-  via `nba_api`, one subfolder per season (`cache/<season>/`). Run
+  schedule, team defense, conferences, injuries, roster membership and
+  per-player scoring consistency via `nba_api`, one subfolder per season
+  (`cache/<season>/`). The last three all come from ONE shared
+  league-wide game-log fetch (`build_and_cache_player_history`), which
+  writes only the files actually missing — so adding a new one backfills
+  just that file across already-cached seasons. Run
   `python data_source.py --season 2013-14` (`--refresh` to force
   re-fetch; season defaults to 2025-26). See "Multi-season backtesting"
   above for the historical-team-name table and the game_id-digit
@@ -576,6 +725,10 @@ this test would have measured the bug rather than Gobert.
 - `loader.py` — the ONLY file that reads the cache/*.json files
   directly; everything else works with real Player/Team objects. Every
   `load_*` function takes a `season` (default `DEFAULT_SEASON`).
+  `player_consistency.json` is the one OPTIONAL cache file: it was added
+  after every season was already cached, so a missing one just leaves
+  every player on the league-average default rather than refusing to
+  load the season.
 - `db.py` — SQLite storage (`cache/season.db`) for simulated season
   games AND simulated injuries. DNP (0-minute) player-rows are
   deliberately NOT stored, so season averages are "per game played,"
@@ -585,7 +738,9 @@ this test would have measured the bug rather than Gobert.
   function (`get_team_game_log`), both built for main.py's game-by-game
   replay.
 - `game_engine.py` — the actual simulation (see above), including
-  overtime and the active-roster draw's numerical-safety floor (see
+  overtime, per-player scoring consistency (`_scoring_concentrations`,
+  and `_dirichlet_multinomial_split`'s per-player concentration path)
+  and the active-roster draw's numerical-safety floor (see
   "Multi-season backtesting" above). By far the largest/most complex
   file; every tunable constant has a comment explaining how and why it
   was tuned against real data.
@@ -650,89 +805,43 @@ this test would have measured the bug rather than Gobert.
      2-pointers overturned into misses, inflating everyone's shooting.
      See `_available_rate_relative`, which now rates per MINUTE so that
      WHO is missing matters and HOW MANY doesn't.
-   - **PLAYER CONSISTENCY — the biggest remaining gap, and now measured
-     rather than suspected. This is the next thing to build.** `DISPERSION`
-     = 30 is one global constant, so every player is equally streaky
-     relative to their own average. Real players are not, and the gap is
-     large. Checked against real 2023-24 game logs (`playergamelogs`,
-     26,401 rows, ~1 second to fetch — it was assumed unavailable for a
-     while, wrongly):
-
-       big games per season   real    sim   ratio
-         30+                  1106   1130   1.02x   (right)
-         40+                   162    210   1.30x   (too many)
-         50+                    20     28   1.40x   (too many)
-         60+                     7      4   0.57x   (too FEW)
-
-     So the tail is both too fat in the middle and too short at the end:
-     the sim hands out routine 45s while real basketball's genuinely
-     legendary nights are rarer AND more extreme.
-
-     Per player it's worse, and in both directions — real game-to-game
-     standard deviation is a genuine trait the sim flattens:
-
-       player      real avg/sd   sim avg/sd   real high / sim high
-       SGA          30.1/6.9      30.9/11.3      43 / 70
-       Doncic       33.9/8.7      31.5/10.5      73 / 62
-       Brunson      28.7/10.1     25.5/8.7       61 / 49
-       Booker       27.1/10.1     25.2/8.7       62 / 50
-
-     SGA was a metronome in 2023-24 (sd 6.9, never above 43) and the sim
-     makes him the league's most erratic scorer AND gives him a 70-point
-     game. Booker and Brunson really were volatile (sd 10.1, with 62 and
-     61-point nights) and the sim makes them steadier than they were.
-
-     The fix is a per-player CONSISTENCY derived from their real
-     game-to-game variance, replacing the single global DISPERSION for
-     scoring. Plan: (1) fetch and cache real game logs per season, the
-     same shape as every other fetch in data_source.py; (2) derive each
-     player's real spread; (3) make dispersion player-specific; (4)
-     validate against the exact table above — the 30+/40+/50+/60+ counts
-     and the per-player sd — NOT against standings, which cannot see any
-     of this.
-
-     **Scope it to SCORING only — checked, and the data says so.** Asking
-     whether game-to-game spread is a real trait or just randomness
-     (comparing each player's real standard deviation against the
-     Poisson-like spread pure chance would produce) separates them
-     cleanly across 2023-24:
-
-       PTS 1.72x   FGA 1.16x   REB 1.12x   AST 1.10x
-       BLK 1.06x   STL 1.02x   TOV 1.00x
-
-     Scoring varies 72% more than chance -- a real trait, and widely
-     spread (steadiest players 1.42, streakiest 2.05, plenty of range for
-     a rating). Steals, blocks and turnovers are indistinguishable from
-     coin flips; a player averaging one steal just gets random 0s, 1s and
-     2s. A DEFENSIVE consistency rating would be modelling noise as
-     skill. Rebounds and assists are marginal (1.10-1.12x) and not worth
-     their own ratings either.
-
-     The user's framing is a 1-99 CONSISTENCY RATING, 2K-style but
-     actually driving the sim rather than decorating it -- derived from
-     what a player really did, not typed in by hand. Low spread ratio →
-     high rating. Per the user: STORE THE RAW NUMBER, and leave the 1-99
-     scaling for later, when there's a real ratings system to belong to.
-     The sim should consume the raw value; the rating is a display layer.
-
-     The spread is large and obviously real (2023-24, 14+ ppg, 45+ games):
-
-       most consistent   John Collins 1.16 (15.3 ppg, sd 4.6, high 30)
-                         Bam Adebayo  1.19 (19.5 ppg, sd 5.3, high 31)
-                         SGA          1.23 (30.3 ppg, sd 6.7, high 43)
-       least consistent  Jalen Green  2.01 (20.0 ppg, sd 9.0, high 42)
-                         A. Simons    2.05 (22.6 ppg, sd 9.7, high 41)
-                         J. Clarkson  2.08 (17.4 ppg, sd 8.7, high 38)
-
-     The streakiest scorer is 79% more volatile than the steadiest.
-     Clarkson and Collins average nearly the same points and are
-     completely different players to watch -- which the sim currently
-     cannot represent at all.
-
-     Worth noting this is also the first thing here that will be FELT
-     rather than measured: a steady star staying steady and a streaky
-     one actually erupting is the difference between a season that reads
-     like real basketball and one that reads like an average.
+   - **PLAYER CONSISTENCY is BUILT** (was the top item here). Every
+     player now has his own scoring streakiness, taken from his real
+     game logs, instead of one global constant making all 450 players
+     equally streaky. See "Player consistency" below for the whole
+     thing — what it measures, why it works on shot volume rather than
+     shooting %, and why defensive consistency was tested and rejected.
+   - **FREE THROWS BARELY VARY — the next box-score gap, measured not
+     suspected.** Real free-throw attempts per team-game average 21.7
+     with a standard deviation of 7.00; the sim gets the average right
+     (21.3) and the swing badly wrong (~3.5, half of real). Cause is
+     structural: free throws are derived almost deterministically from
+     each player's real FTA rate x his minutes x pace, so the only
+     randomness they carry is the usage split plus the 5.2% shared pace
+     wobble. Real basketball swings 32%.
+     What's missing is a game-level FOUL ENVIRONMENT — how tightly the
+     game is called. It's visibly real in the data: the two teams' free
+     throws in the same game correlate +0.20 and their fouls +0.28
+     (some nights the whistle is tight and both teams shoot 30, some
+     nights neither does), and the game-level free-throw rate swings
+     24.9% on its own. Almost all of the variation is within-team night
+     to night (sd 6.84), not team identity (sd 1.50) — it is NOT that
+     some teams get to the line more.
+     Checked and rejected as the main cause: late-game intentional
+     fouling is real but small (a 1-3 point game has only 3.7 more free
+     throws than a blowout, correlation 0.17).
+     The fix mirrors `GAME_PACE_VARIATION` exactly — one shared
+     per-game draw with a spread measured off real games. CAVEAT worth
+     knowing before starting: team points are currently sd 13.96
+     against a real 12.16, so adding free-throw variation pushes that
+     FURTHER out unless something else tightens at the same time. Not a
+     standalone win; needs calibrating jointly.
+   - **Assist consistency is real but SEPARATE**, and unbuilt. Assist
+     streakiness is measured about as reliably as scoring, but it
+     correlates only +0.05 with scoring streakiness — a streaky scorer
+     is not a streaky passer, so it cannot ride along on one
+     "offensive consistency" number and would need its own rating.
+     Deliberately not folded into the scoring work.
 2. **An offseason bridge + season-picker UI** for the now-30-season
    backtest set (see "Multi-season backtesting" above) — diffing two
    seasons' rosters to show real draft/free-agency movement between
