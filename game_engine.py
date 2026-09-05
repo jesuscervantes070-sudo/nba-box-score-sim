@@ -318,7 +318,15 @@ ROTATION_WEIGHT_EXPONENT = 8
 # top of values tuned back when turnovers did nothing. Final joint fit
 # (16 combinations, 30 seasons): holdout MAE 6.07 -> 5.55, correlation
 # .842 -> .871, spread ratio back to 1.025.
-DEFENSE_AMPLIFICATION = 1.5
+# Lowered a third time, 1.5 -> 1, when PACE_COUPLING_WEIGHT and
+# ROSTER_AVAILABILITY_WEIGHT landed below. Each real mechanism restored
+# has taken more of the work this constant was doing by brute force:
+# it started at 5, compensating for everything the sim wasn't modelling,
+# and every genuine fix since has let it fall closer to the literal real
+# ratio it was always supposed to be. Final joint fit of all five
+# constants (12 combinations, 30 seasons): holdout MAE 5.55 -> 5.09,
+# correlation .871 -> .905, spread ratio 1.038.
+DEFENSE_AMPLIFICATION = 1
 
 # The OFFENSIVE mirror of DEFENSE_AMPLIFICATION: how much a team's own
 # real shooting quality gets exaggerated away from league average, the
@@ -460,7 +468,14 @@ TURNOVER_POSSESSION_WEIGHT = 1.0
 #
 # 0 disables both and falls back to the old independent per-team draws,
 # exactly as before this existed.
-PACE_COUPLING_WEIGHT = 0.0
+# Tuned to 0.75. Full coupling (1.0) matches real basketball's structure
+# most exactly but scored slightly worse, which is the same shrinkage
+# result DEFENSE_AMPLIFICATION shows: when the ranking is imperfect,
+# pulling predictions a little short of the real spread beats matching it
+# exactly. Effect: holdout correlation .866 -> .906 on its own, the
+# largest single correlation gain of any fix here, and possession
+# differential 19.2 -> 4.05 against real basketball's ~1.5.
+PACE_COUPLING_WEIGHT = 0.75
 
 # A player's real per-game average is measured over the games they
 # ACTUALLY PLAYED, not over their team's whole season. Add up nine such
@@ -497,7 +512,13 @@ PACE_COUPLING_WEIGHT = 0.0
 # Team.opp_fga -- real, team-level, already loaded -- gives the exact
 # target the sim's own average should land on. See
 # _roster_availability_factor. 0 disables it entirely.
-ROSTER_AVAILABILITY_WEIGHT = 0.0
+# Tuned to 1.0 -- full correction, the value that makes the sim's
+# league-average team FGA match real basketball's exactly. Like
+# TURNOVER_POSSESSION_WEIGHT landing on 1.0, a correction that wants its
+# full physically-derived size is evidence it's fixing something real.
+# It also helps standings (holdout MAE 5.19 -> 5.09) despite being found
+# by looking at box scores, not standings.
+ROSTER_AVAILABILITY_WEIGHT = 1.0
 
 # A real NBA game that's still tied after regulation doesn't end -- it
 # plays a 5-minute overtime period (5 players x 5 minutes = 25 team-

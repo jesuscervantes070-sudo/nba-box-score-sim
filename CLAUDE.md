@@ -57,22 +57,27 @@ opponents' shooting (see game_engine.py).
   (`sweep_constants.py`), with a time-based train/holdout split, instead
   of against 2025-26 alone. Found and fixed a bias no single season
   could show: the sim spread win totals ~37% wider than real basketball
-  in all 30 seasons. Also found that ordinary turnovers were almost
-  purely decorative. `DEFENSE_AMPLIFICATION` 5 → 1.5, a new
-  `OFFENSE_AMPLIFICATION` = 0.5, and a new `TURNOVER_POSSESSION_WEIGHT`
-  = 1.0 took league-wide standings MAE 8.45 → 5.94 (better in 28 of 29
-  seasons) and correlation .810 → .856. See "Accuracy tuning" below.
+  in all 30 seasons. Then three MISSING MECHANISMS, each found by
+  measuring what the sim still got wrong rather than by guessing:
+  ordinary turnovers were almost purely decorative; possessions weren't
+  conserved between the two teams; and player averages quietly assume
+  every rotation player is available every night. Final constants:
+  `DEFENSE_AMPLIFICATION` 5 → 1, `OFFENSE_AMPLIFICATION` 0 → 0.5,
+  `TURNOVER_POSSESSION_WEIGHT` 0 → 1.0, `PACE_COUPLING_WEIGHT` 0 → 0.75,
+  `ROSTER_AVAILABILITY_WEIGHT` 0 → 1.0. Holdout standings MAE 8.25 →
+  5.09 and correlation .812 → .905. See "Accuracy tuning" below.
 - **How much accuracy is even left**: measured, not guessed. Two
   INDEPENDENT simulated runs of the same season already differ from each
   other by ~4.4 wins MAE — pure randomness, zero model error in it.
   Adding the luck in a real 82-game season puts the irreducible floor at
-  ~4.7. So of the current 5.94, only ~1.2 games is real model error
-  (down from ~3.7 before this tuning) and ~80% of what remains is noise
-  nothing can fix. Same for correlation: the ceiling a PERFECT model
-  could reach against real standings is ~.925, because real standings
-  contain unpredictable luck — the sim is at .856, about 94% of
-  achievable. Worth knowing before chasing more: the remaining headroom
-  is ~1.2 games and ~.07 correlation, NOT 5.94 and .14.
+  ~4.7. So of the current ~5.5, well under a game is real model error
+  (down from ~3.7 before this tuning) and the large majority of what
+  remains is noise nothing can fix. Same for correlation: the ceiling a
+  PERFECT model could reach against real standings is ~.925, because
+  real standings contain unpredictable luck — the sim is at ~.90, about
+  98% of achievable. Worth knowing before chasing more: standings
+  accuracy is essentially done. The remaining honest gap is in STAT
+  realism (see Deferred), not in wins.
 - **Not yet built**: possession-by-possession realism (deliberately low
   priority — see below); an offseason bridge connecting one backtested
   season to the next (drafts/free agency — see Deferred below).
@@ -118,10 +123,20 @@ opponents' shooting (see game_engine.py).
    Verified directionally correct against real data. A team's OWN real
    offense is amplified the same way its opponent's defense is
    (`OFFENSE_AMPLIFICATION`, tuned jointly with `DEFENSE_AMPLIFICATION`
-   — see "Accuracy tuning" below), and a team's real turnovers now cost
-   it real possessions (`TURNOVER_POSSESSION_WEIGHT`). Latest 30-run
-   benchmark (post injuries + trades): standings MAE ~5.9 games,
-   correlation ~0.86 vs. real standings, averaged over all 29
+   — see "Accuracy tuning" below).
+6. **Possessions are a shared, conserved resource**, like the 240
+   minutes above: both teams get one negotiated pace and one shared
+   possession count per game (`PACE_COUPLING_WEIGHT`), with turnovers
+   and offensive rebounds inside that arithmetic, so giving the ball
+   away really does cost a team shots.
+7. **Player averages are corrected for availability**
+   (`ROSTER_AVAILABILITY_WEIGHT`) — a per-game average is measured over
+   games a player actually played, so nine of them summed describe an
+   always-healthy team that doesn't exist. Self-calibrates per season
+   against real team-level data, which is why it barely touches the
+   1990s and matters a lot in the 2020s.
+   Latest 30-run benchmark (post injuries + trades): standings MAE ~5.5
+   games, correlation ~0.88 vs. real standings, averaged over all 29
    backtested seasons — see
    `benchmarks/*.json` for the full comparable history (pre-injury
    baseline, injuries only, trades only, both together, and
@@ -309,12 +324,14 @@ opponents' shooting (see game_engine.py).
 - **Full 30-season accuracy range** (30-run benchmark each, real
   injuries + real trades on). Before the tuning below,
   `benchmarks/<season>_backtest.json`: MAE 6.48–10.38 (avg 8.42),
-  correlation .688–.919 (avg .812). After the offense/defense
-  retune, `<season>_tuned.json`: MAE avg 6.19, correlation avg .844.
-  After turnovers were given a possession cost too, `<season>_tov.json`:
-  MAE 4.36–7.42 (avg 5.94), correlation avg .856 — better than the
-  original in 28 of 29 seasons, and the WORST season now beats the old
-  BEST one. Accuracy
+  correlation .688–.919 (avg .812). Then, in order, as each fix landed:
+  `<season>_tuned.json` (offense/defense retune) MAE avg 6.19,
+  correlation .844; `<season>_tov.json` (turnovers cost possessions)
+  MAE avg 5.94, correlation .856; `<season>_final.json` (possession
+  conservation + availability correction) — the CURRENT numbers, and
+  the ones to compare any future change against. Better than the
+  original in every season, and the worst season now comfortably beats
+  the old best one. Accuracy
   never did decline steadily with age; it tracked how extreme each
   season's real defensive spread happened to be, which is exactly the
   over-amplification the tuning below removed.
@@ -381,12 +398,49 @@ opponents' shooting (see game_engine.py).
   pairings against the other constants. A mechanism landing on its true
   real-world magnitude the moment it's allowed to exist is good evidence
   it was MISSING rather than a knob that flatters the fit.
-- **Result**: `DEFENSE_AMPLIFICATION` 5 → 1.5, `OFFENSE_AMPLIFICATION`
-  0 → 0.5, `TURNOVER_POSSESSION_WEIGHT` 0 → 1.0 (all three swept
-  TOGETHER at the end — adding possessions widened the spread, which
-  pulled the best defensive gain down from 2 to 1.5). Holdout MAE 8.25 →
-  5.55, correlation .812 → .871, spread ratio 1.374 → 1.025. Across all
-  29 comparable seasons: MAE 8.45 → 5.94, better in 28 of 29.
+- **A fourth fix: possessions weren't conserved.** Real basketball's two
+  teams ALTERNATE possessions, so both finish a game within one or two of
+  each other. This sim drew each team's shot volume independently: over
+  600 games the possession differential had a standard deviation of 19.2,
+  and 76% of games handed one team 6+ more possessions than its opponent.
+  That's the same category of rule `TOTAL_GAME_MINUTES` already respects
+  (240 minutes are a shared resource, split, never drawn per player) —
+  possessions were the one such quantity still drawn independently.
+  `PACE_COUPLING_WEIGHT` negotiates one shared pace, draws the game's
+  pace randomness ONCE for both teams, and scales both to a single
+  possession count with turnovers and offensive rebounds INSIDE the
+  arithmetic (POSS ~ FGA + 0.44*FTA + TOV - OREB), so a team that gives
+  it away takes correspondingly fewer shots. Differential 19.2 → 4.05,
+  and holdout correlation .866 → .906 — the single largest correlation
+  gain of any fix here.
+- **A fifth fix, found by looking at a BOX SCORE rather than standings.**
+  Simulated teams scored ~7 points per game too many in 2024-25 but only
+  ~2 in the 1990s. Cause: a player's real per-game average is measured
+  over games they ACTUALLY PLAYED, so adding up nine of them describes a
+  team with all nine rotation players available every night, which no
+  real team is. It grows with era because modern players miss far more
+  games. Crucially, no standings metric could ever have found it — both
+  teams inflate equally, so wins are unaffected and MAE and correlation
+  are structurally BLIND to it. `ROSTER_AVAILABILITY_WEIGHT` calibrates
+  against real data and re-measures per season (league-average team FGA
+  IS league-average opponent FGA allowed, so `Team.opp_fga` is the exact
+  target), correcting a 1990s season barely at all and a modern one a
+  lot, with no era logic hardcoded anywhere. 2024-25 scoring +7.3 → +1.5
+  points, FGA +4.7 → +0.6; 1996-97 moves only +0.3 → +0.1.
+- **Result**: `DEFENSE_AMPLIFICATION` 5 → 1, `OFFENSE_AMPLIFICATION`
+  0 → 0.5, `TURNOVER_POSSESSION_WEIGHT` 0 → 1.0, `PACE_COUPLING_WEIGHT`
+  0 → 0.75, `ROSTER_AVAILABILITY_WEIGHT` 0 → 1.0 — all swept TOGETHER at
+  the end, because each real mechanism restored takes over work the
+  defensive gain was doing by brute force (it fell 5 → 2 → 1.5 → 1 as
+  each landed). Holdout MAE 8.25 → 5.09, correlation .812 → .905, spread
+  ratio 1.374 → 1.038.
+- **The residual diagnostic is how all three mechanisms were found**, and
+  it's the tool to reuse before chasing anything else: correlate each
+  team's real stats against what the sim still gets wrong, and go after
+  the largest signal. Every one has now collapsed — defense quality +0.67
+  → ~0, turnovers +0.355 → +0.107, opponent pace +0.296 → +0.147, own
+  pace +0.226 → +0.014. Nothing above +0.15 remains, which is the
+  evidence that the easy mechanisms are gone, not a guess that they are.
 - **Know the ceiling before chasing more** (see "How much accuracy is
   even left" in Status): remaining model error is ~1.2 games and ~.07
   correlation. Further gains have to come from finding another MISSING
@@ -493,13 +547,22 @@ opponents' shooting (see game_engine.py).
    bump" a team gives its pieces after losing a star) — it just wasn't
    costing accuracy the way the old number suggested.
    - **Player FG% still runs ~1.8pp above real** (sim minus real,
-     league-wide). Untouched by the tuning below — verified flat
-     across every constant value swept, so it's a genuinely separate
-     problem, not a side effect. It also TRENDS with era: ~+1.1pp in
-     the late 90s rising to ~+2.0pp by 2024-25, tracking the 3-point
-     revolution. That trend is the strongest evidence yet for the
-     "give the sim era context" idea, and this is where it should be
-     aimed first — standings accuracy shows no era trend at all.
+     league-wide) — now the single largest known inaccuracy left
+     anywhere in the project. Untouched by any of the tuning below:
+     verified flat across every constant value ever swept, so it's a
+     genuinely separate problem, not a side effect. It TRENDS with era
+     (~+1.1pp in the late 90s rising to ~+2.0pp by 2024-25, tracking
+     the 3-point revolution), which is the strongest evidence yet for
+     the "give the sim era context" idea.
+
+     Worth knowing how to attack it, because standings metrics CANNOT
+     find it: MAE and correlation are structurally blind to anything
+     that inflates both teams equally. That's exactly how the
+     `ROSTER_AVAILABILITY_WEIGHT` bias survived so long — it took
+     comparing a simulated BOX SCORE against real per-game team
+     numbers to see it at all. The same comparison is what should be
+     pointed at FG% next: simulated vs. real league-average team FG%,
+     2PT% and 3PT% separately, per season.
 2. **An offseason bridge + season-picker UI** for the now-30-season
    backtest set (see "Multi-season backtesting" above) — diffing two
    seasons' rosters to show real draft/free-agency movement between
