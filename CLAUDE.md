@@ -674,6 +674,28 @@ opponents' shooting (see game_engine.py).
      and the per-player sd — NOT against standings, which cannot see any
      of this.
 
+     **Scope it to SCORING only — checked, and the data says so.** Asking
+     whether game-to-game spread is a real trait or just randomness
+     (comparing each player's real standard deviation against the
+     Poisson-like spread pure chance would produce) separates them
+     cleanly across 2023-24:
+
+       PTS 1.72x   FGA 1.16x   REB 1.12x   AST 1.10x
+       BLK 1.06x   STL 1.02x   TOV 1.00x
+
+     Scoring varies 72% more than chance -- a real trait, and widely
+     spread (steadiest players 1.42, streakiest 2.05, plenty of range for
+     a rating). Steals, blocks and turnovers are indistinguishable from
+     coin flips; a player averaging one steal just gets random 0s, 1s and
+     2s. A DEFENSIVE consistency rating would be modelling noise as
+     skill. Rebounds and assists are marginal (1.10-1.12x) and not worth
+     their own ratings either.
+
+     The user's framing is a 1-99 CONSISTENCY RATING, 2K-style but
+     actually driving the sim rather than decorating it -- derived from
+     what a player really did, not typed in by hand. Low spread ratio →
+     high rating.
+
      Worth noting this is also the first thing here that will be FELT
      rather than measured: a steady star staying steady and a streaky
      one actually erupting is the difference between a season that reads
