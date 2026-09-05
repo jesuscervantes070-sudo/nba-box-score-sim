@@ -100,6 +100,12 @@ opponents' shooting (see game_engine.py).
   real per-game defensive ratings and REJECTED (it is mostly team and
   playing time, repeating at 0.23 with workload removed). See "Player
   consistency" below.
+- **Free throws**: mostly fixed — they now come from the opponent's
+  fouls rather than being drawn unconnected to anything, which is what
+  a free throw actually is. FTA night-to-night spread 2.97 → 5.61
+  against a real 7.00. One piece deliberately left: real officiating
+  moves both teams together and the sim's fouls are drawn independently.
+  See "Free throws come from the opponent's fouls" below.
 - **Game pace**: fixed — the shared per-game pace multiplier was drawn
   from a counting distribution, so 96% of its 10.8% swing was Poisson
   noise from the number happening to be ~100 rather than anything about
@@ -491,6 +497,46 @@ this test would have measured the bug rather than Gobert.
 - **Standings unaffected**, checked across all 30 seasons:
   `benchmarks/<season>_consistency.json` averages MAE 5.68 /
   correlation 0.874 against `_v6`'s 5.67 / 0.873.
+- **The 1-99 rating** (`Player.consistency_rating`, shown as the CONS
+  column in main.py's season averages) is the display layer the user
+  asked to defer until the raw numbers existed. It is a computed
+  property, never stored, and means something exact: 90 = steadier than
+  90% of real NBA rotation players, read off a reference distribution
+  of 5,566 player-seasons (40+ games, 8+ ppg, all 30 seasons) held in
+  `CONSISTENCY_REFERENCE_*` in models.py. Finer at both ends than in the
+  middle, because the streakiest 5% span 2.23 to 3.87 and an even grid
+  crushed all of them into 5-9. One pooled table, not one per season:
+  league-average spread drifts 1.72 → 1.79 over the 30 years, but that
+  is only half the player-to-player spread within a season, so pooling
+  stays fair and buys cross-era comparability.
+  It shows the RAW spread while the sim runs on the minutes-stripped
+  one — deliberate, and the reverse of a bug: the sim needs minutes
+  removed because it already draws minutes, but a viewer experiences
+  the opposite, since a player you can't predict because you don't know
+  if he'll play 12 minutes or 32 really is unpredictable to watch.
+  Two floors, both because the alternative is confidently wrong: under
+  20 games, and under 8 ppg (without the second, a 1.2 ppg bench player
+  rated 98, the steadiest scorer in the league — true arithmetic,
+  nonsense basketball). Both print "--", never a number. On a real
+  roster: Gilgeous-Alexander 97, Capela and Adebayo 98, Isaiah Joe 20.
+
+## Free throws come from the opponent's fouls (game_engine.py)
+- `FOUL_FREE_THROW_WEIGHT` ties each team's free-throw volume to how
+  many fouls the OPPONENT actually committed tonight (`_foul_pressure`),
+  because they are two halves of one event: real free-throw attempts
+  correlate +0.80 with the other team's fouls. The sim was already
+  drawing fouls per player and using them for nothing but fouling out.
+- Extra trips DISPLACE shots at `FREE_THROW_POSSESSION_COST` = 0.44, the
+  same figure the possession estimate already uses — a possession spent
+  at the line isn't spent shooting from the floor.
+- `CAPPED_FOUL_SHARE` = 0.972 corrects a bug measurement caught: foul
+  pressure divides by the UNCAPPED expectation, but the 6-foul limit and
+  FOUL_OUT_LEAK_PROBABILITY hold the draw below it by design, so every
+  team read as fouling 2.8% under normal every night. Re-measure if
+  DISPERSION, FOUL_OUT_LIMIT or FOUL_OUT_LEAK_PROBABILITY change.
+- Results, and what's still open, are in the Deferred list's free-throw
+  entry. Standings unaffected (MAE 5.56 → 5.60, correlation 0.899 →
+  0.900 over six seasons at 30 runs).
 
 ## Game pace (game_engine.py)
 - **`GAME_PACE_VARIATION` = 0.052**, and it replaced a real bug. The
@@ -708,9 +754,12 @@ this test would have measured the bug rather than Gobert.
 ## Files (all in this folder, import each other by filename)
 - `models.py` — `Player`, `Team`, `ScheduledGame` dataclasses. All
   percentages are computed `@property`s, never stored fields. `Player`
-  also carries `scoring_spread`/`scoring_spread_games` (see "Player
-  consistency"), both optional — `None` means "use the league average,"
-  never "perfectly consistent".
+  also carries `scoring_spread`/`scoring_spread_games`/
+  `scoring_spread_raw` (see "Player consistency"), all optional — `None`
+  means "use the league average," never "perfectly consistent" — plus
+  `consistency_rating`, the 1-99 display rating computed from them and
+  the `CONSISTENCY_REFERENCE_*` table, returning `None` rather than a
+  number when there is no honest answer.
 - `data_source.py` — fetches + caches real rosters, per-game stats,
   schedule, team defense, conferences, injuries, roster membership and
   per-player scoring consistency via `nba_api`, one subfolder per season
@@ -805,37 +854,42 @@ this test would have measured the bug rather than Gobert.
      2-pointers overturned into misses, inflating everyone's shooting.
      See `_available_rate_relative`, which now rates per MINUTE so that
      WHO is missing matters and HOW MANY doesn't.
-   - **PLAYER CONSISTENCY is BUILT** (was the top item here). Every
-     player now has his own scoring streakiness, taken from his real
-     game logs, instead of one global constant making all 450 players
-     equally streaky. See "Player consistency" below for the whole
-     thing — what it measures, why it works on shot volume rather than
-     shooting %, and why defensive consistency was tested and rejected.
-   - **FREE THROWS BARELY VARY — the next box-score gap, measured not
-     suspected.** Real free-throw attempts per team-game average 21.7
-     with a standard deviation of 7.00; the sim gets the average right
-     (21.3) and the swing badly wrong (~3.5, half of real). Cause is
-     structural: free throws are derived almost deterministically from
-     each player's real FTA rate x his minutes x pace, so the only
-     randomness they carry is the usage split plus the 5.2% shared pace
-     wobble. Real basketball swings 32%.
-     What's missing is a game-level FOUL ENVIRONMENT — how tightly the
-     game is called. It's visibly real in the data: the two teams' free
-     throws in the same game correlate +0.20 and their fouls +0.28
-     (some nights the whistle is tight and both teams shoot 30, some
-     nights neither does), and the game-level free-throw rate swings
-     24.9% on its own. Almost all of the variation is within-team night
-     to night (sd 6.84), not team identity (sd 1.50) — it is NOT that
-     some teams get to the line more.
-     Checked and rejected as the main cause: late-game intentional
-     fouling is real but small (a 1-3 point game has only 3.7 more free
-     throws than a blowout, correlation 0.17).
-     The fix mirrors `GAME_PACE_VARIATION` exactly — one shared
-     per-game draw with a spread measured off real games. CAVEAT worth
-     knowing before starting: team points are currently sd 13.96
-     against a real 12.16, so adding free-throw variation pushes that
-     FURTHER out unless something else tightens at the same time. Not a
-     standalone win; needs calibrating jointly.
+   - **PLAYER CONSISTENCY is BUILT**, and now VISIBLE (was the top item
+     here). Every player has his own scoring streakiness, taken from his
+     real game logs, instead of one global constant making all 450
+     players equally streaky — and `main.py`'s season-averages table
+     shows it as a 1-99 CONS rating (`Player.consistency_rating`, a
+     computed property, never stored). See "Player consistency" below
+     for the whole thing — what it measures, why it works on shot volume
+     rather than shooting %, why the RATING uses the raw spread while
+     the SIM uses the minutes-stripped one, and why defensive
+     consistency was tested and rejected.
+   - **FREE THROWS are MOSTLY FIXED, with one piece deliberately left.**
+     They were drawn purely from each player's own rate and connected to
+     nothing, so they swung 13.8% against a real 32.2%. The missing
+     piece was a LINK, not a random number: a team's free throws
+     correlate +0.80 with the fouls the OTHER team committed, and the
+     sim was already simulating fouls per player and using them for
+     nothing but fouling out. See `FOUL_FREE_THROW_WEIGHT` and
+     `_foul_pressure`. FTA sd 2.97 → 5.61 (real 7.00), FTA vs opponent
+     fouls -0.02 → 0.78 (real 0.80), and extra trips now DISPLACE shots
+     at the standard 0.44 possessions each, so free throws and field
+     goals no longer rise together (+0.55 → +0.05, real -0.24).
+     **What remains, and it is its own mechanism**: the two teams' free
+     throws correlate +0.07 against a real +0.20 (it was +0.35 before —
+     equally wrong the other way). Real officiating moves BOTH teams
+     together; their fouls correlate +0.28 where the sim's, drawn
+     independently, correlate -0.02. Note the simulated foul SPREAD is
+     already right (sd 4.30 vs a real 4.15), so this is NOT about adding
+     foul variance — it is about splitting the variance that already
+     exists into a shared game-level part and an independent part, which
+     means changing how `_simulate_fouls` draws. Left undone on purpose
+     rather than half-done.
+     Also worth knowing: `CAPPED_FOUL_SHARE` = 0.972 exists because the
+     6-foul cap and `FOUL_OUT_LEAK_PROBABILITY` hold drawn fouls below
+     their uncapped expectation BY DESIGN, so dividing by that
+     expectation made every team read as fouling 2.8% less than normal
+     every night. Re-measure it if any of those three change.
    - **Assist consistency is real but SEPARATE**, and unbuilt. Assist
      streakiness is measured about as reliably as scoring, but it
      correlates only +0.05 with scoring streakiness — a streaky scorer
