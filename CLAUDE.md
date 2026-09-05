@@ -23,7 +23,16 @@ opponents' shooting (see game_engine.py).
   record vs. each conference's playoff picture → point differential →
   alphabetical last resort). See playoffs.py.
 - **Injuries**: complete — turns each player's real absence pattern into a
-  simulated one. Anchored to roughly WHEN a real absence actually started
+  simulated one. EVERY real absence is simulated, one-game rest nights
+  included (they're 48% of all real stints and ~11% of all real missed
+  games — excluding them left the sim missing ~8% fewer player-games than
+  really happened, in every era). `MIN_INJURY_STINT_LENGTH` now only
+  decides what gets CALLED an injury for display (`InjurySpan.is_injury`),
+  not who sits. A real one-game rest isn't jittered either — it's a rest
+  night, not an injury with a recovery time. `MINIMUM_AVAILABLE_PLAYERS`
+  = 8 keeps a team able to field a side, a real NBA rule that simulating
+  every absence made reachable (4% of team-games otherwise fell below it,
+  some to five players). Anchored to roughly WHEN a real absence actually started
   (a real day-one injury stays day-one in the sim too), with the LENGTH
   randomized ±`INJURY_LENGTH_JITTER_GAMES` (currently 3, "about a week")
   around the real length. See injuries.py.
@@ -429,11 +438,42 @@ opponents' shooting (see game_engine.py).
   points, FGA +4.7 → +0.6; 1996-97 moves only +0.3 → +0.1.
 - **Result**: `DEFENSE_AMPLIFICATION` 5 → 1, `OFFENSE_AMPLIFICATION`
   0 → 0.5, `TURNOVER_POSSESSION_WEIGHT` 0 → 1.0, `PACE_COUPLING_WEIGHT`
-  0 → 0.75, `ROSTER_AVAILABILITY_WEIGHT` 0 → 1.0 — all swept TOGETHER at
-  the end, because each real mechanism restored takes over work the
-  defensive gain was doing by brute force (it fell 5 → 2 → 1.5 → 1 as
-  each landed). Holdout MAE 8.25 → 5.09, correlation .812 → .905, spread
-  ratio 1.374 → 1.038.
+  0 → 0.75, `ROSTER_AVAILABILITY_WEIGHT` 0 → 0.5, `SHORTHANDED_PENALTY`
+  0 → 0.15 — all swept TOGETHER at the end, because each real mechanism
+  restored takes over work the defensive gain was doing by brute force
+  (it fell 5 → 2 → 1.5 → 1 as each landed). Across all 30 seasons:
+  MAE 8.45 → 5.51, correlation .810 → .883, and league-wide player FG%
+  bias +1.49pp → -0.00pp (closer to zero in 30 of 30 seasons).
+- **Be honest that the last round was a TRADE, not a clean win.** Fixing
+  the steal/block bug and simulating every real absence moved standings
+  slightly the WRONG way (MAE 5.31 → 5.51, correlation .898 → .883)
+  while eliminating the FG% bias entirely. Two reasons that's still the
+  right call: the old 5.31 was partly MEASURING A BUG, the same trap
+  `DEFENSE_AMPLIFICATION`'s original sweep fell into (a number that
+  looks better because something is broken is not accuracy); and the sim
+  now simulates ~11% more real absences, which is a harder and more
+  honest problem. Also worth knowing: only `SHORTHANDED_PENALTY`,
+  `DEFENSE_AMPLIFICATION` and `ROSTER_AVAILABILITY_WEIGHT` were re-swept
+  after these changes — `PACE_COUPLING_WEIGHT`,
+  `TURNOVER_POSSESSION_WEIGHT` and `OFFENSE_AMPLIFICATION` still hold
+  values tuned BEFORE the bug fix, so a full six-constant sweep is the
+  obvious next thing and would likely win some of that 0.2 back.
+- **A sixth fix, and a cautionary one: removing a real BUG made accuracy
+  WORSE, which was worth understanding rather than reverting.**
+  `steal_rate_for`/`block_rate_for` read the injury-filtered roster, so a
+  short-handed team looked like a weaker defence (see the FG% entry in
+  Deferred). Fixing that took league-wide FG% bias from +2.03pp to
+  ~0.00pp — but cost standings accuracy in injury-heavy seasons
+  (2024-25 MAE 4.16 → 5.35), because the bug had been crudely capturing
+  something REAL: a short-handed team plays worse than the sum of its
+  available parts (forced lineups, worse spacing, minutes for players who
+  shouldn't have them). So it became its own explicit mechanism,
+  `SHORTHANDED_PENALTY` = 0.15, applied as the DIFFERENCE in availability
+  between the two teams — self-normalising, so unlike the bug it replaces
+  it can never shift the league-wide level. The lesson generalises: when
+  removing a bug costs accuracy, the bug was probably standing in for a
+  real effect, and the fix is to model that effect honestly rather than
+  keep the bug.
 - **The residual diagnostic is how all three mechanisms were found**, and
   it's the tool to reuse before chasing anything else: correlate each
   team's real stats against what the sim still gets wrong, and go after
@@ -498,7 +538,10 @@ opponents' shooting (see game_engine.py).
   file; every tunable constant has a comment explaining how and why it
   was tuned against real data.
 - `injuries.py` — turns real absence data into a simulated season's
-  injury calendar (see above).
+  injury calendar (see above). Also owns `enforce_minimum_roster` /
+  `MINIMUM_AVAILABLE_PLAYERS`, the real "a team must dress eight" rule,
+  applied by both season.py and benchmark_accuracy.py wherever a night's
+  available roster is built.
 - `transactions.py` — makes real in-season trades real in the sim (see
   above).
 - `season.py` — simulates the full real 1,230-game schedule (~1 second).
@@ -546,23 +589,25 @@ opponents' shooting (see game_engine.py).
    keep their own real per-minute rate rather than the real "usage
    bump" a team gives its pieces after losing a star) — it just wasn't
    costing accuracy the way the old number suggested.
-   - **Player FG% still runs ~1.8pp above real** (sim minus real,
-     league-wide) — now the single largest known inaccuracy left
-     anywhere in the project. Untouched by any of the tuning below:
-     verified flat across every constant value ever swept, so it's a
-     genuinely separate problem, not a side effect. It TRENDS with era
-     (~+1.1pp in the late 90s rising to ~+2.0pp by 2024-25, tracking
-     the 3-point revolution), which is the strongest evidence yet for
-     the "give the sim era context" idea.
-
-     Worth knowing how to attack it, because standings metrics CANNOT
-     find it: MAE and correlation are structurally blind to anything
-     that inflates both teams equally. That's exactly how the
-     `ROSTER_AVAILABILITY_WEIGHT` bias survived so long — it took
-     comparing a simulated BOX SCORE against real per-game team
-     numbers to see it at all. The same comparison is what should be
-     pointed at FG% next: simulated vs. real league-average team FG%,
-     2PT% and 3PT% separately, per season.
+   - **Player FG% is FIXED** (was ~+1.8pp above real, now ~0.0pp). It
+     turned out not to be a calibration gap at all but a real bug, found
+     by splitting the bias by code path: it was -0.08pp with injuries
+     off and +1.98pp with them on. `steal_rate_for`/`block_rate_for`
+     summed over the injury-FILTERED roster, so any short-handed team
+     read as a weaker defence — and fewer blocks means fewer made
+     2-pointers overturned into misses, inflating everyone's shooting.
+     See `_available_rate_relative`, which now rates per MINUTE so that
+     WHO is missing matters and HOW MANY doesn't.
+   - **The remaining known gap is star scoring distributions.** `DISPERSION`
+     is uniform for every player, so a superstar's 60-point night is no
+     likelier, relative to their own average, than a role player's 25.
+     Real basketball almost certainly disagrees. NOT fixable yet, and
+     the reason matters: this project only ever fetches per-game
+     AVERAGES, never game logs, so there is no real distribution to tune
+     a shape against — doing it now would mean guessing, which is the
+     one thing that has never worked here. It needs
+     `playergamelogs` fetched and cached first (a data project), then a
+     tuning project against it.
 2. **An offseason bridge + season-picker UI** for the now-30-season
    backtest set (see "Multi-season backtesting" above) — diffing two
    seasons' rosters to show real draft/free-agency movement between

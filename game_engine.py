@@ -518,7 +518,42 @@ PACE_COUPLING_WEIGHT = 0.75
 # full physically-derived size is evidence it's fixing something real.
 # It also helps standings (holdout MAE 5.19 -> 5.09) despite being found
 # by looking at box scores, not standings.
-ROSTER_AVAILABILITY_WEIGHT = 1.0
+# Lowered 1.0 -> 0.5 once every real absence (rest nights included)
+# started being simulated. The two overlap by design: this constant
+# corrects the AGGREGATE inflation from player averages assuming everyone
+# is available, while simulating rest nights sits the RIGHT player out on
+# the RIGHT night. The second is strictly better, so it takes over half
+# the work and this correction shrinks accordingly.
+ROSTER_AVAILABILITY_WEIGHT = 0.5
+
+# A short-handed team plays worse than the sum of its available parts.
+# Missing players are already absent from the floor, but a team down two
+# rotation pieces is also forced into lineups it never wanted, with worse
+# spacing, worse matchups and more minutes for players who shouldn't be
+# playing them. None of that is captured by simply removing the injured
+# players.
+#
+# This exists because removing a real BUG made accuracy worse, which is
+# always worth understanding rather than reverting. steal_rate_for and
+# block_rate_for used to sum over the injury-filtered roster, so any
+# short-handed team read as a weaker defence -- inflating league-wide
+# simulated FG% by ~2pp (see _available_rate_relative). Fixing that
+# cost standings accuracy in injury-heavy seasons (2024-25 MAE 4.16 ->
+# 5.35), because the bug had been crudely capturing this real effect.
+# So the effect gets modelled properly instead of being smuggled in
+# through a side door.
+#
+# Applied as the DIFFERENCE in availability between the two teams, which
+# makes it self-normalising: it can never shift the league-wide level
+# (one team's gain is the other's loss), which is exactly the failure
+# mode of the bug it replaces. A game where both teams are equally
+# short-handed correctly changes nothing about who wins.
+# Tuned to 0.15 across 30 seasons. A real interior optimum, not a grid
+# edge: 0.1/0.15/0.2 all land near 5.4 holdout MAE while 0 is clearly
+# worse at 5.83, so the effect is real and modest. Worth recording that a
+# single-season probe on 2024-25 said 0.3 -- across all 30 it is half
+# that, exactly the single-season overfit this harness exists to catch.
+SHORTHANDED_PENALTY = 0.15
 
 # A real NBA game that's still tied after regulation doesn't end -- it
 # plays a 5-minute overtime period (5 players x 5 minutes = 25 team-
@@ -530,6 +565,52 @@ ROSTER_AVAILABILITY_WEIGHT = 1.0
 # just fed a much smaller fixed pool -- see _simulate_period_defaults.
 OVERTIME_MINUTES = 25
 OVERTIME_MAX_MINUTES = 5.0
+
+
+
+def _available_rate_relative(
+    defender: Team, stat: str, full_strength: float, full_minutes: float,
+    league_average: float,
+) -> float:
+    """
+    How good `defender` is at generating `stat` (steals or blocks)
+    tonight, relative to a league-average defence, given who is actually
+    available.
+
+    This has to separate two things the obvious version conflates:
+
+      - FEWER players available should NOT weaken a defence. Only five
+        play at a time; a missing player wasn't going to be on the floor
+        for most of the game anyway, and their absence is already fully
+        modelled by them not appearing.
+      - WORSE players available absolutely should. Losing a team's best
+        rim protector really does mean fewer blocks.
+
+    Summing raw per-game totals over whoever is left conflates them: a
+    short-handed roster sums to less no matter WHO is missing, so every
+    injury looked like a defensive downgrade. Measured, that inflated
+    league-wide simulated FG% by +1.98pp with injuries on versus -0.08pp
+    with them off, because fewer blocks means fewer made 2-pointers
+    overturned into misses.
+
+    Rating per MINUTE instead of per player fixes it. A team's available
+    players are rated on the rate they'd produce across a real game's 240
+    team-minutes, so losing an average defender changes nothing while
+    losing a great one genuinely lowers the rate.
+    """
+    available_minutes = sum(p.min for p in defender.players)
+    available_stat = sum(getattr(p, stat) for p in defender.players)
+    if not league_average or available_minutes <= 0:
+        return 1.0
+    if not full_strength or not full_minutes:
+        return (available_stat / league_average) if league_average else 1.0
+    # Per-minute rate among who's available, versus this team's own
+    # full-strength per-minute rate: 1.0 when whoever is missing was
+    # exactly average FOR THIS TEAM, below 1 when they were its best
+    # defenders, above 1 when its worst.
+    availability = ((available_stat / available_minutes)
+                    / (full_strength / full_minutes))
+    return (full_strength / league_average) * availability
 
 
 @dataclass
@@ -579,6 +660,25 @@ class LeagueAverages:
     # denominator that converts "extra turnovers" into "extra shots".
     team_tov: Dict[str, float] = field(default_factory=dict)
     avg_team_tov: float = 0.0
+    # Each team's real steals/blocks per game, by NAME. Precomputed for
+    # the same reason as everything else here -- see team_2pt_pct -- and
+    # this pair specifically was a measured BUG before it was moved here:
+    # read live off `defender.players`, a roster with injured players
+    # filtered out summed to fewer real steals and blocks, so the sim
+    # read a short-handed team as a WEAKER defence. Fewer blocks means
+    # fewer made 2-pointers overturned into misses, which inflated
+    # everyone's shooting: league-wide simulated FG% ran +1.98pp with
+    # injuries on versus -0.08pp with them off. A team being short-handed
+    # is already modelled by its missing players not being on the floor;
+    # its season-long defensive IDENTITY shouldn't also shrink.
+    team_stl: Dict[str, float] = field(default_factory=dict)
+    team_blk: Dict[str, float] = field(default_factory=dict)
+    # Each team's FULL-strength rostered minutes, the denominator that
+    # turns the two above into per-minute rates -- see
+    # _available_rate_relative. Must be the full roster's, not the
+    # filtered one's, or "who is missing" can't be distinguished from
+    # "how many are missing".
+    team_min: Dict[str, float] = field(default_factory=dict)
     avg_team_fga: float = 0.0
 
     # Each team's real PACE -- possessions per game, by the standard
@@ -708,12 +808,33 @@ class LeagueAverages:
             return 1.0
         return 1 + PACE_COUPLING_WEIGHT * (opp - self.avg_team_poss) / own
 
+    def team_availability(self, team: Team) -> float:
+        """What share of this team's real rostered minutes are actually
+        available tonight -- 1.0 at full strength, lower with players
+        out. Measured in MINUTES, not headcount, so losing a starter
+        counts for far more than losing a 15th man."""
+        full = self.team_min.get(team.name)
+        if not full:
+            return 1.0
+        return sum(p.min for p in team.players) / full
+
+    def shorthanded_factor(self, attacker: Team, defender: Team) -> float:
+        """How much better (>1) or worse (<1) `attacker` shoots because
+        of how short-handed it is RELATIVE to tonight's opponent -- see
+        SHORTHANDED_PENALTY. Exactly 1.0 when the two teams are equally
+        healthy, whatever that shared level is."""
+        if not SHORTHANDED_PENALTY:
+            return 1.0
+        return 1 + SHORTHANDED_PENALTY * (
+            self.team_availability(attacker) - self.team_availability(defender))
+
     def steal_rate_for(self, defender: Team) -> float:
         """Probability one shot attempt against `defender` gets stolen
         before it happens, scaled by how much better/worse `defender`'s
         real steal generation is than league average."""
-        team_stl = sum(p.stl for p in defender.players)
-        relative = team_stl / self.avg_team_stl if self.avg_team_stl else 1.0
+        relative = _available_rate_relative(
+            defender, "stl", self.team_stl.get(defender.name),
+            self.team_min.get(defender.name), self.avg_team_stl)
         return self.baseline_steal_prob * relative
 
     def block_rate_for(self, defender: Team) -> float:
@@ -723,8 +844,9 @@ class LeagueAverages:
         baseline_block_prob's raw blocks-per-ATTEMPT) -- see that
         property's docstring for why the two must share one
         conversion, not compute it separately."""
-        team_blk = sum(p.blk for p in defender.players)
-        relative = team_blk / self.avg_team_blk if self.avg_team_blk else 1.0
+        relative = _available_rate_relative(
+            defender, "blk", self.team_blk.get(defender.name),
+            self.team_min.get(defender.name), self.avg_team_blk)
         return self.avg_block_rate_per_make * relative
 
 
@@ -801,6 +923,9 @@ def compute_league_averages(teams: Dict[str, Team]) -> LeagueAverages:
     team_2pt_pct: Dict[str, float] = {}
     team_3pt_pct: Dict[str, float] = {}
     team_tov: Dict[str, float] = {}
+    team_stl: Dict[str, float] = {}
+    team_blk: Dict[str, float] = {}
+    team_min: Dict[str, float] = {}
     total_2pt_m = total_2pt_a = total_3pt_m = total_3pt_a = 0.0
 
     for team in teams.values():
@@ -809,12 +934,12 @@ def compute_league_averages(teams: Dict[str, Team]) -> LeagueAverages:
         total_opp_3pt_m += team.opp_fg3m
         total_opp_3pt_a += team.opp_fg3a
 
-        team_stl = sum(p.stl for p in team.players)
-        team_blk = sum(p.blk for p in team.players)
+        team_stl_total = sum(p.stl for p in team.players)
+        team_blk_total = sum(p.blk for p in team.players)
         team_fga = sum(p.fga for p in team.players)
         team_fg3a = sum(p.fg3a for p in team.players)
-        total_stl += team_stl
-        total_blk += team_blk
+        total_stl += team_stl_total
+        total_blk += team_blk_total
         total_tov += sum(p.tov for p in team.players)
         total_fga += team_fga
         total_2pt_fga += team_fga - team_fg3a
@@ -843,6 +968,9 @@ def compute_league_averages(teams: Dict[str, Team]) -> LeagueAverages:
         # TURNOVER_POSSESSION_WEIGHT.
         this_tov = sum(p.tov for p in team.players)
         team_tov[team.name] = this_tov
+        team_stl[team.name] = team_stl_total
+        team_blk[team.name] = team_blk_total
+        team_min[team.name] = sum(p.min for p in team.players)
 
         # Real pace, for the shared-possession coupling (see
         # PACE_COUPLING_WEIGHT), measured as the real per-game FGA this
@@ -881,6 +1009,9 @@ def compute_league_averages(teams: Dict[str, Team]) -> LeagueAverages:
         team_2pt_pct=team_2pt_pct,
         team_3pt_pct=team_3pt_pct,
         team_tov=team_tov,
+        team_stl=team_stl,
+        team_blk=team_blk,
+        team_min=team_min,
         avg_team_tov=(total_tov / n_teams) if n_teams else 0.0,
         avg_team_fga=avg_team_fga,
         team_poss={name: t.opp_fga for name, t in teams.items() if t.opp_fga},
@@ -1674,10 +1805,15 @@ def _resolve_team_offense(
     # because a real game is genuinely both at once -- and because at
     # OFFENSE_AMPLIFICATION = 0 the offensive half is exactly 1.0, which
     # leaves this line doing precisely what it did before it existed.
+    # How short-handed this team is versus tonight's opponent -- the same
+    # multiplier on both shot types, since it's a team-level effect
+    # (lineups, spacing, fatigue) rather than anything about shot
+    # selection. See SHORTHANDED_PENALTY.
+    shorthanded = league_avg.shorthanded_factor(attacker, defender)
     two_pt_factor = (league_avg.two_pt_defense_factor(defender)
-                     * league_avg.two_pt_offense_factor(attacker))
+                     * league_avg.two_pt_offense_factor(attacker) * shorthanded)
     three_pt_factor = (league_avg.three_pt_defense_factor(defender)
-                       * league_avg.three_pt_offense_factor(attacker))
+                       * league_avg.three_pt_offense_factor(attacker) * shorthanded)
     avg_block_rate_per_make = league_avg.avg_block_rate_per_make
 
     per_player_shot_stats = []

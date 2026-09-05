@@ -18,7 +18,7 @@ from dataclasses import replace
 
 from loader import load_teams, load_schedule, load_player_injuries, load_roster_membership
 from game_engine import simulate_game, compute_league_averages
-from injuries import build_season_injuries, missed_lookup
+from injuries import build_season_injuries, missed_lookup, enforce_minimum_roster
 from transactions import expand_rosters_with_real_moves
 import db
 
@@ -75,7 +75,14 @@ def simulate_season(season: str = "2025-26", fresh: bool = False,
         real_injuries = load_player_injuries(season)
         injury_spans = build_season_injuries(teams, schedule, real_injuries)
         out_lookup |= missed_lookup(injury_spans)
-        db.insert_injuries(conn, season, {g.game_id: g for g in schedule}, injury_spans)
+        # EVERY span sits the player out (that's `out_lookup` above,
+        # one-game rest nights included -- they really did miss those
+        # games). Only the ones that are actually injuries get STORED for
+        # the injury report, or it fills up with rest days and stops
+        # being readable -- the distinction MIN_INJURY_STINT_LENGTH
+        # exists to draw. See injuries.InjurySpan.is_injury.
+        db.insert_injuries(conn, season, {g.game_id: g for g in schedule},
+                            [sp for sp in injury_spans if sp.is_injury])
 
     # Real in-season trades -- adds a traded player back to their OLD
     # team's pool for their real pre-trade games too (rosters.json only
@@ -95,12 +102,16 @@ def simulate_season(season: str = "2025-26", fresh: bool = False,
         # makes a new Team with a filtered players list rather than
         # mutating the shared `teams` dict, so an injured player is
         # correctly back available for their team's OTHER games.
-        home_available = replace(home, players=[
-            p for p in home.players if (p.name, scheduled_game.game_id) not in out_lookup
-        ])
-        away_available = replace(away, players=[
-            p for p in away.players if (p.name, scheduled_game.game_id) not in out_lookup
-        ])
+        # enforce_minimum_roster keeps a team able to actually field a
+        # side -- see injuries.MINIMUM_AVAILABLE_PLAYERS. Needed since
+        # every real absence (rest nights included) is now simulated,
+        # which can otherwise strip a roster below anything real.
+        home_available = replace(home, players=enforce_minimum_roster(
+            [p for p in home.players if (p.name, scheduled_game.game_id) not in out_lookup],
+            home.players))
+        away_available = replace(away, players=enforce_minimum_roster(
+            [p for p in away.players if (p.name, scheduled_game.game_id) not in out_lookup],
+            away.players))
 
         result = simulate_game(home_available, away_available, league_avg)
         db.insert_game(conn, season, scheduled_game, result)

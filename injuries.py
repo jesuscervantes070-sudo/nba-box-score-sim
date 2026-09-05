@@ -59,6 +59,10 @@ class InjurySpan:
     player_name: str
     team: str
     game_ids: List[str]  # chronological order, this team's games only
+    # False for a one-game rest night, which is still simulated (the
+    # player really did sit) but shouldn't be REPORTED as an injury --
+    # see build_season_injuries. Defaults True so any older caller
+    # constructing a span by hand still behaves as it used to.
     # True when this span's last missed game IS the team's literal last
     # regular-season game -- i.e. the player never got a "return game"
     # before the season ran out. Since a span's END is now real-length
@@ -68,6 +72,40 @@ class InjurySpan:
     # real injury that was already still ongoing when the real season's
     # own data was captured.
     still_out_at_season_end: bool = False
+    is_injury: bool = True
+
+
+# A real NBA team must dress at least eight players -- an actual league
+# rule, not a tunable. It matters here because simulating EVERY real
+# absence (rest nights included, see build_season_injuries) can otherwise
+# strip a roster far below anything real: measured across 2004-05 and
+# 2024-25, 4% of team-games fell under eight available and some dropped
+# to five. Real teams in that situation sign somebody, recall a two-way
+# player, or play a coach's son -- they never forfeit. They also never
+# field five.
+#
+# Beyond realism this was a genuine crash: an extremely short roster of
+# low-minute players, weighted by ROTATION_WEIGHT_EXPONENT, can leave
+# _active_roster_for_game's probability vector unusable.
+MINIMUM_AVAILABLE_PLAYERS = 8
+
+
+def enforce_minimum_roster(available: List, full_roster: List) -> List:
+    """
+    Guarantees a team can actually field a side: if absences left fewer
+    than MINIMUM_AVAILABLE_PLAYERS available, the highest-real-minutes
+    players among those sitting are added back until it can.
+
+    Highest-minutes first because that is what a real team does -- the
+    guys closest to the rotation are the ones who play through it, or
+    whose absence gets cut short when there is nobody else.
+    """
+    if len(available) >= MINIMUM_AVAILABLE_PLAYERS:
+        return available
+    have = {p.name for p in available}
+    benched = sorted((p for p in full_roster if p.name not in have),
+                     key=lambda p: -p.min)
+    return available + benched[:MINIMUM_AVAILABLE_PLAYERS - len(available)]
 
 
 def _team_game_ids(team_name: str, schedule: List[ScheduledGame]) -> List[str]:
@@ -107,12 +145,21 @@ def build_season_injuries(
             # lengthened) end get clipped against the NEXT one's own real
             # start below, so two real, separately-anchored absences can
             # never grow into overlapping each other.
-            stints = sorted(
-                (s for s in real["stints"] if s["length"] >= MIN_INJURY_STINT_LENGTH),
-                key=lambda s: s["start"],
-            )
+            # EVERY real absence is simulated, one-game ones included.
+            # MIN_INJURY_STINT_LENGTH used to filter them out here, which
+            # conflated two different jobs: it is right that a one-game
+            # miss shouldn't be CALLED an injury (see that constant --
+            # counting them flagged 81% of the league as hurt), but it is
+            # wrong to pretend the player was available. They really did
+            # sit. Measured: excluding them left the sim missing ~8% fewer
+            # player-games than really happened, every era (2024-25 13,771
+            # simulated vs. 15,067 real), and one-game stints are 48% of
+            # all real stints. The display filter now lives on the span
+            # itself (`is_injury`), so the injury report reads the same as
+            # before while the simulation finally sits the right players.
+            stints = sorted(real["stints"], key=lambda s: s["start"])
             if not stints:
-                continue  # iron man, or only ever had noise-level single-game misses
+                continue  # iron man -- never missed a game all season
 
             for i, stint in enumerate(stints):
                 # Clip -- only matters if this simulated season's game
@@ -121,8 +168,16 @@ def build_season_injuries(
                 # spirit as the length clip below.
                 start = min(stint["start"], num_games - 1)
 
-                jitter = int(_rng.integers(-INJURY_LENGTH_JITTER_GAMES, INJURY_LENGTH_JITTER_GAMES + 1))
-                length = max(MIN_INJURY_STINT_LENGTH, stint["length"] + jitter)
+                # A real one-game absence is a rest night, not an injury
+                # with a recovery time -- so it stays one game rather than
+                # being jittered into a week off. Only real absences long
+                # enough to be actual injuries get a randomized length.
+                real_length = stint["length"]
+                if real_length < MIN_INJURY_STINT_LENGTH:
+                    length = real_length
+                else:
+                    jitter = int(_rng.integers(-INJURY_LENGTH_JITTER_GAMES, INJURY_LENGTH_JITTER_GAMES + 1))
+                    length = max(MIN_INJURY_STINT_LENGTH, real_length + jitter)
 
                 next_start = stints[i + 1]["start"] if i + 1 < len(stints) else num_games
                 end = min(start + length, num_games, next_start)
@@ -135,6 +190,10 @@ def build_season_injuries(
                     team=team_name,
                     game_ids=[team_game_ids[i] for i in indices],
                     still_out_at_season_end=(end == num_games),
+                    # What separates a real injury from a rest night, for
+                    # display only -- the simulation sits the player either
+                    # way. See the stint filter above.
+                    is_injury=(len(indices) >= MIN_INJURY_STINT_LENGTH),
                 ))
 
     return spans

@@ -34,7 +34,7 @@ import game_engine
 from loader import load_teams, load_schedule, load_player_injuries, load_roster_membership
 from game_engine import simulate_game, compute_league_averages
 from data_source import fetch_real_standings
-from injuries import build_season_injuries, missed_lookup
+from injuries import build_season_injuries, missed_lookup, enforce_minimum_roster
 from transactions import expand_rosters_with_real_moves
 
 BENCHMARKS_DIR = Path(__file__).parent / "benchmarks"
@@ -140,12 +140,12 @@ def run_accuracy_benchmark(season: str = "2025-26", n_runs: int = 30,
                 # Same roster-filtering season.py does per game -- see
                 # its comment for why dataclasses.replace (a new Team,
                 # not a mutated shared one) matters here.
-                home = replace(home, players=[
-                    p for p in home.players if (p.name, g.game_id) not in out_lookup
-                ])
-                away = replace(away, players=[
-                    p for p in away.players if (p.name, g.game_id) not in out_lookup
-                ])
+                home = replace(home, players=enforce_minimum_roster(
+                    [p for p in home.players if (p.name, g.game_id) not in out_lookup],
+                    home.players))
+                away = replace(away, players=enforce_minimum_roster(
+                    [p for p in away.players if (p.name, g.game_id) not in out_lookup],
+                    away.players))
             result = simulate_game(home, away, league_avg)
             if result.home_score > result.away_score:
                 wins[g.home_team] += 1
