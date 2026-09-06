@@ -100,6 +100,11 @@ opponents' shooting (see game_engine.py).
   real per-game defensive ratings and REJECTED (it is mostly team and
   playing time, repeating at 0.23 with workload removed). See "Player
   consistency" below.
+- **Multi-season runs + offseason bridge**: complete — `main.py` option
+  3 plays straight through real NBA history, following one franchise
+  across as many seasons as you pick, with standings, brackets,
+  champions and an offseason report between each. See "Multi-season
+  runs" below.
 - **Season picker + era playoff rules**: complete — `main.py` now asks
   which of the 30 cached seasons to play instead of only ever playing
   2025-26, and each one uses its REAL postseason rules (best-of-5 first
@@ -598,6 +603,39 @@ this test would have measured the bug rather than Gobert.
   and 1,189 games in those seasons, matching the real 29-team count
   already documented above.
 
+## Multi-season runs and the offseason bridge (offseason.py, main.py)
+- **What it is**: pick a start and end season, follow one franchise, and
+  each season is simulated in turn — your record and playoff finish, the
+  champion, optional standings and bracket, then what changed over the
+  summer. Ends with a one-line-per-season summary of the whole run.
+- **Real rosters every season, simulated results.** Each season uses its
+  OWN real rosters, so the real offseason already happened and
+  `offseason.py` REPORTS it rather than simulating one. Champions
+  diverge from real history immediately (that's the point); what a
+  simulated 1997 title cannot do is change who is on which roster in
+  1998. Simulating the offseason itself — progression, contracts, AI
+  decisions — is the much bigger "option B" the user explicitly deferred
+  to later. Note it would need player progression, which does not exist.
+- **Franchise continuity is DERIVED, not a hardcoded rename table.** A
+  renamed franchise keeps most of its players, so a disappeared team
+  name matches whichever NEW name shares the most players with it.
+  Validated against all nine real renames in range (Bullets→Wizards,
+  Vancouver→Memphis, Charlotte→New Orleans, both Katrina-era Hornets
+  moves, Seattle→Oklahoma City, New Jersey→Brooklyn, Hornets→Pelicans,
+  Bobcats→Hornets) with ZERO false positives across all 29 transitions:
+  each shares 3-8 players with its true successor and only 1-2 with the
+  nearest unrelated team. So following the 1996-97 Sonics leaves you
+  holding the Thunder in 2008-09 rather than losing the team mid-run.
+  An expansion team (the 2004-05 Bobcats) has no disappeared team to
+  match and is correctly left unlinked.
+- **"Arrived" is not "drafted", deliberately.** The data records who
+  played, never why they didn't, so a player who missed a whole season
+  injured reads exactly like a rookie — Shaun Livingston shows as new to
+  the league in 2008-09, Alonzo Mourning in 2003-04. Labelled "new to
+  the league" rather than guessing.
+- Reports are scoped to your team and filtered to players at 10+ mpg —
+  a summer has ~90 league-wide arrivals, almost all fringe.
+
 ## Free throws come from the opponent's fouls (game_engine.py)
 - `FOUL_FREE_THROW_WEIGHT` ties each team's free-throw volume to how
   many fouls the OPPONENT actually committed tonight (`_foul_pressure`),
@@ -911,6 +949,10 @@ this test would have measured the bug rather than Gobert.
   `python3 sweep_constants.py --constant DEFENSE_AMPLIFICATION,OFFENSE_AMPLIFICATION
   --values "1.5,2,2.5;0,0.5,1"`. Saves to `sweeps/*.json`. See "Accuracy
   tuning" above for what it found and why the holdout split matters.
+- `offseason.py` — what changed between two consecutive real seasons
+  (arrived / left / moved / renamed), plus `franchise_map` for following
+  a team through a relocation. Pure data, no printing. See "Multi-season
+  runs" above.
 - `main.py` — the playable text CLI. Opens by asking which of the 30
   cached seasons to play (`loader.available_seasons` finds them by
   checking for the files each needs, so a newly fetched season is
@@ -1037,10 +1079,13 @@ this test would have measured the bug rather than Gobert.
      is not a streaky passer, so it cannot ride along on one
      "offensive consistency" number and would need its own rating.
      Deliberately not folded into the scoring work.
-2. **An offseason bridge** for the 30-season backtest set (see
-   "Multi-season backtesting" above) — diffing two seasons' rosters to
-   show real draft/free-agency movement between them. The season-picker
-   half of this item is DONE (see Status); this is the remaining half.
+2. **Simulating the offseason itself** (the user's "option B", deferred
+   on purpose): letting a simulated season CHANGE the next one — a draft
+   ordered by simulated standings, free-agency decisions, aging and
+   progression. Needs player progression, which does not exist, and has
+   no real data to validate against. The reporting half (option A) is
+   DONE — see "Multi-season runs" above — and is the pipeline B would
+   build on. The user also floated season AWARDS as a later addition.
 3. **Playoffs on an old season: DONE** — era-specific rules are in
    (see "Playoffs" above). The one piece still wrong is pre-2004-05
    DIVISIONS in the seeding tiebreakers, documented there.
