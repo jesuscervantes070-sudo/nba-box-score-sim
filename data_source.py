@@ -91,6 +91,10 @@ def _league_pace_cache_path(season: str) -> Path:
 def _team_division_cache_path(season: str) -> Path:
     return _season_cache_dir(season) / "team_divisions.json"
 
+
+def _transactions_cache_path(season: str) -> Path:
+    return _season_cache_dir(season) / "transactions.json"
+
 # Maps our field names -> the NBA stats API's "Opponent" column names.
 # These are real per-game stats about what a team's REAL OPPONENTS did
 # against them -- i.e., a direct measure of that team's own defense.
@@ -297,6 +301,99 @@ def fetch_team_conferences(season: str) -> dict:
         team_name = NBA_API_TEAM_NAME_FIXES.get(team_name, team_name)
         conferences[team_name] = row["Conference"]
     return conferences
+
+
+# The NBA's own player-movement feed -- the only source found that says
+# WHY a player changed teams (signed vs traded vs waived), which nothing
+# in the stats API does. Not part of nba_api, so it's fetched directly.
+PLAYER_MOVEMENT_URL = "https://stats.nba.com/js/data/playermovement/NBA_Player_Movement.json"
+
+# The feed only goes back to July 2015, so it covers 2015-16 onward and
+# nothing earlier. Seasons before this have no transaction file at all
+# rather than a half-filled one -- see build_and_cache_transactions.
+TRANSACTIONS_FIRST_SEASON = "2015-16"
+
+
+def _season_of_transaction(date: str) -> str:
+    """
+    Which NBA season a transaction dated `date` (YYYY-MM-DD) belongs to.
+    The league year runs July 1 to June 30, so a signing in August 2023
+    is part of the 2023-24 season's roster building, and one in March
+    2024 belongs to that same season.
+    """
+    year, month = int(date[:4]), int(date[5:7])
+    start = year if month >= 7 else year - 1
+    return f"{start}-{str(start + 1)[2:]}"
+
+
+def fetch_player_transactions() -> dict:
+    """
+    Every real NBA transaction the league publishes, grouped by season.
+
+    This is the piece the stats API cannot give: WHY a player changed
+    teams. leaguedashplayerstats and the game logs record who played
+    where and never how they got there, which is why the offseason
+    bridge could only say "arrived from Denver" without knowing whether
+    that was a trade or a free-agent signing.
+
+    Each row keeps the league's own type (Signing / Trade / Waive /
+    AwardOnWaivers / ContractConverted), the date, and the full
+    human-readable description ("Milwaukee Bucks received guard Damian
+    Lillard from Portland Trail Blazers"), so nothing is inferred.
+
+    One HTTP call for all of it -- the feed is a single ~4MB JSON file,
+    not a per-season endpoint.
+    """
+    import requests
+    response = requests.get(
+        PLAYER_MOVEMENT_URL, timeout=60,
+        headers={"User-Agent": "Mozilla/5.0", "Referer": "https://www.nba.com/"},
+    )
+    response.raise_for_status()
+    rows = response.json()["NBA_Player_Movement"]["rows"]
+
+    by_season: dict = {}
+    for row in rows:
+        date = (row.get("TRANSACTION_DATE") or "")[:10]
+        if len(date) != 10:
+            continue
+        by_season.setdefault(_season_of_transaction(date), []).append({
+            "date": date,
+            "type": row.get("Transaction_Type"),
+            "description": row.get("TRANSACTION_DESCRIPTION"),
+            "team_id": row.get("TEAM_ID"),
+            "player_id": row.get("PLAYER_ID"),
+        })
+    for season_rows in by_season.values():
+        season_rows.sort(key=lambda r: r["date"])
+    return by_season
+
+
+def build_and_cache_transactions(force: bool = False) -> None:
+    """
+    Caches the league's transaction feed into one file per season
+    (cache/<season>/transactions.json). One fetch fills every season it
+    covers, so this takes no `season` argument.
+    """
+    by_season = fetch_player_transactions()
+    written = 0
+    for season, rows in sorted(by_season.items()):
+        # Checked WITHOUT _season_cache_dir, which creates the directory
+        # as a side effect -- calling it here invented a cache/2026-27/
+        # for a season with no rosters, purely by asking whether it
+        # existed.
+        if not (CACHE_DIR / season).is_dir():
+            continue  # a season this project hasn't fetched rosters for
+        path = _transactions_cache_path(season)
+        if path.exists() and not force:
+            continue
+        with open(path, "w") as f:
+            json.dump({"season": season, "transactions": rows}, f, indent=2)
+        written += 1
+    covered = sorted(s for s in by_season if (CACHE_DIR / s).is_dir())
+    print(f"Cached real transactions for {written} seasons "
+          f"({covered[0]} to {covered[-1]} available; the feed starts July 2015, "
+          f"so earlier seasons have none).")
 
 
 def fetch_team_divisions(season: str) -> dict:
@@ -948,3 +1045,6 @@ if __name__ == "__main__":
     build_and_cache_team_defense(season=args.season, force=args.refresh)
     build_and_cache_team_conferences(season=args.season, force=args.refresh)
     build_and_cache_player_history(season=args.season, force=args.refresh)
+    # One fetch covers every season the feed reaches, so this isn't
+    # per-season like the calls above.
+    build_and_cache_transactions(force=args.refresh)
