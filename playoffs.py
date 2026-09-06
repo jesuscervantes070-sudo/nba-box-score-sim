@@ -42,7 +42,59 @@ Seed = Tuple[int, str]
 # Real NBA best-of-7 home/away pattern: the better seed hosts games
 # 1, 2, 5, and 7; the other team hosts games 3, 4, and 6. A series
 # that ends early just never reaches the later entries.
+# Which games the better seed hosts, by series length. Best-of-7 is the
+# real 2-2-1-1-1; best-of-5 (the pre-2003 first round, see
+# playoff_format below) is the real 2-2-1 -- higher seed hosts games 1,
+# 2 and 5.
 HOME_PATTERN = [True, True, False, False, True, False, True]
+HOME_PATTERN_BEST_OF_5 = [True, True, False, False, True]
+HOME_PATTERNS = {7: HOME_PATTERN, 5: HOME_PATTERN_BEST_OF_5}
+
+# --- Real playoff format by era ----------------------------------
+# The postseason that FOLLOWS a given regular season, so a season
+# string here means "the playoffs played at the end of it."
+#
+# Season strings compare correctly with < and >= as plain strings
+# ("1999-00" < "2000-01" < "2019-20"), since every one starts with a
+# 4-digit year.
+
+# The 2003 playoffs were the first with a best-of-7 FIRST ROUND; every
+# postseason before that used best-of-5 there (later rounds were always
+# best-of-7). 2002-03 is the season those 2003 playoffs belong to.
+FIRST_ROUND_BEST_OF_7_FROM = "2002-03"
+
+# The current 7-10 play-in tournament starts with the 2021 playoffs.
+MODERN_PLAY_IN_FROM = "2020-21"
+
+# 2019-20 alone used a different, CONDITIONAL play-in inside the COVID
+# bubble: the 9th seed only got a shot at all if it finished within
+# this many games of the 8th, and then had to win TWICE while the 8th
+# seed needed only one win. It really only triggered in the West
+# (Portland/Memphis); the East's 9th seed was too far back, so the East
+# had no play-in that year at all -- which this reproduces rather than
+# forcing one.
+BUBBLE_PLAY_IN_SEASON = "2019-20"
+BUBBLE_PLAY_IN_MAX_GAMES_BACK = 4
+
+
+def playoff_format(season: str) -> dict:
+    """
+    The real rules for the postseason at the end of `season`: how long
+    the first round is, and which play-in format (if any) applies.
+
+    Without this, simulating an old season's playoffs would quietly
+    apply modern rules to it -- a best-of-7 first round in 1997 (real:
+    best-of-5, which genuinely made upsets easier) and a play-in
+    tournament two decades before one existed.
+    """
+    return {
+        "first_round_best_of": 7 if season >= FIRST_ROUND_BEST_OF_7_FROM else 5,
+        "play_in": (
+            "modern" if season >= MODERN_PLAY_IN_FROM
+            else "bubble" if season == BUBBLE_PLAY_IN_SEASON
+            else "none"
+        ),
+    }
 
 # Real NBA divisions -- realignments happen roughly once a decade, so
 # hardcoding this beats standing up a whole new fetch/cache file (like
@@ -230,10 +282,24 @@ def _play_one_game(home: str, away: str, teams: Dict[str, Team], league_avg: Lea
     return away, home
 
 
-def run_play_in(seeded10: List[str], teams: Dict[str, Team], league_avg: LeagueAverages) -> dict:
+def run_play_in(seeded10: List[str], teams: Dict[str, Team], league_avg: LeagueAverages,
+                 mode: str = "modern", wins: Dict[str, int] = None) -> dict:
     """
-    The real current-NBA play-in tournament for one conference's 7-10
-    seeds:
+    The play-in for one conference, in whichever format that season
+    really used (see playoff_format).
+
+    "none" (every season before 2019-20): there was no play-in at all,
+    so seeds 7 and 8 are simply the 7th and 8th finishers and no games
+    are played. Returns an empty log, which main.py prints as nothing.
+
+    "bubble" (2019-20 only): the 9th seed got a shot ONLY if it
+    finished within BUBBLE_PLAY_IN_MAX_GAMES_BACK of the 8th, and then
+    had to beat it twice while the 8th needed a single win. `wins` (real
+    regular-season win totals by team name) is what decides whether it
+    triggers -- in the real 2020 bubble it did in the West and not in
+    the East, and this reproduces that rather than forcing one.
+
+    "modern" (2020-21 onward), the current-NBA 7-10 tournament:
       Game 1: 7 vs 8, better record (7) hosts -- winner takes the 7 seed.
       Game 2: 9 vs 10, better record (9) hosts -- loser is eliminated.
       Game 3: loser of Game 1 vs winner of Game 2, hosted by the
@@ -245,6 +311,29 @@ def run_play_in(seeded10: List[str], teams: Dict[str, Team], league_avg: LeagueA
     """
     seed7, seed8, seed9, seed10 = seeded10[6], seeded10[7], seeded10[8], seeded10[9]
     log = []
+
+    if mode == "none":
+        # No play-in existed. Seeds 7 and 8 go straight through.
+        return {"seed_7": seed7, "seed_8": seed8, "log": []}
+
+    if mode == "bubble":
+        wins = wins or {}
+        games_back = (wins.get(seed8, 0) - wins.get(seed9, 0)) / 2
+        if games_back > BUBBLE_PLAY_IN_MAX_GAMES_BACK:
+            log.append(f"  No play-in: {seed9} finished more than "
+                       f"{BUBBLE_PLAY_IN_MAX_GAMES_BACK} games behind {seed8}.")
+            return {"seed_7": seed7, "seed_8": seed8, "log": log}
+        # The 8th seed needs one win, the 9th needs two.
+        log.append(f"  Play-in for the 8 seed: {seed9} must beat {seed8} twice.")
+        g1_winner, _ = _play_one_game(seed8, seed9, teams, league_avg)
+        log.append(f"  Game 1 ({seed8} vs {seed9}): {g1_winner} wins")
+        if g1_winner == seed8:
+            log.append(f"  {seed8} holds the 8 seed; {seed9} eliminated")
+            return {"seed_7": seed7, "seed_8": seed8, "log": log}
+        g2_winner, g2_loser = _play_one_game(seed8, seed9, teams, league_avg)
+        log.append(f"  Game 2 ({seed8} vs {seed9}): {g2_winner} wins, takes the 8 seed; "
+                   f"{g2_loser} eliminated")
+        return {"seed_7": seed7, "seed_8": g2_winner, "log": log}
 
     g1_winner, g1_loser = _play_one_game(seed7, seed8, teams, league_avg)
     log.append(f"  Game 1 (7 vs 8): {seed7} vs {seed8} -> {g1_winner} wins, becomes the 7 seed")
@@ -258,11 +347,16 @@ def run_play_in(seeded10: List[str], teams: Dict[str, Team], league_avg: LeagueA
     return {"seed_7": g1_winner, "seed_8": g3_winner, "log": log}
 
 
-def simulate_series(favored: Seed, underdog: Seed, teams: Dict[str, Team], league_avg: LeagueAverages) -> dict:
+def simulate_series(favored: Seed, underdog: Seed, teams: Dict[str, Team],
+                     league_avg: LeagueAverages, best_of: int = 7) -> dict:
     """
-    Best-of-7 between two seeds, first to 4 wins, real 2-2-1-1-1 home
-    court favoring `favored` (the better seed, or -- in the Finals --
-    the better regular-season record; see run_finals below).
+    A series between two seeds, first to a majority of `best_of` games,
+    with real home court favoring `favored` (the better seed, or -- in
+    the Finals -- the better regular-season record; see run_finals).
+
+    `best_of` is 7 everywhere except a pre-2003 FIRST ROUND, which was
+    really best-of-5 -- see playoff_format. It defaults to 7 so every
+    existing caller and the modern game are unchanged.
 
     `game_log` holds the full GameResult for every game played (not
     just the final score) -- nothing here writes to season.db (see
@@ -273,13 +367,17 @@ def simulate_series(favored: Seed, underdog: Seed, teams: Dict[str, Team], leagu
     favored_seed, favored_name = favored
     underdog_seed, underdog_name = underdog
 
+    # First to a majority: 4 of 7, 3 of 5.
+    wins_needed = best_of // 2 + 1
+    home_pattern = HOME_PATTERNS[best_of]
+
     wins = {favored_name: 0, underdog_name: 0}
     game_log: List[GameResult] = []
 
-    for game_num in range(7):
-        if wins[favored_name] == 4 or wins[underdog_name] == 4:
+    for game_num in range(best_of):
+        if wins[favored_name] == wins_needed or wins[underdog_name] == wins_needed:
             break
-        favored_hosts = HOME_PATTERN[game_num]
+        favored_hosts = home_pattern[game_num]
         home = favored_name if favored_hosts else underdog_name
         away = underdog_name if favored_hosts else favored_name
 
@@ -288,7 +386,7 @@ def simulate_series(favored: Seed, underdog: Seed, teams: Dict[str, Team], leagu
         wins[winner] += 1
         game_log.append(result)
 
-    winner = favored_name if wins[favored_name] == 4 else underdog_name
+    winner = favored_name if wins[favored_name] == wins_needed else underdog_name
     loser = underdog_name if winner == favored_name else favored_name
     winner_seed = favored_seed if winner == favored_name else underdog_seed
 
@@ -356,13 +454,17 @@ def _order_by_seed(a: dict, b: dict) -> Tuple[Seed, Seed]:
 
 
 def run_conference_bracket(conference: str, seeded10: List[str], teams: Dict[str, Team],
-                            league_avg: LeagueAverages) -> dict:
+                            league_avg: LeagueAverages, fmt: dict = None,
+                            wins: Dict[str, int] = None) -> dict:
     """
     Full run for one conference: play-in, then the fixed 8-team
     bracket (1v8/4v5/3v6/2v7, no reseeding between rounds -- matching
     the real current NBA playoff format) up to a conference champion.
     """
-    play_in = run_play_in(seeded10, teams, league_avg)
+    # Defaults to the modern format so any caller that doesn't care
+    # (and the current season) behaves exactly as before.
+    fmt = fmt or {"first_round_best_of": 7, "play_in": "modern"}
+    play_in = run_play_in(seeded10, teams, league_avg, fmt["play_in"], wins)
 
     # Seeds 1-6 go straight in; 7 and 8 come from the play-in above.
     bracket: Dict[int, str] = {i: seeded10[i - 1] for i in range(1, 7)}
@@ -374,10 +476,13 @@ def run_conference_bracket(conference: str, seeded10: List[str], teams: Dict[str
     # Round 1: fixed pairings by seed, not reseeded.
     r1_pairs = [(1, 8), (4, 5), (3, 6), (2, 7)]
     r1_results = {}
-    lines = [f"-- {conference} Conference First Round --"]
+    best_of = fmt["first_round_best_of"]
+    lines = [f"-- {conference} Conference First Round"
+             + (f" (best-of-{best_of}) --" if best_of != 7 else " --")]
     for hi, lo in r1_pairs:
         favored, underdog = (hi, bracket[hi]), (lo, bracket[lo])
-        result = simulate_series(favored, underdog, teams, league_avg)
+        result = simulate_series(favored, underdog, teams, league_avg,
+                                  best_of=fmt["first_round_best_of"])
         r1_results[(hi, lo)] = result
         lines.append(_series_line(f"({hi}) {bracket[hi]} vs ({lo}) {bracket[lo]}", result))
     round_logs.append(lines)
@@ -463,14 +568,21 @@ def run_playoffs(conn, season: str, teams: Dict[str, Team], standings: List[dict
     and bracket, then the Finals. Returns everything main.py needs to
     print -- this function itself does no printing, same "logic and
     display stay separate" rule as the rest of the project. `conn` and
-    `season` are only needed for seed_conference's real tiebreakers
-    (head-to-head/division/conference record all come from season.db).
+    `season` are needed for seed_conference's real tiebreakers
+    (head-to-head/division/conference record all come from season.db),
+    and `season` also selects that era's real playoff FORMAT -- see
+    playoff_format. Simulating 1997 under today's rules would give it a
+    best-of-7 first round it never had and a play-in tournament that
+    did not exist for another two decades.
     """
+    fmt = playoff_format(season)
+    wins = {row["team"]: row["W"] for row in standings}
+
     east_seeded = seed_conference(conn, season, standings, teams, "East")
     west_seeded = seed_conference(conn, season, standings, teams, "West")
 
-    east = run_conference_bracket("East", east_seeded, teams, league_avg)
-    west = run_conference_bracket("West", west_seeded, teams, league_avg)
+    east = run_conference_bracket("East", east_seeded, teams, league_avg, fmt, wins)
+    west = run_conference_bracket("West", west_seeded, teams, league_avg, fmt, wins)
 
     finals = run_finals(
         east["champion"], east["champion_seed"],

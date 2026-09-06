@@ -16,7 +16,7 @@ import re
 import sys
 from typing import Dict, List, Optional, Tuple
 
-from loader import load_teams, load_team_abbreviations, load_roster_membership, load_league_pace_variation, DEFAULT_SEASON
+from loader import load_teams, load_team_abbreviations, load_roster_membership, load_league_pace_variation, DEFAULT_SEASON, load_schedule, available_seasons
 from models import Player, Team
 from game_engine import simulate_game, compute_league_averages, GameResult, LeagueAverages
 from data_source import fetch_real_standings
@@ -45,7 +45,28 @@ YOUR_TEAM_MARKER = "  <-- YOUR TEAM"
 # TEAM_DIVISIONS -- a fixed real-world fact, not worth a whole fetch/
 # cache file for. Matches ScheduledGame.date's ISO format so it can be
 # compared against a stored game's date directly, as a plain string.
-TRADE_DEADLINE_DATE = "2026-02-05"
+
+
+# Real trade deadlines, by season. Only seasons whose real deadline is
+# actually known go in here -- the replay's jump-to-deadline command is
+# simply unavailable for the rest, rather than jumping to a made-up date.
+#
+# Deriving it from the cached data was tried and does NOT work: the
+# roster data records WHEN a player first appeared for a team, not WHY,
+# so the last such move is in mid-APRIL every season -- buyout signings
+# and 10-day contracts, not trades. Nothing in this project's data
+# distinguishes a deadline-day trade from an April signing, and
+# inventing thirty deadline dates would be thirty chances to be quietly
+# wrong about a real-world fact.
+TRADE_DEADLINE_BY_SEASON = {
+    "2025-26": "2026-02-05",   # the real 2025-26 deadline, Thu Feb 5 2026
+}
+
+
+def trade_deadline_for(season: str) -> Optional[str]:
+    """The real trade deadline for `season`, or None if it isn't known
+    -- see TRADE_DEADLINE_BY_SEASON."""
+    return TRADE_DEADLINE_BY_SEASON.get(season)
 
 
 # =====================================================================
@@ -526,17 +547,25 @@ def run_team_game_log_replay(conn, team_name: str, season: str, highlight: Optio
             print_box_score(db.get_game_box_score(conn, last_shown_id), highlight)
             continue
         if action == "deadline":
+            deadline = trade_deadline_for(season)
+            if deadline is None:
+                # An older season whose real deadline isn't recorded --
+                # say so plainly rather than jumping to a date invented
+                # for it. See TRADE_DEADLINE_BY_SEASON.
+                print(f"The real trade deadline for {season} isn't recorded, so there's "
+                      f"nothing to jump to -- Enter for the next game, or a number to skip ahead.")
+                continue
             # If the very next not-yet-shown game is already ON/AFTER the
             # deadline, there's nothing left to fast-forward THROUGH --
             # say so and re-prompt, rather than silently falling through
             # to the code below and showing 1 game, which looked exactly
             # like pressing Enter with no explanation (reported directly).
-            if log[pos]["date"] >= TRADE_DEADLINE_DATE:
+            if log[pos]["date"] >= deadline:
                 print("Already past the trade deadline -- Enter for the next game, "
                       "or a number to skip ahead.")
                 continue
             end_pos = pos
-            while end_pos < len(log) and log[end_pos]["date"] < TRADE_DEADLINE_DATE:
+            while end_pos < len(log) and log[end_pos]["date"] < deadline:
                 end_pos += 1
             count = end_pos - pos
 
@@ -935,10 +964,14 @@ def _print_conference_bracket(conf_result: dict, abbrev: Dict[str, str], highlig
     printing its final score line -- every OTHER series in the same
     round still prints instantly, same "scoped to your team" rule as
     the regular-season replay above."""
-    print()
-    print(_style(f"-- {conf_result['conference']} Play-In Tournament --", "bold"))
-    for line in conf_result["play_in_log"]:
-        print(_format_play_in_line(line, highlight))
+    # No header at all for a season that had no play-in (every season
+    # before 2019-20 -- see playoffs.playoff_format). Printing an empty
+    # "Play-In Tournament" heading implied a round that never existed.
+    if conf_result["play_in_log"]:
+        print()
+        print(_style(f"-- {conf_result['conference']} Play-In Tournament --", "bold"))
+        for line in conf_result["play_in_log"]:
+            print(_format_play_in_line(line, highlight))
 
     tree = conf_result["tree"]
     # Lined up with round_logs in [round1, round2, round3] order --
@@ -1411,14 +1444,46 @@ def _run_season_averages_browser(conn, teams: Dict[str, Team], team_names: List[
 # MAIN ENTRY POINT
 # =====================================================================
 
+def select_season(seasons: List[str]) -> Optional[str]:
+    """
+    Pick which real season to play. Enter alone takes the newest one,
+    since that's what almost everyone wants and what this project did
+    before any other season was playable.
+    """
+    print(DIVIDER)
+    print(_style("PICK A SEASON".center(LINE_WIDTH), "bold", "cyan"))
+    print(DIVIDER)
+    print(f"{len(seasons)} real seasons are available, {seasons[-1]} through {seasons[0]}.")
+    print("Every one uses that season's real rosters, schedule, injuries, trades")
+    print("and playoff rules (no play-in before 2019-20; a best-of-5 first round")
+    print("before 2003).")
+    print()
+    # Four per line keeps all 30 on a compact block rather than a
+    # 30-line list nobody wants to scroll.
+    for i in range(0, len(seasons), 6):
+        print("   " + "   ".join(f"{seasons[j]}" for j in range(i, min(i + 6, len(seasons)))))
+    print()
+    while True:
+        choice = _prompt(f"Type a season (e.g. {seasons[0]}), or press Enter for {seasons[0]}: ").strip()
+        if choice == "":
+            return seasons[0]
+        if choice in seasons:
+            return choice
+        print(f"'{choice}' isn't available -- type one exactly as listed above.")
+
+
 def main() -> None:
     print_welcome()
     # ONE season for the whole run, chosen here and threaded everywhere
-    # below. It used to be defaulted independently in two places
+    # below -- it used to be defaulted independently in two places
     # (load_teams' own default and run_season_flow's), which is exactly
-    # the sort of duplicated default that drifts apart -- and is the
-    # single seam a season picker needs when one gets built.
-    season = DEFAULT_SEASON
+    # the sort of duplicated default that drifts apart.
+    seasons = available_seasons()
+    if not seasons:
+        print("No season data is cached yet. Run `python data_source.py` first.")
+        return
+    season = select_season(seasons) if len(seasons) > 1 else seasons[0]
+    print(f"-> {season}\n")
     teams = load_teams(season)
     team_names = sorted(teams.keys())  # alphabetical, so it's easy to scan
 

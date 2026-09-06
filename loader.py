@@ -49,6 +49,31 @@ def load_league_pace_variation(season: str = DEFAULT_SEASON):
         return json.load(f).get("pace_variation")
 
 
+def available_seasons() -> List[str]:
+    """
+    Every season this project can actually play, newest first -- found
+    by looking for the cache files each one needs rather than from a
+    hardcoded list, so fetching a new season makes it playable with no
+    code change at all.
+
+    Lives here rather than in main.py because this is the only file that
+    touches the cache directory directly (see the module docstring).
+
+    A season missing any of these would crash partway through a game
+    instead of at the menu, so the check happens up front.
+    player_consistency.json and league_pace.json are deliberately NOT
+    required: both were added after every season was already cached, and
+    both fall back cleanly on their own (league-average streakiness, and
+    game_engine's GAME_PACE_VARIATION).
+    """
+    required = ("rosters.json", "schedule.json", "team_defense.json",
+                "team_conferences.json", "injuries.json", "roster_membership.json")
+    if not CACHE_DIR.exists():
+        return []
+    return [d.name for d in sorted(CACHE_DIR.iterdir(), reverse=True)
+            if d.is_dir() and all((d / f).exists() for f in required)]
+
+
 def _consistency_fields(raw_consistency: dict, player_name: str) -> dict:
     """
     The two scoring-consistency fields for one player, ready to hand to
