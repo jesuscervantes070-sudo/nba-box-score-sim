@@ -1774,36 +1774,48 @@ def _print_dynasty_summary(history: List[dict], team_name: str) -> None:
     print()
 
 
+def _load_season(season: str) -> tuple:
+    """
+    Everything option 1/2 need for one season: its real teams, the
+    league-wide baselines built from them, and the alphabetical team
+    list the menus print. Its own function so switching seasons (see
+    main's loop) is one call instead of four repeated lines.
+    """
+    print_season_note(season)
+    teams = load_teams(season)
+    team_names = sorted(teams.keys())
+    # See season.py -- the season's own real pace swing, not a constant.
+    league_avg = compute_league_averages(teams, load_league_pace_variation(season))
+    return teams, team_names, league_avg
+
+
 def main() -> None:
     print_welcome()
-    # ONE season for the whole run, chosen here and threaded everywhere
-    # below -- it used to be defaulted independently in two places
-    # (load_teams' own default and run_season_flow's), which is exactly
-    # the sort of duplicated default that drifts apart.
     seasons = available_seasons()
     if not seasons:
         print("No season data is cached yet. Run `python data_source.py` first.")
         return
     season = select_season(seasons) if len(seasons) > 1 else seasons[0]
     print(f"-> {season}\n")
-    print_season_note(season)
-    teams = load_teams(season)
-    team_names = sorted(teams.keys())  # alphabetical, so it's easy to scan
+    teams, team_names, league_avg = _load_season(season)
 
-    # Real, league-wide baselines (what's an average defense, an
-    # average steal/block rate) -- computed ONCE here, not per game.
-    # See season.py -- the season's own real pace swing, not a constant.
-    league_avg = compute_league_averages(teams, load_league_pace_variation(season))
     # Real 3-letter team codes, only used for the compact playoff
-    # bracket diagram -- also loaded once, same reasoning as above.
+    # bracket diagram -- doesn't depend on season, loaded once.
     abbrev = load_team_abbreviations()
 
     while True:
+        # The active season is shown on the menu itself -- without this
+        # there was no way to tell, before picking 1 or 2, which season
+        # you'd actually be playing (reported directly: finishing a
+        # season left you stuck re-simulating the SAME one, or quitting
+        # the whole program just to reach a different year).
+        print(f"Playing: {season}")
         print("What would you like to do?")
         print("  1. Simulate a single game")
         print("  2. Simulate a full season and view standings")
         print("  3. Simulate multiple seasons (year by year through history)")
-        print("  4. Quit")
+        print("  4. Switch season")
+        print("  5. Quit")
         choice = _prompt("> ").strip()
         print()
 
@@ -1813,13 +1825,21 @@ def main() -> None:
             run_season_flow(teams, team_names, league_avg, abbrev, season)
         elif choice == "3":
             # Its own season picker inside -- a multi-season run spans a
-            # RANGE, so the single season chosen at startup doesn't apply.
+            # RANGE, so the single season active here doesn't apply.
             run_multi_season_flow(abbrev, seasons)
         elif choice == "4":
+            new_season = select_season(seasons) if len(seasons) > 1 else seasons[0]
+            if new_season != season:
+                season = new_season
+                print(f"-> {season}\n")
+                teams, team_names, league_avg = _load_season(season)
+            else:
+                print(f"Still on {season}.\n")
+        elif choice == "5":
             print("Thanks for playing!")
             break
         else:
-            print("Please enter 1, 2, 3, or 4.")
+            print("Please enter 1, 2, 3, 4, or 5.")
         print()
 
 
