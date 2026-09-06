@@ -1472,9 +1472,14 @@ def _run_season_averages_browser(conn, teams: Dict[str, Team], team_names: List[
 
 def select_season(seasons: List[str]) -> Optional[str]:
     """
-    Pick which real season to play. Enter alone takes the newest one,
-    since that's what almost everyone wants and what this project did
-    before any other season was playable.
+    Pick which real season to play, BY NUMBER -- typing "1996-97"
+    exactly, hyphen and all, was needlessly fiddly (reported directly).
+    1 is the newest season, counting back through history.
+
+    Enter alone takes the newest, since that's what almost everyone
+    wants and what this project did before any other season was
+    playable. The season string itself is still accepted, so anyone
+    who already knows what they want can just type it.
     """
     print(DIVIDER)
     print(_style("PICK A SEASON".center(LINE_WIDTH), "bold", "cyan"))
@@ -1484,18 +1489,24 @@ def select_season(seasons: List[str]) -> Optional[str]:
     print("and playoff rules (no play-in before 2019-20; a best-of-5 first round")
     print("before 2003).")
     print()
-    # Four per line keeps all 30 on a compact block rather than a
-    # 30-line list nobody wants to scroll.
-    for i in range(0, len(seasons), 6):
-        print("   " + "   ".join(f"{seasons[j]}" for j in range(i, min(i + 6, len(seasons)))))
+    # Numbered, five per line -- keeps all 30 in a compact block rather
+    # than a 30-line list, while still giving every one a number to type.
+    # The width is sized to the longest real entry ("30. 1996-97"), not
+    # eyeballed.
+    for i in range(0, len(seasons), 5):
+        row = seasons[i:i + 5]
+        print("   " + "   ".join(f"{i + j + 1:>2}. {s}" for j, s in enumerate(row)))
     print()
     while True:
-        choice = _prompt(f"Type a season (e.g. {seasons[0]}), or press Enter for {seasons[0]}: ").strip()
+        choice = _prompt(f"Season number 1-{len(seasons)} "
+                          f"(or press Enter for {seasons[0]}): ").strip()
         if choice == "":
             return seasons[0]
+        if choice.isdigit() and 1 <= int(choice) <= len(seasons):
+            return seasons[int(choice) - 1]
         if choice in seasons:
-            return choice
-        print(f"'{choice}' isn't available -- type one exactly as listed above.")
+            return choice  # typed the season itself -- still fine
+        print(f"Please enter a number from 1 to {len(seasons)}.")
 
 
 def main() -> None:
