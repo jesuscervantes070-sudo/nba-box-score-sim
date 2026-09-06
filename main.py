@@ -23,6 +23,7 @@ from game_engine import simulate_game, compute_league_averages, GameResult, Leag
 from data_source import fetch_real_standings
 from season import simulate_season
 from playoffs import run_playoffs, compute_series_player_averages
+from offseason import diff_seasons, franchise_map, team_changes
 from transactions import summarize_moves
 import db
 
@@ -1163,20 +1164,32 @@ def print_injuries(injuries: List[dict], title: str = "SIMULATED INJURIES",
     print()
 
 
-def print_team_moves(moves: List[dict], highlight: Optional[str] = None) -> None:
+def print_team_moves(moves: List[dict], highlight: Optional[str] = None,
+                      team_scope: Optional[str] = None) -> None:
     """
     Prints every real in-season trade this season (see
     transactions.summarize_moves) as "Player: Team A -> Team B" --
     just the real WHERE, not the WHY (no trade-details data is fetched
     anywhere in this project, only real game-log evidence of who
     suited up for whom).
+
+    `team_scope` names the team when `moves` has already been filtered
+    to one. Without it an empty list printed "No real in-season trades
+    this season," which claimed the whole LEAGUE stood pat when really
+    it was just your team -- reported directly, and wrong often enough
+    to matter: in 2025-26, 28 of the 30 teams made an in-season move,
+    so the other two saw a league-wide claim that was false.
     """
     print()
     print(DIVIDER)
-    print(_style("TEAM MOVES THIS SEASON".center(LINE_WIDTH), "bold", "cyan"))
+    title = f"{team_scope.upper()} -- MOVES THIS SEASON" if team_scope else "TEAM MOVES THIS SEASON"
+    print(_style(title.center(LINE_WIDTH), "bold", "cyan"))
     print(DIVIDER)
     if not moves:
-        print("No real in-season trades this season.")
+        if team_scope:
+            print(f"{team_scope} made no in-season trades this season.")
+        else:
+            print("No real in-season trades anywhere in the league this season.")
         print()
         return
 
@@ -1211,7 +1224,7 @@ def _run_moves_browser(all_moves: List[dict], team_names: List[str], highlight: 
         if choice.isdigit() and 1 <= int(choice) <= len(team_names):
             chosen_name = team_names[int(choice) - 1]
             team_moves = [m for m in all_moves if chosen_name in m["teams"]]
-            print_team_moves(team_moves, highlight=highlight)
+            print_team_moves(team_moves, highlight=highlight, team_scope=chosen_name)
             continue
         print("Please enter a number from the list, 'a' for the full list, or press Enter to finish.")
 
@@ -1418,7 +1431,7 @@ def run_season_flow(teams: Dict[str, Team], team_names: List[str], league_avg: L
     membership = load_roster_membership(season)
     all_moves = summarize_moves(membership)
     my_moves = [m for m in all_moves if my_team_name in m["teams"]]
-    print_team_moves(my_moves, highlight=my_team_name)
+    print_team_moves(my_moves, highlight=my_team_name, team_scope=my_team_name)
     _run_moves_browser(all_moves, team_names, highlight=my_team_name)
 
     all_injuries = db.get_injuries(conn, season)
@@ -1547,6 +1560,211 @@ def select_season(seasons: List[str]) -> Optional[str]:
         print(f"Please enter a number from 1 to {len(seasons)}.")
 
 
+# =====================================================================
+# MULTI-SEASON RUN (year by year through real NBA history)
+# =====================================================================
+
+def _offseason_report(diff: dict, team_name: str, next_team_name: str) -> None:
+    """
+    What changed for YOUR team between two seasons, plus any franchise
+    renames league-wide. Scoped to your team by default, same rule as
+    every other view here -- ninety league-wide arrivals is not a thing
+    anyone reads.
+    """
+    print()
+    print(DIVIDER)
+    print(_style(f"OFFSEASON: {diff['from_season']} -> {diff['to_season']}".center(LINE_WIDTH),
+                 "bold", "cyan"))
+    print(DIVIDER)
+
+    for rename in diff["renamed"]:
+        print(f"  {rename['from']} are now the {rename['to']}.")
+    if diff["renamed"]:
+        print()
+
+    changes = team_changes(diff, next_team_name)
+    print(_style(f"  {next_team_name}", "bold"))
+    # Only the ones who actually played -- a 2-minutes-a-game signing is
+    # not news, and there are dozens of them every summer.
+    def _show(rows, label, direction=None):
+        # `direction` says which end of a move to name: "from" for
+        # players arriving, "to" for players leaving. Getting this wrong
+        # printed departures as "(from Atlanta Hawks)" -- naming the
+        # team they just left rather than where they went.
+        real = [r for r in rows if r["min"] >= 10.0][:6]
+        if not real:
+            return
+        print(f"    {label}")
+        for r in real:
+            where = f" ({direction} {r[direction]})" if direction and direction in r else ""
+            print(f"      {r['player']:<26} {r['min']:>4.1f} mpg{where}")
+    _show(changes["gained"], "Signed/traded in:", "from")
+    _show(changes["arrived"], "New to the league:")
+    _show(changes["lost"], "Left for another team:", "to")
+    _show(changes["left_league"], "Out of the league:")
+    if not any(len([r for r in v if r["min"] >= 10.0]) for v in changes.values()):
+        print("    A quiet summer -- no rotation players in or out.")
+    print()
+
+
+def run_multi_season_flow(abbrev: Dict[str, str], seasons: List[str]) -> None:
+    """
+    Play straight through real NBA history: pick a start and end season
+    and simulate each one in turn, following one franchise the whole way.
+
+    Every season uses its OWN real rosters, so the real offseason
+    already happened between them and offseason.py reports what changed
+    (see that module's docstring for what this deliberately is NOT).
+    The CHAMPIONS are simulated though, so they diverge from real
+    history immediately -- that's the point of running it.
+
+    Your team is followed through renames and relocations
+    (offseason.franchise_map), so starting with the 1996-97 Seattle
+    SuperSonics leaves you holding the Thunder in 2008-09 rather than
+    losing the team mid-run.
+    """
+    # Oldest-first, since a run through history goes forwards.
+    ordered = seasons[::-1]
+    print()
+    print(DIVIDER)
+    print(_style("SIMULATE MULTIPLE SEASONS".center(LINE_WIDTH), "bold", "cyan"))
+    print(DIVIDER)
+    print("Play straight through real NBA history, one season at a time. Each")
+    print("season uses its own real rosters, schedule, injuries, trades and")
+    print("playoff rules -- but the results are simulated, so champions start")
+    print("diverging from real history immediately.")
+    print()
+    for i in range(0, len(ordered), 5):
+        row = ordered[i:i + 5]
+        print("   " + "   ".join(f"{i + j + 1:>2}. {s}" for j, s in enumerate(row)))
+    print()
+
+    def _pick(label: str, default_index: int) -> Optional[int]:
+        while True:
+            raw = _prompt(f"{label} (1-{len(ordered)}, Enter for "
+                          f"{ordered[default_index]}): ").strip()
+            if raw == "":
+                return default_index
+            if raw.isdigit() and 1 <= int(raw) <= len(ordered):
+                return int(raw) - 1
+            if raw in ordered:
+                return ordered.index(raw)
+            print(f"Please enter a number from 1 to {len(ordered)}.")
+
+    start = _pick("Start season", 0)
+    end = _pick("End season", min(start + 4, len(ordered) - 1))
+    if end < start:
+        start, end = end, start
+    run = ordered[start:end + 1]
+    print(f"-> {run[0]} through {run[-1]} ({len(run)} seasons)\n")
+
+    teams = load_teams(run[0])
+    team_names = sorted(teams)
+    print_team_list(team_names)
+    my_team = select_team_number(team_names, "Select the franchise to follow:")
+    if my_team is None:
+        return
+    print(f"-> {my_team}\n")
+
+    history = []
+    for index, season in enumerate(run):
+        print(DIVIDER)
+        print(_style(f"{season} SEASON".center(LINE_WIDTH), "bold", "cyan"))
+        print(DIVIDER)
+        print_season_note(season)
+
+        teams = load_teams(season)
+        league_avg = compute_league_averages(teams, load_league_pace_variation(season))
+        simulate_season(season=season, fresh=True, verbose=False)
+        conn = db.init_db()
+        standings = db.get_standings(conn, season)
+
+        record = next((r for r in standings if r["team"] == my_team), None)
+        playoff_result = run_playoffs(conn, season, teams, standings, league_avg)
+        champion = playoff_result["finals"]["winner"]
+        finish = _playoff_finish(playoff_result, my_team)
+
+        if record:
+            print(f"  {_style(my_team, 'bold', 'cyan')}: {record['W']}-{record['L']}, {finish}")
+        print(f"  Champion: {_style(champion, 'bold')}"
+              + ("  <-- YOUR TEAM" if champion == my_team else ""))
+        history.append({"season": season, "team": my_team,
+                        "W": record["W"] if record else 0, "L": record["L"] if record else 0,
+                        "finish": finish, "champion": champion})
+
+        # Pause with the usual "show me more" options, rather than
+        # dumping standings and a bracket for every season unasked.
+        if index < len(run) - 1:
+            while True:
+                cmd = _prompt("  Enter=next season, s=standings, b=bracket, "
+                              "e=stop here: ").strip().lower()
+                if cmd == "s":
+                    print_standings_by_conference(standings, teams, highlight=my_team)
+                elif cmd == "b":
+                    print_playoffs(playoff_result, abbrev, highlight=my_team)
+                elif cmd == "e":
+                    _print_dynasty_summary(history, my_team)
+                    return
+                else:
+                    break
+
+            # Follow the franchise across a rename into the next season.
+            next_season = run[index + 1]
+            diff = diff_seasons(season, next_season)
+            next_team = franchise_map(season, next_season).get(my_team, my_team)
+            _offseason_report(diff, my_team, next_team)
+            my_team = next_team
+
+    _print_dynasty_summary(history, my_team)
+
+
+def _playoff_finish(playoff_result: dict, team_name: str) -> str:
+    """How far the followed team got, in plain words -- read off the
+    playoff tree rather than tracked separately, so it can't disagree
+    with what the bracket shows."""
+    if playoff_result["finals"]["winner"] == team_name:
+        return "WON THE TITLE"
+    if team_name in (playoff_result["finals"]["winner"], playoff_result["finals"]["loser"]):
+        return "lost the Finals"
+    for conf in ("east", "west"):
+        tree = playoff_result[conf]["tree"]
+        if tree["round3"]["loser"] == team_name:
+            return "lost the Conference Finals"
+        if any(s["loser"] == team_name for s in tree["round2"]):
+            return "lost in the Conference Semifinals"
+        if any(s["loser"] == team_name for s in tree["round1"]):
+            return "lost in the First Round"
+    return "missed the playoffs"
+
+
+def _print_dynasty_summary(history: List[dict], team_name: str) -> None:
+    """One line per season -- the whole run at a glance, which is the
+    reason for playing several seasons in the first place."""
+    print()
+    print(DIVIDER)
+    print(_style("YOUR RUN".center(LINE_WIDTH), "bold", "cyan"))
+    print(DIVIDER)
+    # RESULT is 34 wide, not 30: the longest real value is "lost in the
+    # Conference Semifinals" at 32 characters, which ran straight into
+    # the CHAMPION column at 30. Sized to the longest real string, not
+    # eyeballed.
+    print(f"{'SEASON':<10}{'TEAM':<26}{'W-L':>7}  {'RESULT':<34}{'CHAMPION'}")
+    print(SECTION)
+    titles = 0
+    for row in history:
+        if row["finish"] == "WON THE TITLE":
+            titles += 1
+        line = (f"{row['season']:<10}{row['team']:<26}"
+                f"{row['W']:>3}-{row['L']:<3}  {row['finish']:<34}{row['champion']}")
+        print(_style(line, "bold", "cyan") if row["finish"] == "WON THE TITLE" else line)
+    print(SECTION)
+    wins = sum(r["W"] for r in history)
+    losses = sum(r["L"] for r in history)
+    print(f"{len(history)} seasons, {wins}-{losses} overall, "
+          f"{titles} championship{'s' if titles != 1 else ''}.")
+    print()
+
+
 def main() -> None:
     print_welcome()
     # ONE season for the whole run, chosen here and threaded everywhere
@@ -1575,7 +1793,8 @@ def main() -> None:
         print("What would you like to do?")
         print("  1. Simulate a single game")
         print("  2. Simulate a full season and view standings")
-        print("  3. Quit")
+        print("  3. Simulate multiple seasons (year by year through history)")
+        print("  4. Quit")
         choice = _prompt("> ").strip()
         print()
 
@@ -1584,10 +1803,14 @@ def main() -> None:
         elif choice == "2":
             run_season_flow(teams, team_names, league_avg, abbrev, season)
         elif choice == "3":
+            # Its own season picker inside -- a multi-season run spans a
+            # RANGE, so the single season chosen at startup doesn't apply.
+            run_multi_season_flow(abbrev, seasons)
+        elif choice == "4":
             print("Thanks for playing!")
             break
         else:
-            print("Please enter 1, 2, or 3.")
+            print("Please enter 1, 2, 3, or 4.")
         print()
 
 
