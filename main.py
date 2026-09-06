@@ -47,25 +47,47 @@ YOUR_TEAM_MARKER = "  <-- YOUR TEAM"
 # compared against a stored game's date directly, as a plain string.
 
 
-# Real trade deadlines, by season. Only seasons whose real deadline is
-# actually known go in here -- the replay's jump-to-deadline command is
-# simply unavailable for the rest, rather than jumping to a made-up date.
+# The real NBA trade deadline for every season this project can play.
 #
-# Deriving it from the cached data was tried and does NOT work: the
-# roster data records WHEN a player first appeared for a team, not WHY,
-# so the last such move is in mid-APRIL every season -- buyout signings
-# and 10-day contracts, not trades. Nothing in this project's data
-# distinguishes a deadline-day trade from an April signing, and
-# inventing thirty deadline dates would be thirty chances to be quietly
-# wrong about a real-world fact.
+# Same "stable real-world fact, not worth fetch infrastructure" reasoning
+# as playoffs.TEAM_DIVISIONS' fallback and HISTORICAL_TEAM_NAMES -- but
+# unlike those, these had to be looked up rather than derived, because
+# nothing in the cached data distinguishes a deadline trade from an
+# April buyout signing (the roster data records WHEN a player first
+# appeared for a team, never WHY).
+#
+# Every one of these was checked two ways before being trusted:
+#   1. All 30 are Thursdays, which every real NBA deadline is.
+#   2. Against this project's own real roster data -- the last busy
+#      trade day of each season lands 1 to 15 days AFTER the date below
+#      (median 5), exactly the lag expected from a traded player taking
+#      a few days to debut for his new team. None land before it.
+# The two seasons that looked odd on check 2 (1999-00 and 2006-07)
+# simply never had a single day with four arrivals; both show real
+# arrivals 2-3 days after their deadline when checked directly.
+#
+# The three outliers are real: March 1999 and March 2012 were lockout
+# seasons that started late, and March 2021 was the COVID-shortened
+# season. The deadline also moved from "the Thursday after the All-Star
+# Game" to before the All-Star break starting in 2018, which is why the
+# dates jump from late February to early February there.
 TRADE_DEADLINE_BY_SEASON = {
-    "2025-26": "2026-02-05",   # the real 2025-26 deadline, Thu Feb 5 2026
+    "1996-97": "1997-02-20", "1997-98": "1998-02-19", "1998-99": "1999-03-11",
+    "1999-00": "2000-02-24", "2000-01": "2001-02-22", "2001-02": "2002-02-21",
+    "2002-03": "2003-02-20", "2003-04": "2004-02-19", "2004-05": "2005-02-24",
+    "2005-06": "2006-02-23", "2006-07": "2007-02-22", "2007-08": "2008-02-21",
+    "2008-09": "2009-02-19", "2009-10": "2010-02-18", "2010-11": "2011-02-24",
+    "2011-12": "2012-03-15", "2012-13": "2013-02-21", "2013-14": "2014-02-20",
+    "2014-15": "2015-02-19", "2015-16": "2016-02-18", "2016-17": "2017-02-23",
+    "2017-18": "2018-02-08", "2018-19": "2019-02-07", "2019-20": "2020-02-06",
+    "2020-21": "2021-03-25", "2021-22": "2022-02-10", "2022-23": "2023-02-09",
+    "2023-24": "2024-02-08", "2024-25": "2025-02-06", "2025-26": "2026-02-05",
 }
 
 
 def trade_deadline_for(season: str) -> Optional[str]:
-    """The real trade deadline for `season`, or None if it isn't known
-    -- see TRADE_DEADLINE_BY_SEASON."""
+    """The real trade deadline for `season` -- see
+    TRADE_DEADLINE_BY_SEASON, which covers all 30 playable seasons."""
     return TRADE_DEADLINE_BY_SEASON.get(season)
 
 

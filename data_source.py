@@ -87,6 +87,10 @@ def _player_consistency_cache_path(season: str) -> Path:
 def _league_pace_cache_path(season: str) -> Path:
     return _season_cache_dir(season) / "league_pace.json"
 
+
+def _team_division_cache_path(season: str) -> Path:
+    return _season_cache_dir(season) / "team_divisions.json"
+
 # Maps our field names -> the NBA stats API's "Opponent" column names.
 # These are real per-game stats about what a team's REAL OPPONENTS did
 # against them -- i.e., a direct measure of that team's own defense.
@@ -295,7 +299,42 @@ def fetch_team_conferences(season: str) -> dict:
     return conferences
 
 
+def fetch_team_divisions(season: str) -> dict:
+    """
+    Each team's real DIVISION in `season` -- and unlike its conference,
+    this genuinely changes: the league played with four divisions
+    (Atlantic/Central in the East, Midwest/Pacific in the West) until it
+    realigned to today's six in 2004-05. The endpoint returns the right
+    ones for whichever season is asked, so this is real per-season data
+    rather than a table someone has to remember to update.
+
+    Only the playoff-seeding tiebreakers use it (division leader,
+    division record) -- see playoffs.py, which used to hold a hardcoded
+    MODERN six-division map and therefore applied the wrong divisions to
+    every season before 2004-05.
+    """
+    from nba_api.stats.endpoints import leaguestandingsv3
+    df = leaguestandingsv3.LeagueStandingsV3(season=season, timeout=30).get_data_frames()[0]
+
+    divisions = {}
+    for _, row in df.iterrows():
+        team_name = f"{row['TeamCity']} {row['TeamName']}"
+        team_name = NBA_API_TEAM_NAME_FIXES.get(team_name, team_name)
+        divisions[team_name] = row["Division"]
+    return divisions
+
+
 def build_and_cache_team_conferences(season: str = "2025-26", force: bool = False) -> None:
+    """Conferences AND divisions -- both come from the same standings
+    endpoint, so one call fills both cache files."""
+    division_path = _team_division_cache_path(season)
+    if force or not division_path.exists():
+        divisions = fetch_team_divisions(season)
+        with open(division_path, "w") as f:
+            json.dump({"season": season, "teams": divisions}, f, indent=2)
+        print(f"Cached real divisions for {len(divisions)} teams "
+              f"({len(set(divisions.values()))} divisions) -> {division_path}")
+
     cache_path = _team_conference_cache_path(season)
     if cache_path.exists() and not force:
         print(f"Team conference cache already exists at {cache_path}. Use --refresh to force an update.")

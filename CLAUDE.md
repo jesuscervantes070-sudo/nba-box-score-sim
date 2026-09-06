@@ -212,14 +212,19 @@ opponents' shooting (see game_engine.py).
   standings so it triggers or doesn't the way the real one did; the
   current 7-10 tournament runs from 2020-21. Verified: pre-2003 first
   round series now end in 3-5 games, and every era plays through.
-- **KNOWN era gap, unfixed**: `TEAM_DIVISIONS` is the MODERN six-division
-  map, but the league only realigned to six divisions in 2004-05 —
-  before that the East had Atlantic/Central and the West had
-  Midwest/Pacific. So for seasons before 2004-05 the division-leader and
-  division-record TIEBREAKER steps use the wrong divisions. Second-order
-  (tiebreakers only matter when records actually tie, and the later
-  steps in the chain still resolve it), but it is genuinely wrong and
-  worth fixing if old-season seeding ever needs to be exact.
+- **Divisions are real per season** (`divisions_for` →
+  `cache/<season>/team_divisions.json`, fetched by
+  `data_source.fetch_team_divisions` from the same standings endpoint
+  that already supplies conferences, so it costs no extra call). This
+  replaced a hardcoded MODERN six-division map that was wrong for every
+  season before the 2004-05 realignment, when the league had four
+  (Atlantic/Central in the East, Midwest/Pacific in the West). Confirmed
+  from the data, not memory: the endpoint returns 4 divisions through
+  2003-04 and 6 from 2004-05, and Utah is Midwest before the switch and
+  Northwest after. `TEAM_DIVISIONS` survives only as a fallback for an
+  un-fetched season.
+  Note this affects SEEDING TIEBREAKERS only, and accuracy benchmarks
+  never touch playoffs.py — it is a correctness fix, not an accuracy one.
 - Seeds each conference 1-10 off regular-season standings, ties broken by
   the real NBA chain (see Status above) — a recursive group-split
   (`_break_ties`) so it also handles 3+-team ties, not just two-team ones.

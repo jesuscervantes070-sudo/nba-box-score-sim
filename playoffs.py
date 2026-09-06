@@ -32,6 +32,7 @@ from typing import Dict, List, Optional, Tuple
 from models import Team
 from game_engine import simulate_game, GameResult, LeagueAverages
 import db
+from loader import load_team_divisions
 
 # A playoff seed is carried around as (seed_number, team_name) so that
 # later rounds -- where the two teams came from different first-round
@@ -160,7 +161,21 @@ def _playoff_pool(standings: List[dict], teams: Dict[str, Team], conference: str
     return {row["team"] for row in conf_teams if row["W"] >= cutoff_wins}
 
 
-def _division_leaders(standings: List[dict]) -> set:
+def divisions_for(season: str) -> Dict[str, str]:
+    """
+    The real divisions for `season`, cached per season by data_source
+    (four before the 2004-05 realignment, six after), falling back to
+    the modern TEAM_DIVISIONS map only if that season has no cached
+    file.
+
+    The fallback is genuinely wrong for any season before 2004-05 -- it
+    would put teams in divisions that did not exist yet -- so it exists
+    purely so an un-fetched season still runs rather than crashing.
+    """
+    return load_team_divisions(season) or TEAM_DIVISIONS
+
+
+def _division_leaders(standings: List[dict], divisions: Dict[str, str]) -> set:
     """
     Every team that leads its division outright, or is part of a tie
     for the lead -- the division-leader tiebreaker step only asks "is
@@ -169,7 +184,7 @@ def _division_leaders(standings: List[dict]) -> set:
     """
     by_division: Dict[str, List[dict]] = {}
     for row in standings:
-        division = TEAM_DIVISIONS.get(row["team"])
+        division = divisions.get(row["team"])
         if division:
             by_division.setdefault(division, []).append(row)
 
@@ -198,13 +213,15 @@ def _tiebreak_value(criterion: str, conn, season: str, team: str, group: List[st
         return _win_pct([g for g in games if g[0] in group])
 
     if criterion in ("division_leader", "division_record"):
-        divisions = {TEAM_DIVISIONS.get(t) for t in group}
-        if None in divisions or len(divisions) != 1:
+        # This season's real divisions, not today's -- see divisions_for.
+        team_divisions = ctx["divisions"]
+        group_divisions = {team_divisions.get(t) for t in group}
+        if None in group_divisions or len(group_divisions) != 1:
             return None  # not every team here is in the same division -- step doesn't apply
         if criterion == "division_leader":
             return 1.0 if team in ctx["division_leaders"] else 0.0
-        my_division = TEAM_DIVISIONS[team]
-        return _win_pct([g for g in games if TEAM_DIVISIONS.get(g[0]) == my_division])
+        my_division = team_divisions[team]
+        return _win_pct([g for g in games if team_divisions.get(g[0]) == my_division])
 
     if criterion == "conference_record":
         return _win_pct([g for g in games if g[0] in ctx["conference_teams"]])
@@ -256,12 +273,16 @@ def seed_conference(conn, season: str, standings: List[dict], teams: Dict[str, T
     """
     other_conference = "West" if conference == "East" else "East"
     conf_teams = [row for row in standings if teams[row["team"]].conference == conference]
+    # This season's REAL divisions -- four before the 2004-05
+    # realignment, six after. See divisions_for.
+    divisions = divisions_for(season)
 
     ctx = {
         "conference_teams": {row["team"] for row in conf_teams},
         "conf_pool": _playoff_pool(standings, teams, conference),
         "other_pool": _playoff_pool(standings, teams, other_conference),
-        "division_leaders": _division_leaders(standings),
+        "divisions": divisions,
+        "division_leaders": _division_leaders(standings, divisions),
     }
 
     by_wins: Dict[int, List[str]] = {}

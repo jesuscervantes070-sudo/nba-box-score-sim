@@ -49,6 +49,24 @@ def load_league_pace_variation(season: str = DEFAULT_SEASON):
         return json.load(f).get("pace_variation")
 
 
+def load_team_divisions(season: str = DEFAULT_SEASON) -> Dict[str, str]:
+    """
+    Each team's real division IN THAT SEASON (see
+    data_source.fetch_team_divisions) -- four divisions before the
+    2004-05 realignment, six after.
+
+    Returns an empty dict when the season has no cached file, which
+    leaves playoffs.py on its hardcoded modern map: this was added after
+    every season was already cached, same as the consistency and pace
+    files.
+    """
+    division_file = _season_cache_dir(season) / "team_divisions.json"
+    if not division_file.exists():
+        return {}
+    with open(division_file) as f:
+        return json.load(f)["teams"]
+
+
 def available_seasons() -> List[str]:
     """
     Every season this project can actually play, newest first -- found
