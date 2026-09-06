@@ -100,6 +100,12 @@ opponents' shooting (see game_engine.py).
   real per-game defensive ratings and REJECTED (it is mostly team and
   playing time, repeating at 0.23 with workload removed). See "Player
   consistency" below.
+- **Season picker + era playoff rules**: complete — `main.py` now asks
+  which of the 30 cached seasons to play instead of only ever playing
+  2025-26, and each one uses its REAL postseason rules (best-of-5 first
+  round before the 2003 playoffs, no play-in before 2019-20, the one-off
+  conditional 2019-20 bubble play-in, the 7-10 tournament from 2020-21).
+  See "Playoffs" below.
 - **Free throws**: mostly fixed — they now come from the opponent's
   fouls rather than being drawn unconnected to anything, which is what
   a free throw actually is. FTA night-to-night spread 2.97 → 5.61
@@ -194,6 +200,26 @@ opponents' shooting (see game_engine.py).
    markers), never something a score/average is computed from.
 
 ## Playoffs (playoffs.py)
+- **Era-correct rules, chosen by season** (`playoff_format`): the
+  postseason simulated is the one that really followed that season, not
+  today's. First round is best-of-5 before the 2003 playoffs and
+  best-of-7 after (`simulate_series` takes `best_of`, defaulting to 7 so
+  the modern game and every existing caller are untouched); there is NO
+  play-in before 2019-20 (and no empty "Play-In Tournament" heading
+  either); 2019-20 alone uses its real conditional bubble format — the
+  9th seed only gets a shot if it finishes within 4 games of the 8th,
+  then must win twice while the 8th needs one, applied to the SIMULATED
+  standings so it triggers or doesn't the way the real one did; the
+  current 7-10 tournament runs from 2020-21. Verified: pre-2003 first
+  round series now end in 3-5 games, and every era plays through.
+- **KNOWN era gap, unfixed**: `TEAM_DIVISIONS` is the MODERN six-division
+  map, but the league only realigned to six divisions in 2004-05 —
+  before that the East had Atlantic/Central and the West had
+  Midwest/Pacific. So for seasons before 2004-05 the division-leader and
+  division-record TIEBREAKER steps use the wrong divisions. Second-order
+  (tiebreakers only matter when records actually tie, and the later
+  steps in the chain still resolve it), but it is genuinely wrong and
+  worth fixing if old-season seeding ever needs to be exact.
 - Seeds each conference 1-10 off regular-season standings, ties broken by
   the real NBA chain (see Status above) — a recursive group-split
   (`_break_ties`) so it also handles 3+-team ties, not just two-team ones.
@@ -880,7 +906,17 @@ this test would have measured the bug rather than Gobert.
   `python3 sweep_constants.py --constant DEFENSE_AMPLIFICATION,OFFENSE_AMPLIFICATION
   --values "1.5,2,2.5;0,0.5,1"`. Saves to `sweeps/*.json`. See "Accuracy
   tuning" above for what it found and why the holdout split matters.
-- `main.py` — the playable text CLI. Flow for a full season: simulate →
+- `main.py` — the playable text CLI. Opens by asking which of the 30
+  cached seasons to play (`loader.available_seasons` finds them by
+  checking for the files each needs, so a newly fetched season is
+  playable with no code change). Known real trade deadlines live in
+  `TRADE_DEADLINE_BY_SEASON` — only seasons whose deadline is actually
+  known are listed, and the replay's jump command says so plainly for
+  the rest, rather than jumping to an invented date (deriving it from
+  cached data was tried and fails: the roster data records WHEN a player
+  first appeared for a team, not WHY, so the last such move is mid-April
+  every season — buyout signings, not trades).
+  Flow for a full season: simulate →
   optional game-by-game replay of the followed team's season (see
   above) → standings (overall/by conference) → real-vs-sim comparison →
   the followed team's real in-season moves, injuries (healed vs.
@@ -996,14 +1032,13 @@ this test would have measured the bug rather than Gobert.
      is not a streaky passer, so it cannot ride along on one
      "offensive consistency" number and would need its own rating.
      Deliberately not folded into the scoring work.
-2. **An offseason bridge + season-picker UI** for the now-30-season
-   backtest set (see "Multi-season backtesting" above) — diffing two
-   seasons' rosters to show real draft/free-agency movement between
-   them, and letting main.py actually pick which season to play.
-3. **Playoffs on an old season** would need real era-specific rules
-   restored (no play-in before 2019-20, best-of-5 first round before
-   2003) — see "Multi-season backtesting" above. Not needed for
-   anything built so far; backtesting never touches `playoffs.py`.
+2. **An offseason bridge** for the 30-season backtest set (see
+   "Multi-season backtesting" above) — diffing two seasons' rosters to
+   show real draft/free-agency movement between them. The season-picker
+   half of this item is DONE (see Status); this is the remaining half.
+3. **Playoffs on an old season: DONE** — era-specific rules are in
+   (see "Playoffs" above). The one piece still wrong is pre-2004-05
+   DIVISIONS in the seeding tiebreakers, documented there.
 4. **Possession-by-possession realism** — explicitly low priority. Safe
    to defer indefinitely: `simulate_game()` is a swappable box for
    however a game gets produced, so nothing above it needs to change.
