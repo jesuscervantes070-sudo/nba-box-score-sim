@@ -1692,22 +1692,31 @@ def run_multi_season_flow(abbrev: Dict[str, str], seasons: List[str]) -> None:
                         "W": record["W"] if record else 0, "L": record["L"] if record else 0,
                         "finish": finish, "champion": champion})
 
-        # Pause with the usual "show me more" options, rather than
-        # dumping standings and a bracket for every season unasked.
-        if index < len(run) - 1:
-            while True:
-                cmd = _prompt("  Enter=next season, s=standings, b=bracket, "
-                              "e=stop here: ").strip().lower()
-                if cmd == "s":
-                    print_standings_by_conference(standings, teams, highlight=my_team)
-                elif cmd == "b":
-                    print_playoffs(playoff_result, abbrev, highlight=my_team)
-                elif cmd == "e":
-                    _print_dynasty_summary(history, my_team)
-                    return
-                else:
-                    break
+        is_last = index == len(run) - 1
+        # Pause with the usual "show me more" options -- this used to
+        # be skipped entirely for the LAST season in the range (which
+        # is every season of a single-season run), so 'b' -- the option
+        # that plays your team's own playoff series game by game and
+        # lets you pull up a box score -- was simply never offered
+        # (reported directly). It's offered every season now; only the
+        # OFFSEASON REPORT below is skipped on the last one, since
+        # there is no next season for it to describe.
+        while True:
+            next_label = "e=stop here" if is_last else "e=stop here"
+            cmd = _prompt(f"  {'Enter=finish' if is_last else 'Enter=next season'}, "
+                          f"s=standings, b=bracket (game by game, box scores), "
+                          f"{next_label}: ").strip().lower()
+            if cmd == "s":
+                print_standings_by_conference(standings, teams, highlight=my_team)
+            elif cmd == "b":
+                print_playoffs(playoff_result, abbrev, highlight=my_team)
+            elif cmd == "e":
+                _print_dynasty_summary(history, my_team)
+                return
+            else:
+                break
 
+        if not is_last:
             # Follow the franchise across a rename into the next season.
             next_season = run[index + 1]
             diff = diff_seasons(season, next_season)
