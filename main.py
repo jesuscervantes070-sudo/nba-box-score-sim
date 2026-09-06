@@ -13,6 +13,7 @@ fully testable on its own, without needing a keyboard in the loop.
 """
 import os
 import re
+import textwrap
 import sys
 from typing import Dict, List, Optional, Tuple
 
@@ -1470,6 +1471,43 @@ def _run_season_averages_browser(conn, teams: Dict[str, Team], team_names: List[
 # MAIN ENTRY POINT
 # =====================================================================
 
+# Seasons that were not a normal 82 games, and why. Verified against the
+# cached real schedules rather than from memory -- the game counts below
+# are what this project actually simulates. Shown when one is picked, so
+# a 50-game season doesn't just look like broken data.
+SEASON_NOTES = {
+    "1998-99": ("Lockout season -- 50 games per team instead of 82. "
+                "The season didn't tip off until February 1999."),
+    "2011-12": ("Lockout season -- 66 games per team instead of 82. "
+                "The season started on Christmas Day 2011."),
+    "2012-13": ("81 games for two teams: a real cancelled game "
+                "(Boston at Indiana) after the Sandy Hook shooting was "
+                "never made up."),
+    "2019-20": ("COVID season -- suspended in March 2020, then finished "
+                "in the Orlando bubble. Teams played 64 to 75 games, and "
+                "only 22 teams were invited back, so the schedule is "
+                "genuinely uneven. It also used a one-off play-in: the "
+                "9th seed only got a shot if it finished within 4 games "
+                "of the 8th."),
+    "2020-21": ("COVID-shortened season -- 72 games per team, starting "
+                "in December 2020. The trade deadline was in March."),
+}
+
+
+def print_season_note(season: str) -> None:
+    """Explain a season that wasn't 82 games, so its schedule and win
+    totals don't read as a bug. Silent for every normal season."""
+    note = SEASON_NOTES.get(season)
+    if not note:
+        return
+    # Wrapped to the table width so a long note doesn't run off the
+    # screen -- these are two or three sentences, not a label.
+    print(_style(f"  Note on {season}:", "bold"))
+    for line in textwrap.wrap(note, LINE_WIDTH - 4):
+        print(f"    {line}")
+    print()
+
+
 def select_season(seasons: List[str]) -> Optional[str]:
     """
     Pick which real season to play, BY NUMBER -- typing "1996-97"
@@ -1521,6 +1559,7 @@ def main() -> None:
         return
     season = select_season(seasons) if len(seasons) > 1 else seasons[0]
     print(f"-> {season}\n")
+    print_season_note(season)
     teams = load_teams(season)
     team_names = sorted(teams.keys())  # alphabetical, so it's easy to scan
 
