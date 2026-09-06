@@ -425,13 +425,13 @@ def print_box_score(result: GameResult, highlight: Optional[str] = None) -> None
     print(DIVIDER)
     print()
     _print_team_box_score(result.home_team, result.home_players, result.home_score, highlight)
-    # A terminal always jumps to show whatever was JUST printed -- there's
-    # no way for a plain print()-based script to keep it scrolled to the
-    # top instead. Pausing here breaks one huge wall of text into two
-    # smaller, readable chunks, so the jump after each one is much less
-    # jarring, and there's time to actually read the first team's box
-    # score before the second one pushes it further up.
-    _prompt("Press Enter to see the other team's box score...")
+    # Both teams print straight through. There used to be a "Press Enter
+    # to see the other team's box score" pause here, on the theory that
+    # it split one wall of text into two readable chunks -- but it put a
+    # keypress in the MIDDLE of a single box score, so you could not just
+    # read the game and move on. Same objection, and the same fix, as the
+    # "do you want to see this?" gates removed from the season flow: a
+    # gate in front of the numbers this project exists to produce.
     print()
     _print_team_box_score(result.away_team, result.away_players, result.away_score, highlight)
 
@@ -1410,7 +1410,11 @@ def run_season_flow(teams: Dict[str, Team], team_names: List[str], league_avg: L
     # All shown BEFORE playoffs (not buried at the end) -- this is the
     # "who's actually available going in" picture, so it reads
     # naturally right before the playoffs happen, not after.
-    membership = load_roster_membership()
+    # For the season actually being played -- this defaulted to
+    # DEFAULT_SEASON, so picking any other season still showed 2025-26's
+    # trades. Every other view here was already season-scoped; this one
+    # was missed when the season picker landed.
+    membership = load_roster_membership(season)
     all_moves = summarize_moves(membership)
     my_moves = [m for m in all_moves if my_team_name in m["teams"]]
     print_team_moves(my_moves, highlight=my_team_name)
