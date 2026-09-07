@@ -95,6 +95,43 @@ def _team_division_cache_path(season: str) -> Path:
 def _transactions_cache_path(season: str) -> Path:
     return _season_cache_dir(season) / "transactions.json"
 
+
+def _player_advanced_cache_path(season: str) -> Path:
+    return _season_cache_dir(season) / "player_advanced.json"
+
+
+def _player_rim_defense_cache_path(season: str) -> Path:
+    return _season_cache_dir(season) / "player_rim_defense.json"
+
+
+def _player_perimeter_defense_cache_path(season: str) -> Path:
+    return _season_cache_dir(season) / "player_perimeter_defense.json"
+
+
+def _player_hustle_cache_path(season: str) -> Path:
+    return _season_cache_dir(season) / "player_hustle.json"
+
+
+def _team_coaches_cache_path(season: str) -> Path:
+    return _season_cache_dir(season) / "team_coaches.json"
+
+
+# The first season with real camera-tracking data at all (SportVU
+# cameras went league-wide starting 2013-14) -- checked directly:
+# leaguedashptdefend returns 0 rows for 1996-97, 2005-06, and 2012-13,
+# and 472 rows for 2013-14. A real, hard floor for THIS stat, same
+# category as leaguedashplayerstats' own 1996-97 floor elsewhere in
+# this project -- nothing to fix in this project's code, just a real
+# limit of what data exists for older seasons.
+RIM_DEFENSE_FIRST_SEASON = "2013-14"
+
+# Real floor for HUSTLE stats (deflections, contested shots, charges
+# drawn) -- a separate, LATER floor than rim/perimeter tracking above.
+# Checked directly: leaguehustlestatsplayer returns 0 rows for 2013-14,
+# only 147 (partial-season rollout) for 2015-16, and a full 485 for
+# 2016-17.
+HUSTLE_STATS_FIRST_SEASON = "2016-17"
+
 # Maps our field names -> the NBA stats API's "Opponent" column names.
 # These are real per-game stats about what a team's REAL OPPONENTS did
 # against them -- i.e., a direct measure of that team's own defense.
@@ -208,23 +245,311 @@ def fetch_player_season_stats(season: str):
     return stats.get_data_frames()[0]
 
 
+# Maps our field names -> the same endpoint's "Advanced" measure-type
+# columns -- real all-in-one impact/efficiency numbers (PIE is the
+# NBA's own single-number impact stat; TS%/USG% are true shooting and
+# usage rate) that the base "Base" measure type above doesn't have at
+# all. Built specifically for awards.py's MVP/DPOY formulas -- nothing
+# else in this project reads these.
+ADVANCED_FIELD_MAP = {
+    "pie": "PIE", "ts_pct": "TS_PCT", "usg_pct": "USG_PCT",
+    "off_rating": "OFF_RATING", "def_rating": "DEF_RATING", "net_rating": "NET_RATING",
+    "ast_pct": "AST_PCT", "reb_pct": "REB_PCT", "gp": "GP", "mpg": "MIN",
+    "age": "AGE",  # same dataframe already has this -- free, and awards.py's ROY
+                   # rookie-detection uses it to rule out a returning veteran
+                   # who simply has no earlier season in this project's cache
+                   # (e.g. hurt all last season, or overseas) from reading as a rookie.
+}
+
+
+def fetch_player_advanced_stats(season: str):
+    """
+    Real per-player ADVANCED stats for `season` -- same endpoint as
+    fetch_player_season_stats above, just a different measure type. See
+    ADVANCED_FIELD_MAP for what this adds over the base counting stats.
+    """
+    from nba_api.stats.endpoints import leaguedashplayerstats
+    stats = leaguedashplayerstats.LeagueDashPlayerStats(
+        season=season, season_type_all_star="Regular Season", per_mode_detailed="PerGame",
+        measure_type_detailed_defense="Advanced", timeout=30,
+    )
+    return stats.get_data_frames()[0]
+
+
+def fetch_player_draft_years(season: str) -> dict:
+    """
+    Real DRAFT YEAR per player, straight from the league's own bio data
+    -- this is what actually fixes awards.py's rookie-detection gap at
+    the 1996-97 data floor. That heuristic (a player's first season IN
+    THIS PROJECT'S CACHE) has no way to tell a real rookie from a
+    veteran drafted years earlier once you're at the very first cached
+    season -- there's nothing earlier to compare against. Draft year is
+    a real historical fact this endpoint returns regardless of that
+    floor (checked directly: it correctly returns 1995 for Damon
+    Stoudamire even when asked about the 1996-97 season, proving his
+    real rookie year was actually 1995-96, one season before this
+    project's data even starts).
+
+    Returns {player_name: draft_year_int}, undrafted players simply
+    OMITTED (the API returns the literal string "Undrafted", which
+    isn't a year) -- awards.py falls back to its existing debut-season
+    check for those.
+    """
+    from nba_api.stats.endpoints import leaguedashplayerbiostats
+    df = leaguedashplayerbiostats.LeagueDashPlayerBioStats(season=season, timeout=30).get_data_frames()[0]
+
+    draft_years = {}
+    for _, row in df.iterrows():
+        year = row["DRAFT_YEAR"]
+        if year and str(year).isdigit():
+            draft_years[row["PLAYER_NAME"]] = int(year)
+    return draft_years
+
+
+def build_and_cache_player_advanced_stats(season: str = "2025-26", force: bool = False) -> None:
+    cache_path = _player_advanced_cache_path(season)
+    if cache_path.exists() and not force:
+        print(f"Player advanced-stats cache already exists at {cache_path}. Use --refresh to force an update.")
+        return
+
+    print(f"Fetching {season} real player advanced stats (PIE, TS%, USG%, ratings)...")
+    df = fetch_player_advanced_stats(season)
+    if df.empty:
+        raise RuntimeError(f"No advanced stats found for {season} -- check the season string.")
+
+    draft_years = fetch_player_draft_years(season)
+
+    players = {}
+    for _, row in df.iterrows():
+        entry = {our_key: float(row[api_key]) for our_key, api_key in ADVANCED_FIELD_MAP.items()}
+        name = row["PLAYER_NAME"]
+        if name in draft_years:
+            entry["draft_year"] = draft_years[name]
+        players[name] = entry
+
+    with open(cache_path, "w") as f:
+        json.dump({"season": season, "players": players}, f, indent=2)
+
+    print(f"Cached advanced stats for {len(players)} players -> {cache_path}")
+
+
+def _fetch_ptdefend(season: str, defense_category: str, retries: int = 4):
+    """
+    leaguedashptdefend has been flaky in practice (real, observed
+    read-timeouts even at 60-90s, not specific to any one category or
+    season) -- shared retry wrapper so both rim- and perimeter-defense
+    fetches below don't each need their own retry loop.
+    """
+    from nba_api.stats.endpoints import leaguedashptdefend
+    last_error = None
+    for attempt in range(retries):
+        try:
+            return leaguedashptdefend.LeagueDashPtDefend(
+                season=season, defense_category=defense_category, per_mode_simple="PerGame", timeout=60,
+            ).get_data_frames()[0]
+        except Exception as e:
+            last_error = e
+            time.sleep(3)
+    raise RuntimeError(f"leaguedashptdefend ({defense_category}, {season}) failed after "
+                       f"{retries} attempts: {last_error}")
+
+
+def fetch_player_rim_defense(season: str):
+    """
+    Real player-TRACKING defensive data: for every player, what real
+    opponents shot at the rim ("Less Than 6Ft") when THIS player was
+    the closest defender, versus what they normally shoot on that same
+    shot type (NS_LT_06_PCT). This is what actually measures rim
+    DETERRENCE -- an elite rim protector can hold opponents well below
+    their normal rate even without piling up blocks himself, which raw
+    BLK can never show (see awards.DPOY_WEIGHTS's comment on why that
+    was DPOY's stated ceiling). Built for exactly that gap.
+
+    Returns None for a season before RIM_DEFENSE_FIRST_SEASON -- the
+    real camera-tracking floor, not a bug to work around.
+    """
+    if season < RIM_DEFENSE_FIRST_SEASON:
+        return None
+    return _fetch_ptdefend(season, "Less Than 6Ft")
+
+
+def fetch_player_perimeter_defense(season: str):
+    """
+    The perimeter mirror of fetch_player_rim_defense: real opponent 3PT%
+    when THIS player is the closest defender, vs their normal rate
+    (NS_FG3_PCT). Built specifically because the rim-only version left
+    DPOY's formula unable to ever credit a real PERIMETER defender
+    (Draymond Green, Marcus Smart, Kawhi Leonard) -- found by testing:
+    every real-data DPOY pick this project's formula ever made was a
+    traditional rim-protecting big (reported directly). Confirmed
+    directly this stat actually captures it: Draymond Green's real
+    2016-17 (his real DPOY-winning season) PLUSMINUS here is -0.056 --
+    opponents shot 5.6 points WORSE than normal on 3s he defended.
+
+    Same real camera-tracking floor as rim defense (RIM_DEFENSE_FIRST_SEASON).
+    """
+    if season < RIM_DEFENSE_FIRST_SEASON:
+        return None
+    return _fetch_ptdefend(season, "3 Pointers")
+
+
+def build_and_cache_player_rim_defense(season: str = "2025-26", force: bool = False) -> None:
+    cache_path = _player_rim_defense_cache_path(season)
+    if cache_path.exists() and not force:
+        print(f"Player rim-defense cache already exists at {cache_path}. Use --refresh to force an update.")
+        return
+
+    df = fetch_player_rim_defense(season)
+    if df is None:
+        print(f"No rim-tracking data exists for {season} (real camera-tracking floor is "
+              f"{RIM_DEFENSE_FIRST_SEASON}) -- skipped, not an error.")
+        return
+    if df.empty:
+        raise RuntimeError(f"Rim-defense fetch for {season} returned no rows -- check the season string.")
+
+    players = {}
+    for _, row in df.iterrows():
+        # rim_deterrence: POSITIVE means this player holds opponents
+        # BELOW their normal rim shooting rate (real good defense) --
+        # the raw PLUSMINUS column is signed the opposite way
+        # (actual-minus-normal, so a good defender is NEGATIVE there),
+        # flipped here so every DPOY signal in this project already
+        # means "higher = better defense," same convention as
+        # team_def_strength.
+        players[row["PLAYER_NAME"]] = {
+            "rim_freq": float(row["FGA_LT_06"]),  # rim attempts faced per game
+            "rim_deterrence": -float(row["PLUSMINUS"]),
+        }
+
+    with open(cache_path, "w") as f:
+        json.dump({"season": season, "players": players}, f, indent=2)
+
+    print(f"Cached rim-defense data for {len(players)} players -> {cache_path}")
+
+
+def build_and_cache_player_perimeter_defense(season: str = "2025-26", force: bool = False) -> None:
+    cache_path = _player_perimeter_defense_cache_path(season)
+    if cache_path.exists() and not force:
+        print(f"Player perimeter-defense cache already exists at {cache_path}. Use --refresh to force an update.")
+        return
+
+    df = fetch_player_perimeter_defense(season)
+    if df is None:
+        print(f"No perimeter-tracking data exists for {season} (real camera-tracking floor is "
+              f"{RIM_DEFENSE_FIRST_SEASON}) -- skipped, not an error.")
+        return
+    if df.empty:
+        raise RuntimeError(f"Perimeter-defense fetch for {season} returned no rows -- check the season string.")
+
+    players = {}
+    for _, row in df.iterrows():
+        # Same sign-flip as rim_deterrence -- POSITIVE means this
+        # player holds opponents BELOW their normal 3PT rate.
+        players[row["PLAYER_NAME"]] = {
+            "perimeter_freq": float(row["FG3A"]),  # 3PT attempts defended per game
+            "perimeter_deterrence": -float(row["PLUSMINUS"]),
+        }
+
+    with open(cache_path, "w") as f:
+        json.dump({"season": season, "players": players}, f, indent=2)
+
+    print(f"Cached perimeter-defense data for {len(players)} players -> {cache_path}")
+
+
+def fetch_player_hustle_stats(season: str):
+    """
+    Real HUSTLE stats: deflections, contested shots, charges drawn --
+    built specifically because rim_deterrence/perimeter_deterrence
+    (both shot-CONTEST metrics) still couldn't rescue a real versatile
+    perimeter defender's DPOY case (Draymond Green, Marcus Smart) --
+    checked directly: DEFLECTIONS separates them cleanly. Draymond's
+    real 2016-17 (his real DPOY-winning season) deflections are 3.88/
+    game against Rudy Gobert's 1.64, Kevin Durant's 2.23, and LeBron
+    James's 2.26 THAT SAME SEASON -- a real signal box-score stats
+    (STL/BLK) simply don't capture, and one that does NOT reward pure
+    offensive stars either (unlike the earlier stl/team_def_strength
+    bug), since neither Durant nor LeBron's deflections are elevated.
+
+    Returns None before HUSTLE_STATS_FIRST_SEASON (2016-17) -- a real,
+    separate (and later) camera-tracking floor than rim/perimeter
+    defense above.
+    """
+    if season < HUSTLE_STATS_FIRST_SEASON:
+        return None
+    from nba_api.stats.endpoints import leaguehustlestatsplayer
+    last_error = None
+    for attempt in range(4):
+        try:
+            return leaguehustlestatsplayer.LeagueHustleStatsPlayer(
+                season=season, per_mode_time="PerGame", timeout=60,
+            ).get_data_frames()[0]
+        except Exception as e:
+            last_error = e
+            time.sleep(3)
+    raise RuntimeError(f"leaguehustlestatsplayer ({season}) failed after 4 attempts: {last_error}")
+
+
+def build_and_cache_player_hustle_stats(season: str = "2025-26", force: bool = False) -> None:
+    cache_path = _player_hustle_cache_path(season)
+    if cache_path.exists() and not force:
+        print(f"Player hustle-stats cache already exists at {cache_path}. Use --refresh to force an update.")
+        return
+
+    df = fetch_player_hustle_stats(season)
+    if df is None:
+        print(f"No hustle-tracking data exists for {season} (real camera-tracking floor is "
+              f"{HUSTLE_STATS_FIRST_SEASON}) -- skipped, not an error.")
+        return
+    if df.empty:
+        raise RuntimeError(f"Hustle-stats fetch for {season} returned no rows -- check the season string.")
+
+    players = {
+        row["PLAYER_NAME"]: {
+            "deflections": float(row["DEFLECTIONS"]),
+            "charges_drawn": float(row["CHARGES_DRAWN"]),
+        }
+        for _, row in df.iterrows()
+    }
+
+    with open(cache_path, "w") as f:
+        json.dump({"season": season, "players": players}, f, indent=2)
+
+    print(f"Cached hustle stats for {len(players)} players -> {cache_path}")
+
+
 def fetch_team_rosters(season: str):
-    """Every team's roster AS OF `season` -- passing a past season here
+    """
+    Every team's roster AS OF `season` -- passing a past season here
     returns that season's historical roster (trades/departures included),
-    not whatever the team's roster happens to be today."""
+    not whatever the team's roster happens to be today.
+
+    Returns (rosters, coaches): commonteamroster's SECOND dataframe
+    (normally unused here) is real per-team COACH data -- head coach,
+    assistants, trainers -- for the exact same call this function was
+    already making for rosters, so real coach identity is free (no
+    extra API traffic) for awards.py's Coach of the Year. `coaches`
+    maps team name -> head coach name, or None for the real gap
+    seasons where this endpoint simply doesn't have one (1996-97
+    entirely, and sporadic individual team-seasons even after that --
+    confirmed directly: the 2015-16 Lakers roster call returns real
+    assistant coaches but no head-coach row at all).
+    """
     from nba_api.stats.static import teams as static_teams
     from nba_api.stats.endpoints import commonteamroster
 
     rosters = {}
+    coaches = {}
     for t in static_teams.get_teams():
-        roster_df = commonteamroster.CommonTeamRoster(team_id=t["id"], season=season).get_data_frames()[0]
+        dfs = commonteamroster.CommonTeamRoster(team_id=t["id"], season=season).get_data_frames()
         # See HISTORICAL_TEAM_NAMES -- t["full_name"] is always this
         # team's CURRENT name, wrong for a season before a real
         # relocation/rename.
         team_name = _historical_team_name(t["id"], season, t["full_name"])
-        rosters[team_name] = roster_df["PLAYER"].tolist()
+        rosters[team_name] = dfs[0]["PLAYER"].tolist()
+        head_coach_rows = dfs[1][dfs[1]["COACH_TYPE"] == "Head Coach"]
+        coaches[team_name] = head_coach_rows.iloc[0]["COACH_NAME"] if len(head_coach_rows) else None
         time.sleep(0.6)  # stay polite to the API -- don't hammer it
-    return rosters
+    return rosters, coaches
 
 
 def fetch_team_defense(season: str):
@@ -267,22 +592,35 @@ def build_and_cache_team_defense(season: str = "2025-26", force: bool = False) -
     print(f"Cached defensive stats for {len(defense)} teams -> {cache_path}")
 
 
-def fetch_real_standings(season: str) -> dict:
+def fetch_real_standings(season: str, retries: int = 4) -> dict:
     """
     The REAL final standings for `season` -- not cached, since it's
     used on demand for comparing a simulated season against reality
     (the whole original point of this project), not as an input the
     simulation itself depends on every run. Returns {team_name: wins}.
+
+    Retries on failure -- found by testing: this endpoint read-timed
+    out live in the interactive CLI (not just a backtest script) and,
+    un-retried, took the whole program down with it, right after a full
+    season had just been simulated. A transient network hiccup here
+    shouldn't cost the user the season they were just about to see.
     """
     from nba_api.stats.endpoints import leaguestandingsv3
-    df = leaguestandingsv3.LeagueStandingsV3(season=season, timeout=30).get_data_frames()[0]
 
-    standings = {}
-    for _, row in df.iterrows():
-        team_name = f"{row['TeamCity']} {row['TeamName']}"
-        team_name = NBA_API_TEAM_NAME_FIXES.get(team_name, team_name)
-        standings[team_name] = int(row["WINS"])
-    return standings
+    last_error = None
+    for attempt in range(retries):
+        try:
+            df = leaguestandingsv3.LeagueStandingsV3(season=season, timeout=45).get_data_frames()[0]
+            standings = {}
+            for _, row in df.iterrows():
+                team_name = f"{row['TeamCity']} {row['TeamName']}"
+                team_name = NBA_API_TEAM_NAME_FIXES.get(team_name, team_name)
+                standings[team_name] = int(row["WINS"])
+            return standings
+        except Exception as e:
+            last_error = e
+            time.sleep(3)
+    raise RuntimeError(f"fetch_real_standings({season!r}) failed after {retries} attempts: {last_error}")
 
 
 def fetch_team_conferences(season: str) -> dict:
@@ -1008,7 +1346,15 @@ def build_and_cache(season: str = "2025-26", force: bool = False) -> None:
         raise RuntimeError(f"No regular-season stats found for {season} -- check the season string.")
 
     print(f"Fetching {season} team rosters (this loops all 30 teams, ~20-30s)...")
-    rosters = fetch_team_rosters(season)
+    rosters, coaches = fetch_team_rosters(season)
+
+    coach_cache_path = _team_coaches_cache_path(season)
+    if force or not coach_cache_path.exists():
+        with open(coach_cache_path, "w") as f:
+            json.dump({"season": season, "teams": coaches}, f, indent=2)
+        known = sum(1 for c in coaches.values() if c)
+        print(f"Cached head coaches for {known}/{len(coaches)} teams -> {coach_cache_path}"
+              + ("" if known == len(coaches) else " (real gaps in this endpoint's coverage, not an error)"))
 
     teams_data = {}
     missing = []  # players on the roster with no stat line at all (e.g. injured before ever playing)
@@ -1035,6 +1381,32 @@ def build_and_cache(season: str = "2025-26", force: bool = False) -> None:
               f"{', '.join(missing[:5])}{'...' if len(missing) > 5 else ''})")
 
 
+def build_and_cache_team_coaches(season: str = "2025-26", force: bool = False) -> None:
+    """
+    Standalone backfill for team_coaches.json on a season that already
+    has rosters.json cached (build_and_cache above writes this file
+    for free as part of ITS OWN roster fetch, but skips the whole
+    fetch entirely once rosters.json already exists -- see that
+    function's early-return). This is the one-time cost of getting
+    coach data onto an already-cached season: a second real fetch of
+    the same roster endpoint, just to reach its coach dataframe.
+    """
+    cache_path = _team_coaches_cache_path(season)
+    if cache_path.exists() and not force:
+        print(f"Team coaches cache already exists at {cache_path}. Use --refresh to force an update.")
+        return
+
+    print(f"Fetching {season} real head coaches (loops all 30 teams, ~20-30s)...")
+    _, coaches = fetch_team_rosters(season)
+
+    with open(cache_path, "w") as f:
+        json.dump({"season": season, "teams": coaches}, f, indent=2)
+
+    known = sum(1 for c in coaches.values() if c)
+    print(f"Cached head coaches for {known}/{len(coaches)} teams -> {cache_path}"
+          + ("" if known == len(coaches) else " (real gaps in this endpoint's coverage, not an error)"))
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--refresh", action="store_true", help="force re-fetch even if cache exists")
@@ -1045,6 +1417,11 @@ if __name__ == "__main__":
     build_and_cache_team_defense(season=args.season, force=args.refresh)
     build_and_cache_team_conferences(season=args.season, force=args.refresh)
     build_and_cache_player_history(season=args.season, force=args.refresh)
+    build_and_cache_player_advanced_stats(season=args.season, force=args.refresh)
+    build_and_cache_player_rim_defense(season=args.season, force=args.refresh)
+    build_and_cache_player_perimeter_defense(season=args.season, force=args.refresh)
+    build_and_cache_player_hustle_stats(season=args.season, force=args.refresh)
+    build_and_cache_team_coaches(season=args.season, force=args.refresh)
     # One fetch covers every season the feed reaches, so this isn't
     # per-season like the calls above.
     build_and_cache_transactions(force=args.refresh)
