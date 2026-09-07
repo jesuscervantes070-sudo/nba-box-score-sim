@@ -17,7 +17,7 @@ import textwrap
 import sys
 from typing import Dict, List, Optional, Tuple
 
-from loader import load_teams, load_team_abbreviations, load_roster_membership, load_league_pace_variation, DEFAULT_SEASON, load_schedule, available_seasons
+from loader import load_teams, load_team_abbreviations, load_roster_membership, load_league_pace_variation, DEFAULT_SEASON, load_schedule, available_seasons, load_team_coaches
 from models import Player, Team
 from game_engine import simulate_game, compute_league_averages, GameResult, LeagueAverages
 from data_source import fetch_real_standings
@@ -25,6 +25,10 @@ from season import simulate_season
 from playoffs import run_playoffs, compute_series_player_averages
 from offseason import diff_seasons, franchise_map, team_changes
 from transactions import summarize_moves
+from awards import (
+    simulated_mvp_candidates, simulated_roy_candidates, simulated_dpoy_candidates, simulated_mip_candidates,
+    simulated_coy_candidates,
+)
 import db
 
 # Plain ASCII only for every divider/border in this file, on purpose --
@@ -820,6 +824,144 @@ def print_standings_comparison(standings: List[dict], real_standings: Dict[str, 
     print()
 
 
+def print_season_mvp(conn, season: str, standings: List[dict], highlight: Optional[str] = None) -> None:
+    """
+    This SIMULATED season's MVP -- awards.mvp_score applied to this
+    run's own simulated box scores (PIE/TS%/USG% computed straight from
+    the stored player_game_stats rows, see db.get_simulated_advanced_stats),
+    same formula backtested against real MVP winners at a 90% holdout
+    hit-rate (see awards.py / backtest_mvp.py). Top 5 shown for
+    context, not just the winner -- a close #1/#2 reads very
+    differently from a runaway pick.
+    """
+    ranked = simulated_mvp_candidates(conn, season, standings)
+    if not ranked:
+        return
+    team_of = {name: stats["team"] for name, stats in db.get_simulated_advanced_stats(conn, season).items()}
+
+    print()
+    print(_style("-- SIMULATED MVP --", "bold"))
+    for i, (name, score) in enumerate(ranked[:5], start=1):
+        team = team_of.get(name, "")
+        print(_highlight_team(f"  {i}. {name} ({team}) -- {score:.2f}", highlight))
+    print()
+
+
+def print_season_roy(conn, season: str, standings: List[dict], highlight: Optional[str] = None) -> None:
+    """
+    This SIMULATED season's Rookie of the Year -- literally the MVP
+    formula (see print_season_mvp) restricted to real rookies (real
+    debut season + age, see awards.roy_features_from_simulated), fed
+    this run's own simulated box scores. Same top-5-for-context idea.
+    """
+    ranked = simulated_roy_candidates(conn, season, standings)
+    if not ranked:
+        return
+    team_of = {name: stats["team"] for name, stats in db.get_simulated_advanced_stats(conn, season).items()}
+
+    print()
+    print(_style("-- SIMULATED ROOKIE OF THE YEAR --", "bold"))
+    for i, (name, score) in enumerate(ranked[:5], start=1):
+        team = team_of.get(name, "")
+        print(_highlight_team(f"  {i}. {name} ({team}) -- {score:.2f}", highlight))
+    print()
+
+
+def print_season_dpoy(conn, season: str, highlight: Optional[str] = None) -> None:
+    """
+    This SIMULATED season's Defensive Player of the Year -- real STL/
+    BLK/REB plus each player's TEAM's simulated defensive strength (see
+    awards.dpoy_features_from_simulated), all from this run's own
+    simulated box scores. Backtested lower than MVP/ROY (50% holdout
+    hit-rate vs 90%/60%) -- box-score stats genuinely can't see a lot
+    of real defensive value, see awards.DPOY_WEIGHTS's comment (which
+    also covers a real bug found and fixed here: an earlier, higher-
+    scoring weight set let a pure offensive player who gambles for
+    steals beat his own team's real defensive anchor). Real rim
+    DETERRENCE (awards.dpoy_features_for_season's rim_deterrence) is
+    what closed some of that gap on the REAL-season backtest -- but
+    it's real player-TRACKING data (camera-based, only exists from
+    2013-14 on) this project's box-score-only sim has no way to
+    produce, so it can't flow into a simulated season's own numbers at
+    all, only the real-data comparison.
+    """
+    ranked = simulated_dpoy_candidates(conn, season)
+    if not ranked:
+        return
+    team_of = {name: stats["team"] for name, stats in db.get_simulated_advanced_stats(conn, season).items()}
+
+    print()
+    print(_style("-- SIMULATED DEFENSIVE PLAYER OF THE YEAR --", "bold"))
+    for i, (name, score) in enumerate(ranked[:5], start=1):
+        team = team_of.get(name, "")
+        print(_highlight_team(f"  {i}. {name} ({team}) -- {score:.2f}", highlight))
+    print()
+
+
+def print_season_mip(conn, season: str, highlight: Optional[str] = None) -> None:
+    """
+    This SIMULATED season's Most Improved Player -- real scoring
+    increase over the player's REAL previous season (see
+    awards.mip_features_from_simulated for why the "before" side has to
+    be real, not simulated: season.db is fully wiped every time a new
+    season is simulated, so there is never a previous SIMULATED season
+    sitting around to diff against). Backtested at MIP's own honest
+    ceiling (40% holdout hit-rate) -- MIP voting is famously narrative-
+    driven, see awards.MIP_WEIGHTS's comment. Skipped entirely for this
+    project's earliest cached season (1996-97) -- no real prior season
+    exists to compare against at all.
+    """
+    ranked = simulated_mip_candidates(conn, season)
+    if not ranked:
+        return
+    team_of = {name: stats["team"] for name, stats in db.get_simulated_advanced_stats(conn, season).items()}
+
+    print()
+    print(_style("-- SIMULATED MOST IMPROVED PLAYER --", "bold"))
+    for i, (name, score) in enumerate(ranked[:5], start=1):
+        team = team_of.get(name, "")
+        print(_highlight_team(f"  {i}. {name} ({team}) -- {score:.2f}", highlight))
+    print()
+
+
+def print_season_coy(conn, season: str, standings: List[dict], highlight: Optional[str] = None) -> None:
+    """
+    This SIMULATED season's Coach of the Year -- real head coach per
+    team (awards.load_team_coaches, riding along free on the same real
+    roster fetch every season already needed), scored on the team's
+    real win% THIS season blended with its improvement over last
+    season (see awards.COY_WEIGHTS -- real COY winners are
+    overwhelmingly top-3-record teams, not just the biggest jumpers;
+    an earlier version scoring improvement ALONE held a 67%-holdout
+    formula down to ~20%). Real previous-season win% (see
+    awards.coy_features_from_simulated -- same "before has to be real"
+    reasoning as MIP).
+
+    Ground truth for this ONE award (awards.REAL_COY_WINNERS) could NOT
+    be verified against a live API like MVP/ROY/DPOY/MIP were --
+    nba_api has no coach-award endpoint at all. Cross-checked against a
+    real, current web source instead (see that table's own comment),
+    which is real verification, just a step down from the other three.
+    Real head-coach DATA itself also has genuine gaps in older seasons
+    (patchy, not a clean before/after floor -- confirmed directly: some
+    1990s/2000s seasons are missing over half the league's coaches, and
+    coverage only becomes consistently complete from 2004-05 on), so a
+    season this project can't even name a real winner's coach for isn't
+    a formula failure, it's a data gap.
+    """
+    ranked = simulated_coy_candidates(conn, season, standings)
+    if not ranked:
+        return
+    team_of = {coach: team for team, coach in load_team_coaches(season).items() if coach}
+
+    print()
+    print(_style("-- SIMULATED COACH OF THE YEAR --", "bold"))
+    for i, (name, score) in enumerate(ranked[:5], start=1):
+        team = team_of.get(name, "")
+        print(_highlight_team(f"  {i}. {name} ({team}) -- {score:+.3f}", highlight))
+    print()
+
+
 # =====================================================================
 # PLAYOFFS DISPLAY
 # =====================================================================
@@ -1029,18 +1171,20 @@ def _print_conference_bracket(conf_result: dict, abbrev: Dict[str, str], highlig
     ))
 
 
-def print_finals_averages(finals: dict, highlight: Optional[str] = None) -> None:
+def print_series_player_averages(series: dict, label: str, highlight: Optional[str] = None) -> None:
     """
-    Per-player averages for the NBA Finals series only -- not the
-    whole playoff run, per what was actually asked for, and not
-    written to season.db (see playoffs.py's docstring). Winner's
-    roster first. This is deliberately just the numbers -- picking an
-    actual Finals MVP from them is a later step, not this one.
+    Per-player averages for one playoff SERIES only (its game_log) --
+    generalized out of what used to be print_finals_averages's whole
+    body, so the same "just the numbers" view works for any round, not
+    only the Finals. `label` names the round and matchup for the
+    header. Still not written to season.db (see playoffs.py's
+    docstring) -- playoffs.py never stores anything, this is the only
+    record of what happened in a series.
     """
-    averages = compute_series_player_averages(finals["game_log"])
+    averages = compute_series_player_averages(series["game_log"])
     print()
-    print(_style("-- NBA FINALS -- PLAYER AVERAGES --", "bold"))
-    for team_name in (finals["winner"], finals["loser"]):
+    print(_style(f"-- {label} -- PLAYER AVERAGES --", "bold"))
+    for team_name in (series["winner"], series["loser"]):
         team_avgs = sorted(
             (a for a in averages.values() if a["team"] == team_name),
             key=lambda a: -a["pts"],
@@ -1055,11 +1199,80 @@ def print_finals_averages(finals: dict, highlight: Optional[str] = None) -> None
             )
 
 
+def print_finals_averages(finals: dict, highlight: Optional[str] = None) -> None:
+    """
+    Per-player averages for the NBA Finals series only -- not the
+    whole playoff run, per what was actually asked for, and not
+    written to season.db (see playoffs.py's docstring). Winner's
+    roster first. This is deliberately just the numbers -- picking an
+    actual Finals MVP from them is a later step, not this one.
+    """
+    print_series_player_averages(finals, "NBA FINALS", highlight)
+
+
+def _all_playoff_series(result: dict) -> List[Tuple[str, dict]]:
+    """
+    Every best-of SERIES actually played this postseason -- east/west
+    First Round (4 each), Conference Semifinals (2 each), Conference
+    Finals (1 each), and the Finals -- paired with a label naming the
+    round and matchup, for the browser below. Deliberately excludes the
+    play-in: those are single elimination games (see run_play_in) with
+    no game_log/series structure to build averages from, not a series
+    at all.
+    """
+    series_list = []
+    round_names = ["First Round", "Conference Semifinals", "Conference Finals"]
+    for conf_result in (result["east"], result["west"]):
+        conf = conf_result["conference"]
+        tree = conf_result["tree"]
+        # Same [round1, round2, [round3]] grouping _print_conference_bracket
+        # uses -- round3 (conf finals) is a single series, not a list.
+        round_series = [tree["round1"], tree["round2"], [tree["round3"]]]
+        for round_name, group in zip(round_names, round_series):
+            for series in group:
+                series_list.append((f"{conf} {round_name}: {series['winner']} vs {series['loser']}", series))
+    finals = result["finals"]
+    series_list.append((f"NBA Finals: {finals['winner']} vs {finals['loser']}", finals))
+    return series_list
+
+
+def _run_playoff_series_browser(result: dict, highlight: Optional[str] = None) -> None:
+    """
+    Lets the user pull up player averages for any OTHER playoff series,
+    not just the Finals -- which used to be the only series with
+    averages available at all. Same numbered-list opt-in pattern as
+    _run_season_averages_browser, deliberately not a bigger UI change
+    than that (no browsing full box scores per game here, just series
+    averages -- same scope the Finals view already had).
+    """
+    series_list = _all_playoff_series(result)
+    while True:
+        for i, (label, _) in enumerate(series_list, 1):
+            print(f"  {i}. {label}")
+        choice = _prompt(
+            "View player averages for another playoff series? Enter a "
+            "number, or press Enter to finish: "
+        ).strip().lower()
+
+        if choice == "":
+            return
+
+        if choice.isdigit() and 1 <= int(choice) <= len(series_list):
+            label, series = series_list[int(choice) - 1]
+            print_series_player_averages(series, label, highlight)
+            continue
+
+        print("Please enter a number from the list, or press Enter to finish.")
+
+
 def print_playoffs(result: dict, abbrev: Dict[str, str], highlight: Optional[str] = None) -> None:
     """
     Prints the play-in log, bracket diagram, every round's detail, and
     the Finals (plus Finals player averages) for a
-    playoffs.run_playoffs() result. Pure display -- playoffs.py already
+    playoffs.run_playoffs() result. Ends with an opt-in browser
+    (_run_playoff_series_browser) for player averages from any OTHER
+    series played that postseason -- previously only the Finals had
+    averages available at all. Pure display -- playoffs.py already
     decided every outcome, this function just reads it back out.
 
     `highlight` (the followed team, if any) is threaded all the way
@@ -1109,6 +1322,7 @@ def print_playoffs(result: dict, abbrev: Dict[str, str], highlight: Optional[str
     print()
     print(_style(f"NBA CHAMPION: {result['champion']}".center(LINE_WIDTH), "bold", "yellow"))
     print_finals_averages(finals, highlight)
+    _run_playoff_series_browser(result, highlight)
     print()
     print(DIVIDER)
     print()
@@ -1417,6 +1631,11 @@ def run_season_flow(teams: Dict[str, Team], team_names: List[str], league_avg: L
 
     real_standings = fetch_real_standings(season)
     print_standings_comparison(standings, real_standings, highlight=my_team_name)
+    print_season_mvp(conn, season, standings, highlight=my_team_name)
+    print_season_roy(conn, season, standings, highlight=my_team_name)
+    print_season_dpoy(conn, season, highlight=my_team_name)
+    print_season_mip(conn, season, highlight=my_team_name)
+    print_season_coy(conn, season, standings, highlight=my_team_name)
 
     # Moves, injuries, and season averages -- all scoped to YOUR team
     # by default (the league-wide dumps were too much at once), each
@@ -1688,6 +1907,41 @@ def run_multi_season_flow(abbrev: Dict[str, str], seasons: List[str]) -> None:
             print(f"  {_style(my_team, 'bold', 'cyan')}: {record['W']}-{record['L']}, {finish}")
         print(f"  Champion: {_style(champion, 'bold')}"
               + ("  <-- YOUR TEAM" if champion == my_team else ""))
+        # Same one-line-per-season terseness as the Champion line above
+        # -- the full top-5 MVP/ROY breakdowns (print_season_mvp/roy)
+        # are still available via the 'm' pause below if wanted, not
+        # dumped into this recap by default.
+        sim_advanced = db.get_simulated_advanced_stats(conn, season)
+        mvp_ranked = simulated_mvp_candidates(conn, season, standings)
+        if mvp_ranked:
+            mvp_name = mvp_ranked[0][0]
+            mvp_team = sim_advanced.get(mvp_name, {}).get("team")
+            print(f"  MVP: {_style(mvp_name, 'bold')}"
+                  + ("  <-- YOUR TEAM" if mvp_team == my_team else ""))
+        roy_ranked = simulated_roy_candidates(conn, season, standings)
+        if roy_ranked:
+            roy_name = roy_ranked[0][0]
+            roy_team = sim_advanced.get(roy_name, {}).get("team")
+            print(f"  ROY: {_style(roy_name, 'bold')}"
+                  + ("  <-- YOUR TEAM" if roy_team == my_team else ""))
+        dpoy_ranked = simulated_dpoy_candidates(conn, season)
+        if dpoy_ranked:
+            dpoy_name = dpoy_ranked[0][0]
+            dpoy_team = sim_advanced.get(dpoy_name, {}).get("team")
+            print(f"  DPOY: {_style(dpoy_name, 'bold')}"
+                  + ("  <-- YOUR TEAM" if dpoy_team == my_team else ""))
+        mip_ranked = simulated_mip_candidates(conn, season)
+        if mip_ranked:
+            mip_name = mip_ranked[0][0]
+            mip_team = sim_advanced.get(mip_name, {}).get("team")
+            print(f"  MIP: {_style(mip_name, 'bold')}"
+                  + ("  <-- YOUR TEAM" if mip_team == my_team else ""))
+        coy_ranked = simulated_coy_candidates(conn, season, standings)
+        if coy_ranked:
+            coy_name = coy_ranked[0][0]
+            coy_team = {coach: team for team, coach in load_team_coaches(season).items() if coach}.get(coy_name)
+            print(f"  COY: {_style(coy_name, 'bold')}"
+                  + ("  <-- YOUR TEAM" if coy_team == my_team else ""))
         history.append({"season": season, "team": my_team,
                         "W": record["W"] if record else 0, "L": record["L"] if record else 0,
                         "finish": finish, "champion": champion})
@@ -1705,11 +1959,17 @@ def run_multi_season_flow(abbrev: Dict[str, str], seasons: List[str]) -> None:
             next_label = "e=stop here" if is_last else "e=stop here"
             cmd = _prompt(f"  {'Enter=finish' if is_last else 'Enter=next season'}, "
                           f"s=standings, b=bracket (game by game, box scores), "
-                          f"{next_label}: ").strip().lower()
+                          f"m=MVP/ROY/DPOY/MIP/COY breakdown, {next_label}: ").strip().lower()
             if cmd == "s":
                 print_standings_by_conference(standings, teams, highlight=my_team)
             elif cmd == "b":
                 print_playoffs(playoff_result, abbrev, highlight=my_team)
+            elif cmd == "m":
+                print_season_mvp(conn, season, standings, highlight=my_team)
+                print_season_roy(conn, season, standings, highlight=my_team)
+                print_season_dpoy(conn, season, highlight=my_team)
+                print_season_mip(conn, season, highlight=my_team)
+                print_season_coy(conn, season, standings, highlight=my_team)
             elif cmd == "e":
                 _print_dynasty_summary(history, my_team)
                 return

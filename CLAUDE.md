@@ -122,6 +122,13 @@ opponents' shooting (see game_engine.py).
   noise from the number happening to be ~100 rather than anything about
   basketball. Real games vary 5.2%. Simulated team points sd 17.57 →
   13.96 against a real 12.16. See "Game pace" below.
+- **Season awards**: complete — MVP, ROY, DPOY, MIP, Coach of the Year,
+  each a real-basketball scoring formula with ground truth verified
+  against the real awards API (Coach of the Year excepted — no such
+  endpoint exists), backtested with a train/holdout split, and wired
+  into both real-season backtesting and the followed sim run. See
+  "Season awards" below for each award's formula, backtest numbers,
+  and the real bugs found and fixed along the way.
 - **Not yet built**: possession-by-possession realism (deliberately low
   priority — see below); an offseason bridge connecting one backtested
   season to the next (drafts/free agency — see Deferred below).
@@ -974,6 +981,147 @@ this test would have measured the bug rather than Gobert.
   close, not direction — a decrease can be green if it's a small one)
   — green/yellow/red, same convention as the standings comparison.
 
+## Season awards (awards.py)
+- **What it is**: MVP, ROY, DPOY, MIP, and Coach of the Year, each a
+  hand-built scoring FORMULA from real basketball logic, applied to
+  either REAL season stats (to backtest against who actually won and
+  calibrate weights) or SIMULATED season stats (to award the followed
+  sim run) — same formula, different input numbers. Wired into
+  `main.py`: single-season mode auto-prints top-5 for each; multi-
+  season mode gets a compact one-line-per-award recap plus an `m`
+  command for the full breakdown.
+- **Ground truth is VERIFIED against the real awards API, not
+  memory** — `PlayerAwards` (per player_id) confirmed every MVP/ROY/
+  DPOY/MIP winner for all 30 seasons, including several recent enough
+  or obscure enough that memory alone wasn't trustworthy (Shai
+  Gilgeous-Alexander's back-to-back 2024-25/2025-26 MVPs; Ike Austin,
+  not "Isaac Austin", 1996-97 MIP; CJ McCollum, not "C.J. McCollum").
+  1999-00 ROY is a real TIE (Elton Brand and Steve Francis both won).
+  **Coach of the Year is the one exception**: no coach-award endpoint
+  exists anywhere in `nba_api` (coaches aren't players), so
+  `REAL_COY_WINNERS` is cross-checked against a real current web
+  source instead — real verification, just a step down from the other
+  four's live-API confirmation.
+- **Backtest methodology**: same train/holdout-by-time split
+  `sweep_constants.py` already established (train on 1996-97→2015-16,
+  score on 2016-17→2025-26), one `backtest_<award>.py` script per
+  award. Metric is hit-rate (formula's #1 pick == real winner) plus a
+  softer top-3 rate, since the only real ground truth available is WHO
+  WON, not vote shares/margins (nba_api has no vote-share data).
+- **MVP** (holdout: 90% hit-rate, 100% top-3): PIE (NBA's own impact
+  stat) + usage% (shot-creation load — the key missing piece; without
+  it, efficient low-usage role players like Jarrett Allen kept beating
+  real MVP-level stars) + TS% (efficiency) + team win% (lightly
+  weighted — real MVPs don't need the single best record, just a good
+  one) + availability. Voter fatigue (a repeat-winner penalty) was
+  tested and explicitly REJECTED — real MVPs repeat often (Jokić x3,
+  SGA x2), so it made holdout worse. The few misses (2004-05/2005-06
+  Nash, 2010-11 Rose, 2000-01 Iverson, 1997-98 Jordan) are exactly the
+  seasons real NBA history already argues were narrative/voter-driven
+  rather than stat-driven.
+- **ROY** (holdout: 60% hit-rate, 70% top-3): literally the MVP
+  formula restricted to real rookies. Rookie detection uses real
+  DRAFT YEAR (`leaguedashplayerbiostats`, fetchable for any season
+  regardless of this project's own 1996-97 cache floor) as the primary
+  signal, but ONLY for this project's earliest cached season — every
+  other season uses "first season with a real stat line in this
+  project's cache," which already handles a real injury-delayed rookie
+  year correctly (Ben Simmons/Blake Griffin). An earlier version used
+  draft year everywhere and BROKE those two cases — found by testing
+  (holdout hit-rate went down, not up).
+- **DPOY** (holdout: 50% hit-rate, 80% top-3, real-data backtest) —
+  the hardest of the five to get right, with a real bug caught and
+  fixed along the way. Formula: BLK-dominant (matching real DPOY
+  history's lean toward rim protectors) + STL + rebounds + team
+  defensive strength + real rim-deterrence (opponent FG% at the rim
+  when this player is the closest defender, from real player-TRACKING
+  data, `leaguedashptdefend` — floor 2013-14, real camera-tracking
+  start) + a small deflections signal (real hustle-stat data, floor
+  2016-17, `leaguehustlestatsplayer`) for versatile perimeter
+  defenders raw blocks/steals can't see. **The bug**: an earlier
+  version weighted team defensive strength so heavily (200) that a
+  pure offensive player who merely gambles for steals (Kevin Durant
+  2011-12, Paul George 2012-13) could beat his own team's real
+  defensive anchor (Serge Ibaka, Roy Hibbert) — it scored a HIGHER
+  holdout hit-rate (60%) but was WRONG on inspection, exactly the
+  "a number that looks better because something is broken is not
+  accuracy" lesson this project already learned once with
+  `DEFENSE_AMPLIFICATION`. Fixed by making BLK the dominant individual
+  signal instead. Tried and REJECTED a "perimeter deterrence" signal
+  (the 3PT-line mirror of rim deterrence) — real signal, but adding it
+  never improved holdout hit-rate at any weight and got worse past
+  ~150 (dragged in Durant/LeBron again). Confirmed structural limit:
+  EVERY DPOY pick this formula has ever made is a traditional big —
+  0/30 — while 4/30 real winners (Draymond Green, Marcus Smart, Kawhi
+  Leonard x2) are perimeter defenders; deflections closed part but not
+  all of that gap.
+- **MIP** (holdout: 40% hit-rate, 40% top-3) — this project's own
+  honest ceiling for a stats-only formula, same territory as DPOY, for
+  a real reason: MIP voting is famously narrative-driven. Formula:
+  raw PPG increase over the player's real PREVIOUS season (dominant,
+  matching the user's own "MIP is mostly who had the biggest scoring
+  boost" read), PIE-improvement weight tuned to 0 (all-around growth
+  actually HURT holdout accuracy — Giannis's 2016-17 win was more
+  about all-around growth than pure scoring, and voters gave it to him
+  over bigger scorers that year, so weighting all-around improvement
+  higher makes the formula MORE likely to pick Giannis and therefore
+  WORSE on the seasons that voters actually rewarded pure scoring
+  jumps). Percentage-based scoring increase was tried and rejected
+  (17% hit-rate — over-rewards noisy small-baseline jumps). Skipped
+  entirely for 1996-97: no real prior season to diff against.
+- **Coach of the Year** (holdout: 67% hit-rate, 78% top-3) — real head
+  coach data turns out to be FREE: `commonteamroster` (the same
+  endpoint already used for rosters) returns a second dataframe with
+  real coach names, so `fetch_team_rosters` now returns
+  `(rosters, coaches)` and `build_and_cache` writes `team_coaches.json`
+  with zero extra API calls for any newly-fetched season (a one-time
+  backfill was needed for the 30 already-cached seasons). Real head-
+  coach coverage is genuinely patchy before 2004-05 (some seasons
+  missing over half the league — 1997-98 is missing Larry Bird's own
+  team) and consistently complete from 2004-05 on — a real data gap,
+  not a formula failure, when an old season can't even name a
+  candidate. **A real bug found and fixed from a user's basketball
+  hunch**: the original formula scored PURE win% improvement
+  (win_pct_delta) and held itself to a ~20% hit-rate; checked directly
+  against all 28 backtestable seasons, the real winner's team ranked
+  #1-#3 in the league in 19 of 28 (#1 outright in 10) — pure
+  improvement completely missed this, since a team can jump a lot
+  while still being mediocre. Adding win_pct_level (this season's
+  absolute win%) alongside delta, weighted equally, took holdout
+  hit-rate to 67% — a genuine BLEND of "best record" and "biggest
+  jump," not either alone. **Ground truth's own caveat**: see above —
+  the one award without live-API verification.
+- **Simulated-season wiring, and its real limits**: MVP/ROY/DPOY
+  compute real PIE/TS%/USG%/team-defense equivalents straight from a
+  simulated season's own stored box scores (`db.get_simulated_advanced_stats`,
+  `db.get_simulated_team_opp_fg_pct`) using the NBA's own real public
+  formulas — nothing new is simulated, every input already adds up.
+  Two real structural gaps, not bugs: (1) DPOY's rim/perimeter-
+  deterrence and deflections signals need real shot-location/defender-
+  assignment/hustle-event data this project's box-score-only sim has
+  no way to produce, so they're always 0 (neutral) for a simulated
+  season, real for a real one. (2) MIP and COY both need a "before"
+  season to diff against, but `season.simulate_season`'s `fresh=True`
+  fully wipes `season.db` every time a new season is simulated, so
+  there is never a previous SIMULATED season sitting around — both
+  compare this run's own simulated season against the player/team's
+  REAL previous season instead, the only honest baseline actually
+  available (documented in `mip_features_from_simulated`/
+  `coy_features_from_simulated`).
+- **Files**: `awards.py` (all five formulas, ground truth, real- and
+  simulated-season feature builders) and `backtest_mvp.py`/
+  `backtest_roy.py`/`backtest_dpoy.py`/`backtest_mip.py`/
+  `backtest_coy.py` (one train/holdout backtest+sweep script per
+  award, mirroring `sweep_constants.py`'s methodology). New cache
+  files: `player_advanced.json` (PIE/TS%/USG%/ratings/age/draft_year,
+  all 30 seasons), `player_rim_defense.json`/`player_perimeter_defense.json`
+  (2013-14+), `player_hustle.json` (2016-17+), `team_coaches.json` (all
+  30 seasons). New `db.py` functions: `get_simulated_advanced_stats`,
+  `get_simulated_team_opp_fg_pct`. `fetch_real_team_win_pct` and
+  `fetch_real_standings` both gained retry logic after a real,
+  observed live-API read-timeout took the interactive CLI down mid-run
+  — found by testing, not theoretical.
+
 ## Deferred / open, in the user's stated priority order
 1. **Accuracy issues still open.** Two things that used to head this
    list are now FIXED — the `DEFENSE_AMPLIFICATION` tails problem (see
@@ -1085,10 +1233,15 @@ this test would have measured the bug rather than Gobert.
    progression. Needs player progression, which does not exist, and has
    no real data to validate against. The reporting half (option A) is
    DONE — see "Multi-season runs" above — and is the pipeline B would
-   build on. The user also floated season AWARDS as a later addition.
-3. **Playoffs on an old season: DONE** — era-specific rules are in
-   (see "Playoffs" above). The one piece still wrong is pre-2004-05
-   DIVISIONS in the seeding tiebreakers, documented there.
+   build on. Season AWARDS (the user's other floated addition) are now
+   DONE — see "Season awards" below.
+3. **Playoffs on an old season: DONE, including pre-2004-05 divisions.**
+   Era-specific rules are in, and the seeding tiebreakers now use each
+   season's REAL divisions (`divisions_for` → real per-season data, see
+   "Playoffs" above) — confirmed cached correctly for a pre-realignment
+   season (e.g. 2002-03's 4 divisions). This bullet used to flag that
+   piece as still wrong; it wasn't — the fix had already landed and this
+   note just never got updated.
 4. **Possession-by-possession realism** — explicitly low priority. Safe
    to defer indefinitely: `simulate_game()` is a swappable box for
    however a game gets produced, so nothing above it needs to change.

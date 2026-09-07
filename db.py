@@ -18,7 +18,7 @@ not points / team's total games).
 """
 import sqlite3
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from models import Player, ScheduledGame
 from game_engine import GameResult
@@ -320,3 +320,142 @@ def get_player_season_averages(conn: sqlite3.Connection, player_name: str, seaso
         "fg3_pct": (sfg3m / sfg3a) if sfg3a else 0.0,
         "ft_pct": (sftm / sfta) if sfta else 0.0,
     }
+
+
+def get_simulated_advanced_stats(conn: sqlite3.Connection, season: str) -> dict:
+    """
+    Real-formula PIE / TS% / USG% computed from this SEASON'S SIMULATED
+    box scores -- built for awards.py's MVP formula, which needs the
+    same three numbers whether it's scoring a real season (from
+    player_advanced.json) or a simulated one (from here). Nothing here
+    is a new simulated INPUT: every piece (PTS, FGM, FGA, FTM, FTA,
+    REB, OREB, AST, STL, BLK, TOV, PF, MIN) is already stored per game
+    in player_game_stats -- this just applies the NBA's own real,
+    public formulas to numbers that already add up.
+
+    PIE is fundamentally a PER-GAME share (each player's raw production
+    divided by the combined production of all 20-ish players who played
+    in that one game, both teams), so it has to be computed game by
+    game and then averaged -- not from season totals like TS%/USG%
+    below, which the real stat itself defines as ratios of season sums.
+    """
+    rows = conn.execute(
+        "SELECT p.game_id, p.player_name, p.team, p.min, p.fgm, p.fga, p.fg3m, p.fg3a, "
+        "p.ftm, p.fta, p.reb, p.oreb, p.ast, p.stl, p.blk, p.tov, p.pf "
+        "FROM player_game_stats p JOIN games g ON p.game_id = g.game_id "
+        "WHERE g.season = ?",
+        (season,),
+    ).fetchall()
+    if not rows:
+        return {}
+
+    # First pass: group every row by game, so PIE's per-game shared
+    # denominator and USG%'s per-game TEAM totals can both be computed
+    # before touching any individual player's season totals.
+    games: Dict[str, list] = {}
+    for r in rows:
+        games.setdefault(r[0], []).append(r)
+
+    # Season-long accumulators per player -- gp/mpg and the season SUMS
+    # TS%/USG% are real ratios of, plus a running list of this player's
+    # own per-game PIE shares and USG% values to average at the end.
+    totals: Dict[str, dict] = {}
+
+    for game_id, game_rows in games.items():
+        # PIE numerator for every row in this one game, and their sum
+        # -- the real formula's shared denominator.
+        pie_nums = {}
+        for r in game_rows:
+            (_, name, team, mins, fgm, fga, fg3m, fg3a, ftm, fta,
+             reb, oreb, ast, stl, blk, tov, pf) = r
+            dreb = reb - oreb
+            pie_nums[name] = (
+                (2 * (fgm - fg3m) + 3 * fg3m + ftm)  # PTS
+                + fgm + ftm - fga - fta + dreb + 0.5 * oreb
+                + ast + stl + 0.5 * blk - pf - tov
+            )
+        pie_denom = sum(pie_nums.values())
+
+        # Real team totals for THIS game, needed by USG%'s "share of
+        # team's plays used while on the floor" formula.
+        team_totals: Dict[str, dict] = {}
+        for r in game_rows:
+            team = r[2]
+            t = team_totals.setdefault(team, {"min": 0.0, "fga": 0.0, "fta": 0.0, "tov": 0.0})
+            t["min"] += r[3]; t["fga"] += r[5]; t["fta"] += r[9]; t["tov"] += r[15]
+
+        for r in game_rows:
+            (_, name, team, mins, fgm, fga, fg3m, fg3a, ftm, fta,
+             reb, oreb, ast, stl, blk, tov, pf) = r
+            t = totals.setdefault(name, {
+                "team": team, "gp": 0, "min_sum": 0.0, "pts_sum": 0.0,
+                "fga_sum": 0.0, "fta_sum": 0.0, "pie_shares": [], "usg_values": [],
+            })
+            t["team"] = team  # keep the MOST RECENT team (matters for a mid-season trade)
+            t["gp"] += 1
+            t["min_sum"] += mins
+            t["pts_sum"] += 2 * (fgm - fg3m) + 3 * fg3m + ftm
+            t["fga_sum"] += fga
+            t["fta_sum"] += fta
+            t["pie_shares"].append(pie_nums[name] / pie_denom if pie_denom else 0.0)
+
+            tm = team_totals[team]
+            tm_min_per5 = tm["min"] / 5  # real team minutes are always 5x this game's played minutes
+            tm_plays = tm["fga"] + 0.44 * tm["fta"] + tm["tov"]
+            if mins and tm_plays:
+                # Fractional form (0.336, not 33.6) -- matches
+                # player_advanced.json's real usg_pct scale directly,
+                # so awards.py never has to know which source a
+                # feature dict came from.
+                usg = ((fga + 0.44 * fta + tov) * tm_min_per5) / (mins * tm_plays)
+                t["usg_values"].append(usg)
+
+    advanced = {}
+    for name, t in totals.items():
+        gp = t["gp"]
+        ts_denom = 2 * (t["fga_sum"] + 0.44 * t["fta_sum"])
+        advanced[name] = {
+            "team": t["team"],
+            "gp": gp,
+            "mpg": t["min_sum"] / gp,
+            "pie": sum(t["pie_shares"]) / gp,
+            "ts_pct": (t["pts_sum"] / ts_denom) if ts_denom else 0.0,
+            "usg_pct": (sum(t["usg_values"]) / len(t["usg_values"])) if t["usg_values"] else 0.0,
+        }
+    return advanced
+
+
+def get_simulated_team_opp_fg_pct(conn: sqlite3.Connection, season: str) -> Dict[str, float]:
+    """
+    This SIMULATED season's opponent-FG%-allowed per team -- the exact
+    same real stat data_source.fetch_team_defense measures for a REAL
+    season (Team.opp_fg_pct: "how well do teams shoot when they play
+    against this team," a direct measure of that team's own defense),
+    just derived from this run's own simulated box scores instead.
+    Built for awards.py's DPOY formula, which needs the same "team
+    defense" signal whether scoring a real season (Team.opp_fg_pct,
+    already loaded by loader.load_teams) or a simulated one (from here).
+
+    Nothing new is simulated here either -- a game's home/away FGM/FGA
+    already add up (see insert_game); this just credits each team with
+    its OPPONENT's shooting from every game it played.
+    """
+    rows = conn.execute(
+        "SELECT g.home_team, g.away_team, p.team, p.fgm, p.fga "
+        "FROM player_game_stats p JOIN games g ON p.game_id = g.game_id "
+        "WHERE g.season = ?",
+        (season,),
+    ).fetchall()
+    if not rows:
+        return {}
+
+    opp_totals: Dict[str, dict] = {}
+    for home, away, team, fgm, fga in rows:
+        # Whichever team this ROW's stats belong to, the OTHER team in
+        # that same game is who was playing defense against it.
+        defense_team = away if team == home else home
+        t = opp_totals.setdefault(defense_team, {"fgm": 0.0, "fga": 0.0})
+        t["fgm"] += fgm
+        t["fga"] += fga
+
+    return {team: (t["fgm"] / t["fga"] if t["fga"] else 0.0) for team, t in opp_totals.items()}

@@ -67,6 +67,99 @@ def load_team_divisions(season: str = DEFAULT_SEASON) -> Dict[str, str]:
         return json.load(f)["teams"]
 
 
+def load_player_advanced_stats(season: str = DEFAULT_SEASON) -> Dict[str, dict]:
+    """
+    Real per-player advanced stats for `season` -- PIE, TS%, USG%, and
+    the OFF/DEF/NET rating trio (see data_source.fetch_player_advanced_stats).
+    Built for awards.py's MVP/DPOY formulas; nothing else in this
+    project uses these. Keyed by player NAME (matching every other
+    player lookup in this project), not by the simulated Team objects
+    load_teams returns, since award formulas need REAL season stats
+    (both to score the followed season and to backtest against real
+    winners), not whatever a simulated run happened to produce.
+
+    Returns an empty dict when the season has no cached file -- same
+    "optional, added after some seasons were already cached" pattern as
+    player_consistency.json and league_pace.json above.
+    """
+    advanced_file = _season_cache_dir(season) / "player_advanced.json"
+    if not advanced_file.exists():
+        return {}
+    with open(advanced_file) as f:
+        return json.load(f)["players"]
+
+
+def load_player_rim_defense(season: str = DEFAULT_SEASON) -> Dict[str, dict]:
+    """
+    Real per-player RIM DETERRENCE for `season` -- how far below/above
+    normal opponents shoot at the rim against this player specifically
+    (see data_source.fetch_player_rim_defense), not just how many shots
+    he personally blocked. Built for awards.py's DPOY formula.
+
+    Returns an empty dict both when the season has no cached file (same
+    optional pattern as the other awards-only cache files) AND, more
+    fundamentally, for any season before data_source.RIM_DEFENSE_FIRST_SEASON
+    (2013-14) -- real camera-tracking data doesn't exist before then at
+    all, not something this project chose to skip.
+    """
+    rim_file = _season_cache_dir(season) / "player_rim_defense.json"
+    if not rim_file.exists():
+        return {}
+    with open(rim_file) as f:
+        return json.load(f)["players"]
+
+
+def load_player_perimeter_defense(season: str = DEFAULT_SEASON) -> Dict[str, dict]:
+    """
+    The perimeter mirror of load_player_rim_defense -- real per-player
+    3PT DETERRENCE (see data_source.fetch_player_perimeter_defense).
+    Built specifically because rim_deterrence alone left DPOY unable to
+    ever credit a real perimeter defender (Draymond Green, Marcus
+    Smart) -- see awards.DPOY_WEIGHTS's comment. Same optional-file and
+    real 2013-14 camera-tracking-floor rules as load_player_rim_defense.
+    """
+    perimeter_file = _season_cache_dir(season) / "player_perimeter_defense.json"
+    if not perimeter_file.exists():
+        return {}
+    with open(perimeter_file) as f:
+        return json.load(f)["players"]
+
+
+def load_player_hustle_stats(season: str = DEFAULT_SEASON) -> Dict[str, dict]:
+    """
+    Real per-player DEFLECTIONS/CHARGES_DRAWN for `season` (see
+    data_source.fetch_player_hustle_stats) -- built specifically
+    because rim_deterrence/perimeter_deterrence (both shot-contest
+    metrics) still couldn't rescue a real versatile perimeter
+    defender's DPOY case. Same optional-file pattern as the other
+    awards-only cache files, and its own real, later camera-tracking
+    floor (data_source.HUSTLE_STATS_FIRST_SEASON, 2016-17).
+    """
+    hustle_file = _season_cache_dir(season) / "player_hustle.json"
+    if not hustle_file.exists():
+        return {}
+    with open(hustle_file) as f:
+        return json.load(f)["players"]
+
+
+def load_team_coaches(season: str = DEFAULT_SEASON) -> Dict[str, str]:
+    """
+    Real head coach per team for `season` (see
+    data_source.fetch_team_rosters -- this rides along on the SAME
+    roster fetch every season already needs, free, not a new API call).
+    Built for awards.py's Coach of the Year. A team maps to None (not
+    omitted) when this endpoint has a real gap for that team-season --
+    confirmed directly on the 2015-16 Lakers, who have real assistant
+    coaches listed but no head-coach row at all that year -- so callers
+    should treat a None value as "unknown," never silently skip the key.
+    """
+    coach_file = _season_cache_dir(season) / "team_coaches.json"
+    if not coach_file.exists():
+        return {}
+    with open(coach_file) as f:
+        return json.load(f)["teams"]
+
+
 def available_seasons() -> List[str]:
     """
     Every season this project can actually play, newest first -- found
