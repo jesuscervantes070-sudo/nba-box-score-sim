@@ -22,15 +22,40 @@ franchise_map below, which needs no hardcoded table at all.
 """
 from typing import Dict, List, Optional
 
-from loader import load_teams
+from loader import load_teams, load_player_advanced_stats
 
 
-# A player who shows up on a roster for the first time is usually a
-# rookie, but not always -- somebody who missed a whole season injured
-# reads exactly the same way (Alonzo Mourning, out all of 2002-03 with
-# kidney disease, "arrives" in 2003-04). The data records who played,
-# never why they didn't, so these are labelled "arrived" and "left"
-# rather than "drafted" and "retired", which would be a guess.
+# How a player who's new to a roster actually got there. This used to be
+# a flat "arrived" for everyone, because the roster data records who
+# PLAYED and never why -- a rookie and a veteran who missed a whole
+# season injured (Alonzo Mourning, out all of 2002-03) look identical
+# in it. Real DRAFT YEAR (cached on player_advanced.json, see
+# data_source.fetch_player_draft_years) settles the common case
+# outright: if a player's real draft year is the year this season
+# started, he is a draftee, full stop.
+#
+# The rest can't be split that cleanly, so they aren't guessed at:
+# somebody with a real draft year from an earlier season who is only
+# now appearing is a SIGNING (free agent, an overseas return, or a
+# rookie whose draft class predates his debut -- all the same thing
+# from a roster's point of view), and somebody with no draft record at
+# all was undrafted, which is also a signing.
+ARRIVAL_DRAFTED = "drafted"
+ARRIVAL_SIGNED = "signed"
+
+
+def _arrival_kind(player: str, season: str, draft_years: Dict[str, int]) -> str:
+    """Whether a player new to the league in `season` was drafted into
+    it or signed into it -- see the note above."""
+    draft_year = draft_years.get(player)
+    return ARRIVAL_DRAFTED if draft_year == int(season[:4]) else ARRIVAL_SIGNED
+
+
+def _draft_years(season: str) -> Dict[str, int]:
+    """{player -> real draft year} for everyone with a real draft
+    record in `season`. Undrafted players are simply absent."""
+    return {name: stats["draft_year"] for name, stats in load_player_advanced_stats(season).items()
+            if stats.get("draft_year") is not None}
 def _rosters_by_team(season: str) -> Dict[str, set]:
     """{team name -> set of player names} for one real season."""
     return {t.name: {p.name for p in t.players} for t in load_teams(season).values()}
@@ -88,7 +113,8 @@ def diff_seasons(season_a: str, season_b: str) -> dict:
     Everything that changed between two consecutive real seasons.
 
     Returns:
-      arrived   [{player, team, min}]      -- not in season_a at all
+      arrived   [{player, team, min, how}] -- not in season_a at all;
+                                             how is "drafted" or "signed"
       left      [{player, team, min}]      -- not in season_b at all
       moved     [{player, from, to, min}]  -- in both, different team
       renamed   [{from, to}]               -- franchise kept, name changed
@@ -101,11 +127,13 @@ def diff_seasons(season_a: str, season_b: str) -> dict:
     team_of_a = {p: t for t, players in a_rosters.items() for p in players}
     team_of_b = {p: t for t, players in b_rosters.items() for p in players}
     mapping = franchise_map(season_a, season_b)
+    draft_years = _draft_years(season_b)
 
     arrived, left, moved = [], [], []
     for player, team in team_of_b.items():
         if player not in team_of_a:
-            arrived.append({"player": player, "team": team, "min": b_min.get(player, 0.0)})
+            arrived.append({"player": player, "team": team, "min": b_min.get(player, 0.0),
+                            "how": _arrival_kind(player, season_b, draft_years)})
         # Compared through the franchise map, so a player who stayed put
         # while his team was renamed is NOT reported as having moved.
         elif mapping.get(team_of_a[player]) != team:

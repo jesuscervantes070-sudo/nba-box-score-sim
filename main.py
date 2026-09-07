@@ -1818,7 +1818,12 @@ def _offseason_report(diff: dict, team_name: str, next_team_name: str) -> None:
             where = f" ({direction} {r[direction]})" if direction and direction in r else ""
             print(f"      {r['player']:<26} {r['min']:>4.1f} mpg{where}")
     _show(changes["gained"], "Signed/traded in:", "from")
-    _show(changes["arrived"], "New to the league:")
+    # Real draft year (see offseason._arrival_kind) splits these two --
+    # a rookie and a veteran arriving from overseas used to be lumped
+    # together as "new to the league" because the roster data alone
+    # can't tell them apart.
+    _show([r for r in changes["arrived"] if r.get("how") == "drafted"], "Drafted:")
+    _show([r for r in changes["arrived"] if r.get("how") != "drafted"], "Signed (new to the league):")
     _show(changes["lost"], "Left for another team:", "to")
     _show(changes["left_league"], "Out of the league:")
     if not any(len([r for r in v if r["min"] >= 10.0]) for v in changes.values()):
