@@ -24,7 +24,8 @@ from typing import Dict, List, Optional, Tuple
 
 from loader import (
     load_player_advanced_stats, load_player_rim_defense, load_player_perimeter_defense,
-    load_player_hustle_stats, load_team_coaches, load_teams, available_seasons, DEFAULT_SEASON,
+    load_player_hustle_stats, load_team_coaches, load_teams, load_schedule,
+    available_seasons, DEFAULT_SEASON,
 )
 
 # =====================================================================
@@ -147,16 +148,14 @@ ROY_WEIGHTS: Dict[str, float] = dict(pie=10.0, ts_pct=3.0, usg_pct=8.0, win_pct=
                                       availability=4.0, fatigue=0.0)
 
 
-# Real per-team full-season game count, by era -- needed to turn a
-# player's real GP into an availability RATE (see mvp_score), since 65
-# games means something different in an 82-game season than a 50-game
-# lockout one. Same real-world facts main.py's SEASON_NOTES already
-# documents; duplicated here in numeric form rather than importing
-# main.py (this file has no other reason to depend on the CLI module).
+# Real per-team full-season game count, by era -- the FALLBACK for
+# turning a player's real GP into an availability RATE, used only when
+# a season's real per-team schedule isn't available (see
+# team_games_played below, which is what every award actually uses).
+# Same real-world facts main.py's SEASON_NOTES already documents.
 GAMES_PER_SEASON: Dict[str, int] = {
     "1998-99": 50,
     "2011-12": 66,
-    "2019-20": 82,  # uneven per-team (64-75, see main.py) -- 82 is the intended full season
     "2020-21": 72,
 }
 DEFAULT_GAMES_PER_SEASON = 82
@@ -164,6 +163,52 @@ DEFAULT_GAMES_PER_SEASON = 82
 
 def games_per_season(season: str) -> int:
     return GAMES_PER_SEASON.get(season, DEFAULT_GAMES_PER_SEASON)
+
+
+_team_games_cache: Dict[str, Dict[str, int]] = {}
+
+
+def team_games_played(season: str) -> Dict[str, int]:
+    """
+    How many real games each team actually PLAYED in `season`, counted
+    from the cached real schedule -- local, no network.
+
+    This exists because a league-wide constant is genuinely unfair in
+    a season where teams played DIFFERENT numbers of games. 2019-20 is
+    the real case (found by testing): COVID cut it short mid-season and
+    only 22 teams were invited to the Orlando bubble, so Golden State
+    played 60 games and Dallas played 74. Scoring availability against
+    a flat 82 meant a Warrior who played every single game his team
+    had read as 73% available while a Maverick who did the same read as
+    90% -- a 0.68-point MVP swing (availability weight 4.0) decided
+    entirely by whether his team got a bubble invite, nothing to do
+    with the player. Real MVP gaps between top candidates are often
+    0.1-0.5, so that was big enough to flip an outcome.
+
+    Counting the real schedule also handles every other real anomaly
+    for free, with no table to maintain: the two teams that played 81
+    in 2012-13 (a real cancelled game after Sandy Hook, never made up),
+    and both lockout seasons.
+    """
+    if season not in _team_games_cache:
+        counts: Dict[str, int] = {}
+        for game in load_schedule(season):
+            counts[game.home_team] = counts.get(game.home_team, 0) + 1
+            counts[game.away_team] = counts.get(game.away_team, 0) + 1
+        _team_games_cache[season] = counts
+    return _team_games_cache[season]
+
+
+def _availability(gp: float, season: str, team_games: Optional[int] = None) -> float:
+    """
+    Share of his team's games a player was available for. Clamped at
+    1.0 because a real TRADED player can exceed his team's game count
+    (his old and new teams had played different numbers of games when
+    the trade happened) -- confirmed real: the 2023-24 league max is 84
+    games in an 82-game season.
+    """
+    denominator = team_games or games_per_season(season)
+    return min(gp / denominator, 1.0) if denominator else 0.0
 
 
 # =====================================================================
@@ -248,7 +293,8 @@ MVP_MIN_MPG = 24.0
 
 def mvp_score(pie: float, ts_pct: float, usg_pct: float, win_pct: float, gp: float,
               season: str, already_won_last_season: bool,
-              weights: Optional[Dict[str, float]] = None) -> float:
+              weights: Optional[Dict[str, float]] = None,
+              team_games: Optional[int] = None) -> float:
     """
     One player's real-basketball MVP "case," as a single ranking number
     -- not a real stat, a composite built for this project. PIE is the
@@ -265,7 +311,7 @@ def mvp_score(pie: float, ts_pct: float, usg_pct: float, win_pct: float, gp: flo
     comment on why).
     """
     weights = weights or MVP_WEIGHTS
-    availability = min(gp / games_per_season(season), 1.0)
+    availability = _availability(gp, season, team_games)
     score = (
         weights["pie"] * pie
         + weights["ts_pct"] * ts_pct
@@ -291,6 +337,31 @@ def _player_team_map(season: str) -> Dict[str, str]:
     return mapping
 
 
+
+def _team_win_pct_or_league_average(win_pct: Dict[str, float], team: Optional[str]) -> float:
+    """
+    A candidate's team win%, or the LEAGUE AVERAGE when his team isn't
+    known -- never 0.0.
+
+    Found by testing: ~60 players per season play real games but are
+    absent from rosters.json entirely (waived, released, or a two-way/
+    10-day deal that ended, so they're on no team's end-of-season roster
+    snapshot -- the same class of gap transactions.py exists to patch
+    for traded players). They were being scored as if their team went
+    winless, a ~1.0-point MVP penalty (win_pct weight 2.0) for a fact
+    about ROSTER PAPERWORK, not about the player. League average is the
+    honest "we don't know" value.
+
+    The proper fix is to carry each player's real team on
+    player_advanced.json itself (the source dataframe has
+    TEAM_ABBREVIATION; this project just never cached it), which would
+    also let DPOY stop silently excluding these players -- see CLAUDE.md.
+    """
+    if team and team in win_pct:
+        return win_pct[team]
+    return sum(win_pct.values()) / len(win_pct) if win_pct else 0.0
+
+
 def mvp_features_for_season(season: str, team_win_pct: Optional[Dict[str, float]] = None) -> List[dict]:
     """
     Every real MVP CANDIDATE's raw features for `season` (players with
@@ -307,6 +378,7 @@ def mvp_features_for_season(season: str, team_win_pct: Optional[Dict[str, float]
     if not advanced:
         return []
     team_of = _player_team_map(season)
+    team_games = team_games_played(season)
     win_pct = team_win_pct if team_win_pct is not None else fetch_real_team_win_pct(season)
     prior_winner = REAL_MVP_WINNERS.get(_previous_season(season))
 
@@ -318,7 +390,8 @@ def mvp_features_for_season(season: str, team_win_pct: Optional[Dict[str, float]
         features.append({
             "name": name, "pie": stats["pie"], "ts_pct": stats["ts_pct"],
             "usg_pct": stats["usg_pct"], "gp": stats["gp"],
-            "team_win_pct": win_pct.get(team, 0.0) if team else 0.0,
+            "team_win_pct": _team_win_pct_or_league_average(win_pct, team),
+            "team_games": team_games.get(team) if team else None,
             "already_won_last_season": name == prior_winner,
         })
     return features
@@ -333,7 +406,7 @@ def rank_mvp_candidates(features: List[dict], season: str,
         (f["name"], mvp_score(
             pie=f["pie"], ts_pct=f["ts_pct"], usg_pct=f["usg_pct"], win_pct=f["team_win_pct"],
             gp=f["gp"], season=season, already_won_last_season=f["already_won_last_season"],
-            weights=weights,
+            weights=weights, team_games=f.get("team_games"),
         ))
         for f in features
     ]
@@ -472,6 +545,7 @@ def roy_features_for_season(season: str, team_win_pct: Optional[Dict[str, float]
         return []
     debut = _debut_seasons()
     team_of = _player_team_map(season)
+    team_games = team_games_played(season)
     win_pct = team_win_pct if team_win_pct is not None else fetch_real_team_win_pct(season)
 
     features = []
@@ -486,7 +560,8 @@ def roy_features_for_season(season: str, team_win_pct: Optional[Dict[str, float]
         features.append({
             "name": name, "pie": stats["pie"], "ts_pct": stats["ts_pct"],
             "usg_pct": stats["usg_pct"], "gp": stats["gp"],
-            "team_win_pct": win_pct.get(team, 0.0) if team else 0.0,
+            "team_win_pct": _team_win_pct_or_league_average(win_pct, team),
+            "team_games": team_games.get(team) if team else None,
             "already_won_last_season": False,  # a rookie can't be a repeat winner
         })
     return features
@@ -539,6 +614,7 @@ def mvp_features_from_simulated(conn, season: str, standings: Optional[List[dict
         standings = db.get_standings(conn, season)
     win_pct = {row["team"]: row["W"] / (row["W"] + row["L"]) if (row["W"] + row["L"]) else 0.0
                for row in standings}
+    sim_team_games = {row["team"]: row["W"] + row["L"] for row in standings}
 
     features = []
     for name, stats in advanced.items():
@@ -548,6 +624,7 @@ def mvp_features_from_simulated(conn, season: str, standings: Optional[List[dict
             "name": name, "pie": stats["pie"], "ts_pct": stats["ts_pct"],
             "usg_pct": stats["usg_pct"], "gp": stats["gp"],
             "team_win_pct": win_pct.get(stats["team"], 0.0),
+            "team_games": sim_team_games.get(stats["team"]),
             "already_won_last_season": False,
         })
     return features
@@ -582,6 +659,7 @@ def roy_features_from_simulated(conn, season: str, standings: Optional[List[dict
         standings = db.get_standings(conn, season)
     win_pct = {row["team"]: row["W"] / (row["W"] + row["L"]) if (row["W"] + row["L"]) else 0.0
                for row in standings}
+    sim_team_games = {row["team"]: row["W"] + row["L"] for row in standings}
 
     features = []
     for name, stats in advanced.items():
@@ -596,6 +674,7 @@ def roy_features_from_simulated(conn, season: str, standings: Optional[List[dict
             "name": name, "pie": stats["pie"], "ts_pct": stats["ts_pct"],
             "usg_pct": stats["usg_pct"], "gp": stats["gp"],
             "team_win_pct": win_pct.get(stats["team"], 0.0),
+            "team_games": sim_team_games.get(stats["team"]),
             "already_won_last_season": False,
         })
     return features
@@ -744,7 +823,8 @@ DPOY_MIN_PERIMETER_FREQ = 2.0
 
 def dpoy_score(stl: float, blk: float, reb: float, team_def_strength: float, rim_deterrence: float,
                 perimeter_deterrence: float, deflections: float, gp: float, season: str,
-                weights: Optional[Dict[str, float]] = None) -> float:
+                weights: Optional[Dict[str, float]] = None,
+                team_games: Optional[int] = None) -> float:
     """
     One player's real-basketball DPOY "case" -- stl/blk are the
     clearest individual defensive PRODUCTION signals this project has
@@ -764,7 +844,7 @@ def dpoy_score(stl: float, blk: float, reb: float, team_def_strength: float, rim
     Availability penalizes missed games, same reasoning as MVP/ROY.
     """
     weights = weights or DPOY_WEIGHTS
-    availability = min(gp / games_per_season(season), 1.0)
+    availability = _availability(gp, season, team_games)
     return (
         weights["stl"] * stl
         + weights["blk"] * blk
@@ -799,6 +879,7 @@ def dpoy_features_for_season(season: str) -> List[dict]:
     rim_defense = load_player_rim_defense(season)  # {} before 2013-14 -- see that function's docstring
     perimeter_defense = load_player_perimeter_defense(season)  # same real floor
     hustle = load_player_hustle_stats(season)  # {} before 2016-17 -- its own, later real floor
+    team_games = team_games_played(season)
 
     league_avg_opp_fg_pct = sum(t.opp_fg_pct for t in teams.values()) / len(teams)
 
@@ -820,7 +901,7 @@ def dpoy_features_for_season(season: str) -> List[dict]:
                 "name": player.name, "stl": player.stl, "blk": player.blk, "reb": player.reb,
                 "team_def_strength": team_def_strength, "rim_deterrence": rim_deterrence,
                 "perimeter_deterrence": perimeter_deterrence, "deflections": deflections,
-                "gp": stats["gp"],
+                "gp": stats["gp"], "team_games": team_games.get(team_name),
             })
     return features
 
@@ -835,7 +916,7 @@ def rank_dpoy_candidates(features: List[dict], season: str,
             rim_deterrence=f.get("rim_deterrence", 0.0),
             perimeter_deterrence=f.get("perimeter_deterrence", 0.0),
             deflections=f.get("deflections", 0.0),
-            gp=f["gp"], season=season, weights=weights,
+            gp=f["gp"], season=season, weights=weights, team_games=f.get("team_games"),
         ))
         for f in features
     ]
@@ -876,6 +957,7 @@ def dpoy_features_from_simulated(conn, season: str) -> List[dict]:
     if not opp_fg_pct:
         return []
     league_avg_opp_fg_pct = sum(opp_fg_pct.values()) / len(opp_fg_pct)
+    sim_team_games = {row["team"]: row["W"] + row["L"] for row in db.get_standings(conn, season)}
 
     features = []
     for name, stats in advanced.items():
@@ -888,6 +970,7 @@ def dpoy_features_from_simulated(conn, season: str) -> List[dict]:
         features.append({
             "name": name, "stl": avg["stl"], "blk": avg["blk"], "reb": avg["reb"],
             "team_def_strength": team_def_strength, "gp": stats["gp"],
+            "team_games": sim_team_games.get(stats["team"]),
         })
     return features
 
@@ -968,7 +1051,8 @@ MIP_WEIGHTS: Dict[str, float] = dict(pts_delta=0.5, pie_delta=0.0, availability=
 
 
 def mip_score(pts_delta: float, pie_delta: float, gp: float, season: str,
-              weights: Optional[Dict[str, float]] = None) -> float:
+              weights: Optional[Dict[str, float]] = None,
+              team_games: Optional[int] = None) -> float:
     """
     One player's real-basketball MIP "case" -- pts_delta (this year's
     real PPG minus last year's) is the dominant signal, matching real
@@ -980,7 +1064,7 @@ def mip_score(pts_delta: float, pie_delta: float, gp: float, season: str,
     needs him on the floor to be voted on.
     """
     weights = weights or MIP_WEIGHTS
-    availability = min(gp / games_per_season(season), 1.0)
+    availability = _availability(gp, season, team_games)
     return (
         weights["pts_delta"] * pts_delta
         + weights["pie_delta"] * pie_delta
@@ -1019,6 +1103,8 @@ def mip_features_for_season(season: str) -> List[dict]:
         return []
     pts = _player_pts_map(season)
     prev_pts = _player_pts_map(prev_season)
+    team_of = _player_team_map(season)
+    team_games = team_games_played(season)
 
     features = []
     for name, stats in advanced.items():
@@ -1031,6 +1117,7 @@ def mip_features_for_season(season: str) -> List[dict]:
         features.append({
             "name": name, "pts_delta": pts[name] - prev_pts[name],
             "pie_delta": stats["pie"] - prev_stats["pie"], "gp": stats["gp"],
+            "team_games": team_games.get(team_of.get(name)),
         })
     return features
 
@@ -1042,7 +1129,7 @@ def rank_mip_candidates(features: List[dict], season: str,
     scored = [
         (f["name"], mip_score(
             pts_delta=f["pts_delta"], pie_delta=f["pie_delta"],
-            gp=f["gp"], season=season, weights=weights,
+            gp=f["gp"], season=season, weights=weights, team_games=f.get("team_games"),
         ))
         for f in features
     ]
@@ -1083,6 +1170,7 @@ def mip_features_from_simulated(conn, season: str) -> List[dict]:
     if not advanced or not prev_advanced:
         return []
     prev_pts = _player_pts_map(prev_season)  # real prior-season PTS, built once for the whole season
+    sim_team_games = {row["team"]: row["W"] + row["L"] for row in db.get_standings(conn, season)}
 
     features = []
     for name, stats in advanced.items():
@@ -1098,6 +1186,7 @@ def mip_features_from_simulated(conn, season: str) -> List[dict]:
         features.append({
             "name": name, "pts_delta": avg["pts"] - prev_pts[name],
             "pie_delta": stats["pie"] - prev_stats["pie"], "gp": stats["gp"],
+            "team_games": sim_team_games.get(stats["team"]),
         })
     return features
 
@@ -1174,6 +1263,30 @@ REAL_COY_WINNERS: Dict[str, str] = {
 # not either one alone.
 COY_WEIGHTS: Dict[str, float] = dict(win_pct_level=1.0, win_pct_delta=1.0)
 
+# Coach data before this season is not just PATCHY, it is WRONG often
+# enough not to publish -- found by testing against known history, and
+# a genuinely nastier problem than the coverage gaps noted earlier,
+# because coverage completeness gave false reassurance: 1999-00 looked
+# like the best-covered old season (29/29 teams named) but only 3 of 7
+# spot-checked names were right. The wrong ones aren't near-misses,
+# they're coaches from a decade later -- 1999-00 Indiana comes back as
+# Frank Vogel (really there 2010-16), Miami as Erik Spoelstra (2008+),
+# New York as Mike D'Antoni (2008+). Measured accuracy by era on
+# known-real coach/team/season facts: 1996-2003 60%, 2003-2011 100%,
+# 2011-2026 93%.
+#
+# So this is a real floor, same spirit as MIP's "no prior season to
+# diff against" -- an award nobody can name correctly shouldn't be
+# named at all, especially somewhere a UI will show it as fact. It
+# also explains a backtest anomaly that had no explanation before:
+# COY's train hit-rate was BELOW its holdout (37% vs 67%), backwards
+# from every other award, because the train set carries these bad
+# seasons -- scored separately, pre-2004-05 is 29% against a clean
+# 2004-05..2015-16 train of 42%.
+#
+# One constant, trivially reversible if better coach data turns up.
+COY_RELIABLE_FIRST_SEASON = "2004-05"
+
 
 def coy_score(win_pct_level: float, win_pct_delta: float, weights: Optional[Dict[str, float]] = None) -> float:
     """
@@ -1202,8 +1315,8 @@ def coy_features_for_season(season: str, team_win_pct: Optional[Dict[str, float]
     project's earliest cached season (no prior season to diff against
     -- same real floor as MIP).
     """
-    if season == _earliest_season():
-        return []
+    if season == _earliest_season() or season < COY_RELIABLE_FIRST_SEASON:
+        return []  # see COY_RELIABLE_FIRST_SEASON -- wrong coach names, not just missing
     prev_season = _previous_season(season)
 
     coaches = load_team_coaches(season)
@@ -1252,8 +1365,8 @@ def coy_features_from_simulated(conn, season: str, standings: Optional[List[dict
     """
     import db  # local import: db.py doesn't import awards.py, avoid a cycle either way
 
-    if season == _earliest_season():
-        return []
+    if season == _earliest_season() or season < COY_RELIABLE_FIRST_SEASON:
+        return []  # see COY_RELIABLE_FIRST_SEASON -- wrong coach names, not just missing
     prev_season = _previous_season(season)
 
     coaches = load_team_coaches(season)
