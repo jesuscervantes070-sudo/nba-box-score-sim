@@ -116,6 +116,10 @@ def _team_coaches_cache_path(season: str) -> Path:
     return _season_cache_dir(season) / "team_coaches.json"
 
 
+def _best_record_cache_path(season: str) -> Path:
+    return _season_cache_dir(season) / "best_record.json"
+
+
 # The first season with real camera-tracking data at all (SportVU
 # cameras went league-wide starting 2013-14) -- checked directly:
 # leaguedashptdefend returns 0 rows for 1996-97, 2005-06, and 2012-13,
@@ -290,20 +294,31 @@ def fetch_player_draft_years(season: str) -> dict:
     real rookie year was actually 1995-96, one season before this
     project's data even starts).
 
-    Returns {player_name: draft_year_int}, undrafted players simply
-    OMITTED (the API returns the literal string "Undrafted", which
-    isn't a year) -- awards.py falls back to its existing debut-season
-    check for those.
+    Returns {player_name: {"year": int, "round": int or None, "pick":
+    int or None}}, undrafted players simply OMITTED (the API returns
+    the literal string "Undrafted" for all three fields, which isn't a
+    number) -- awards.py falls back to its existing debut-season check
+    for those. Round/pick ride along free from this same real bio
+    endpoint (DRAFT_ROUND/DRAFT_NUMBER) -- built for main.py's offseason
+    report, which wants to say WHERE a drafted arrival was actually
+    picked, not just that he was.
     """
     from nba_api.stats.endpoints import leaguedashplayerbiostats
     df = leaguedashplayerbiostats.LeagueDashPlayerBioStats(season=season, timeout=30).get_data_frames()[0]
 
-    draft_years = {}
+    def _int_or_none(value):
+        return int(value) if value and str(value).isdigit() else None
+
+    draft_info = {}
     for _, row in df.iterrows():
-        year = row["DRAFT_YEAR"]
-        if year and str(year).isdigit():
-            draft_years[row["PLAYER_NAME"]] = int(year)
-    return draft_years
+        year = _int_or_none(row["DRAFT_YEAR"])
+        if year is not None:
+            draft_info[row["PLAYER_NAME"]] = {
+                "year": year,
+                "round": _int_or_none(row.get("DRAFT_ROUND")),
+                "pick": _int_or_none(row.get("DRAFT_NUMBER")),
+            }
+    return draft_info
 
 
 def build_and_cache_player_advanced_stats(season: str = "2025-26", force: bool = False) -> None:
@@ -317,14 +332,21 @@ def build_and_cache_player_advanced_stats(season: str = "2025-26", force: bool =
     if df.empty:
         raise RuntimeError(f"No advanced stats found for {season} -- check the season string.")
 
-    draft_years = fetch_player_draft_years(season)
+    draft_info = fetch_player_draft_years(season)
 
     players = {}
     for _, row in df.iterrows():
         entry = {our_key: float(row[api_key]) for our_key, api_key in ADVANCED_FIELD_MAP.items()}
         name = row["PLAYER_NAME"]
-        if name in draft_years:
-            entry["draft_year"] = draft_years[name]
+        if name in draft_info:
+            # draft_year stays a plain int -- offseason.py/awards.py
+            # both already depend on that exact shape. round/pick are
+            # purely additive, optional fields alongside it.
+            entry["draft_year"] = draft_info[name]["year"]
+            if draft_info[name]["round"] is not None:
+                entry["draft_round"] = draft_info[name]["round"]
+            if draft_info[name]["pick"] is not None:
+                entry["draft_pick"] = draft_info[name]["pick"]
         players[name] = entry
 
     with open(cache_path, "w") as f:
@@ -621,6 +643,51 @@ def fetch_real_standings(season: str, retries: int = 4) -> dict:
             last_error = e
             time.sleep(3)
     raise RuntimeError(f"fetch_real_standings({season!r}) failed after {retries} attempts: {last_error}")
+
+
+def fetch_real_best_record(season: str, retries: int = 4) -> dict:
+    """
+    The single best REAL regular-season record league-wide for
+    `season` -- {"team": name, "wins": W, "losses": L}.
+
+    Unlike fetch_real_standings (deliberately NOT cached, since it's
+    used on demand to compare a simulated season against a DIFFERENT
+    real season -- a genuinely new value every run), this one prints
+    exactly one static fact per season on the History Sim season-pick
+    screen (main.py's select_season_range, the "team to beat" column).
+    That screen renders all 30 seasons at once, so fetching this live
+    every time it's drawn would mean up to 30 network calls just to
+    show a picker -- cached instead, once per season, ever.
+    """
+    from nba_api.stats.endpoints import leaguestandingsv3
+
+    last_error = None
+    for attempt in range(retries):
+        try:
+            df = leaguestandingsv3.LeagueStandingsV3(season=season, timeout=45).get_data_frames()[0]
+            best_row = df.loc[df["WINS"].idxmax()]
+            team_name = f"{best_row['TeamCity']} {best_row['TeamName']}"
+            team_name = NBA_API_TEAM_NAME_FIXES.get(team_name, team_name)
+            return {"team": team_name, "wins": int(best_row["WINS"]), "losses": int(best_row["LOSSES"])}
+        except Exception as e:
+            last_error = e
+            time.sleep(3)
+    raise RuntimeError(f"fetch_real_best_record({season!r}) failed after {retries} attempts: {last_error}")
+
+
+def build_and_cache_best_record(season: str = "2025-26", force: bool = False) -> None:
+    cache_path = _best_record_cache_path(season)
+    if cache_path.exists() and not force:
+        print(f"Best-record cache already exists at {cache_path}. Use --refresh to force an update.")
+        return
+
+    print(f"Fetching {season} real best regular-season record...")
+    best = fetch_real_best_record(season)
+
+    with open(cache_path, "w") as f:
+        json.dump(best, f, indent=2)
+
+    print(f"Cached best record ({best['team']} {best['wins']}-{best['losses']}) -> {cache_path}")
 
 
 def fetch_team_conferences(season: str) -> dict:
@@ -1422,6 +1489,7 @@ if __name__ == "__main__":
     build_and_cache_player_perimeter_defense(season=args.season, force=args.refresh)
     build_and_cache_player_hustle_stats(season=args.season, force=args.refresh)
     build_and_cache_team_coaches(season=args.season, force=args.refresh)
+    build_and_cache_best_record(season=args.season, force=args.refresh)
     # One fetch covers every season the feed reaches, so this isn't
     # per-season like the calls above.
     build_and_cache_transactions(force=args.refresh)

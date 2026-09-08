@@ -9,7 +9,7 @@ Team/ScheduledGame objects, never raw dicts pulled straight from JSON.
 """
 import json
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from models import Player, Team, ScheduledGame
 
@@ -158,6 +158,23 @@ def load_team_coaches(season: str = DEFAULT_SEASON) -> Dict[str, str]:
         return {}
     with open(coach_file) as f:
         return json.load(f)["teams"]
+
+
+def load_real_best_record(season: str = DEFAULT_SEASON) -> Optional[dict]:
+    """
+    The single best REAL regular-season record league-wide for
+    `season` -- {"team": name, "wins": W, "losses": L} -- for
+    main.py's History Sim season-pick screen ("team to beat"). Returns
+    None for a season that hasn't been fetched yet (see
+    data_source.build_and_cache_best_record) rather than fetching it
+    live -- that screen renders all 30 seasons at once, and this is a
+    static fact, not something worth a network call on every render.
+    """
+    record_file = _season_cache_dir(season) / "best_record.json"
+    if not record_file.exists():
+        return None
+    with open(record_file) as f:
+        return json.load(f)
 
 
 def available_seasons() -> List[str]:
