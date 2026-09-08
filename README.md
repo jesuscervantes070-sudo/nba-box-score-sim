@@ -38,6 +38,12 @@ play-in, whether or not it's your own team's.
 
 ![Box score](docs/screenshot_boxscore.png)
 
+Playoffs use each season's real format — best-of-5 first rounds before
+2003, no play-in before 2019-20 — seeded with the real NBA tiebreaker
+chain, round by round:
+
+![Playoff bracket](docs/screenshot_bracket.png)
+
 ## It's actually accurate, not just plausible
 
 Every tunable constant in the simulation was fit against real data, not
@@ -88,10 +94,8 @@ for reading the raw files in `benchmarks/` and `sweeps/` and catching
 this instead of taking this README's word for it — exactly the kind of
 feedback this project was posted to get.
 
-The full write-up of what was tuned, what was measured, and what's
-still an open, honestly-labeled gap is in [CLAUDE.md](CLAUDE.md) — it's
-the project's own running lab notebook, kept in the repo instead of
-thrown away.
+The full write-up of what was tuned, how it was measured, and what's
+still an open, honestly-labeled gap is in [ACCURACY.md](ACCURACY.md).
 
 ## Quickstart
 

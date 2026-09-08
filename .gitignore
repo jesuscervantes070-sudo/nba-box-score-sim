@@ -8,3 +8,7 @@ __pycache__/
 
 # macOS Finder metadata file that can end up in random folders.
 .DS_Store
+
+# Working notes for AI-assisted development -- not public-facing docs.
+# The real technical writeup lives in ACCURACY.md instead.
+CLAUDE.md
