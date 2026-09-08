@@ -127,9 +127,22 @@ def franchise_map(season_a: str, season_b: str) -> Dict[str, str]:
     return mapping
 
 
-def diff_seasons(season_a: str, season_b: str) -> dict:
+def diff_seasons(season_a: str, season_b: str, sim_ppg_a: Optional[Dict[str, float]] = None) -> dict:
     """
     Everything that changed between two consecutive real seasons.
+
+    `sim_ppg_a`, when given, is {player: simulated PPG} from THIS RUN'S
+    OWN simulated season_a (main.py's multi-season loop builds it via
+    db.get_simulated_player_ppg right after that season finishes,
+    before the next one's simulate_season wipes season.db). Per the
+    user: a departing/traded player's "notable"-ness should be judged
+    by what actually happened in THIS run's simulated universe, not
+    his real career averages -- a real bench player can have a monster
+    simulated year and a real star a quiet one. Only applies to
+    LEFT/MOVED (their relevant season is season_a, which has just been
+    simulated); ARRIVED players are joining season_b, which hasn't
+    been simulated yet at this point, so real stats are the only
+    honest information actually available for them.
 
     Returns:
       arrived   [{player, team, min, pts, how}] -- not in season_a at
@@ -137,13 +150,17 @@ def diff_seasons(season_a: str, season_b: str) -> dict:
       left      [{player, team, min, pts}] -- not in season_b at all
       moved     [{player, from, to, min, pts}] -- in both, different team
       renamed   [{from, to}]               -- franchise kept, name changed
-    Each player list is sorted by real POINTS PER GAME (in whichever
-    season they're being described from), so a caller can show the ten
-    that matter instead of ninety that don't.
+    Each player list is sorted by POINTS PER GAME (real, or simulated
+    where sim_ppg_a applies), so a caller can show the ten that matter
+    instead of ninety that don't.
     """
     a_rosters, b_rosters = _rosters_by_team(season_a), _rosters_by_team(season_b)
     a_rate, b_rate = _per_game_by_player(season_a), _per_game_by_player(season_b)
     blank = {"min": 0.0, "pts": 0.0}
+    if sim_ppg_a:
+        for name, pts in sim_ppg_a.items():
+            if name in a_rate:
+                a_rate[name] = {**a_rate[name], "pts": pts}
     team_of_a = {p: t for t, players in a_rosters.items() for p in players}
     team_of_b = {p: t for t, players in b_rosters.items() for p in players}
     mapping = franchise_map(season_a, season_b)
@@ -162,8 +179,13 @@ def diff_seasons(season_a: str, season_b: str) -> dict:
         # Compared through the franchise map, so a player who stayed put
         # while his team was renamed is NOT reported as having moved.
         elif mapping.get(team_of_a[player]) != team:
+            # From season_a's rate (his LAST known team, the one this
+            # report is about) -- was b_rate before sim_ppg_a existed,
+            # switched so a "notable" trade can actually use the sim
+            # override above (season_b, his new team, hasn't been
+            # simulated yet at this point either way).
             moved.append({"player": player, "from": team_of_a[player], "to": team,
-                          **b_rate.get(player, blank)})
+                          **a_rate.get(player, blank)})
     for player, team in team_of_a.items():
         if player not in team_of_b:
             left.append({"player": player, "team": team, **a_rate.get(player, blank)})

@@ -110,7 +110,14 @@ def trade_deadline_for(season: str) -> Optional[str]:
 # nothing else in this file has to know or care whether color is on.
 _COLOR_ENABLED = sys.stdout.isatty() and "NO_COLOR" not in os.environ
 
-_ANSI_CODES = {"bold": "\033[1m", "green": "\033[32m", "yellow": "\033[33m", "cyan": "\033[36m", "red": "\033[31m"}
+_ANSI_CODES = {
+    "bold": "\033[1m", "green": "\033[32m", "yellow": "\033[33m", "cyan": "\033[36m", "red": "\033[31m",
+    # 256-color code, not the basic 8-color "magenta" (\033[35m) --
+    # that one reads as bright pink/fuchsia on most terminals, not the
+    # softer purple asked for. 135 is a medium purple that holds up on
+    # both light and dark backgrounds.
+    "purple": "\033[38;5;135m",
+}
 _ANSI_RESET = "\033[0m"
 
 
@@ -342,7 +349,7 @@ def print_title() -> None:
     print(DIVIDER)
     print()
     for line in _render_banner(BANNER_TEXT):
-        print(_style(line.center(LINE_WIDTH).rstrip(), "bold", "cyan"))
+        print(_style(line.center(LINE_WIDTH).rstrip(), "bold", "purple"))
     print()
     print("1996-97 through 2025-26".center(LINE_WIDTH))
     print()
@@ -798,6 +805,20 @@ def run_team_game_log_replay(conn, team_name: str, season: str, highlight: Optio
             last_shown_id = shown[-1]["game_id"]
         pos += len(shown)
 
+    # One more chance at the box score for the LAST game (often the
+    # one that actually decided something -- a clinching win) before
+    # moving on -- the while loop above ends the instant the season is
+    # fully shown, which used to skip straight past it with no way
+    # back (reported directly).
+    while True:
+        raw = _prompt("  b=box score of the last game, or press Enter to continue: ").strip().lower()
+        if raw in ("b", "box"):
+            print_box_score(db.get_game_box_score(conn, last_shown_id), highlight)
+            continue
+        if raw == "":
+            break
+        print("  Please enter 'b' or press Enter to continue.")
+
     print(SECTION)
     print()
 
@@ -828,6 +849,69 @@ def _run_game_log_browser(conn, team_names: List[str], season: str, highlight: O
             run_team_game_log_replay(conn, team_names[int(choice) - 1], season, highlight=highlight)
             continue
         print("Please enter a number from the list, 't' to see it, or press Enter to finish.")
+
+
+def _replay_play_in(games: List[dict], highlight: Optional[str]) -> None:
+    """
+    Paces through the play-in's real games one at a time -- Enter to
+    sim each, 'e' to sim the rest, 'b' for the last one's box score --
+    available whether or not the followed team is actually IN the
+    play-in (per the user: it used to just print already-decided
+    results with no way to watch it or see a box score at all,
+    regardless of who was playing).
+
+    Each `games` entry is {"label", "home", "away", "result"} --
+    playoffs.run_play_in now keeps the full GameResult per game (it
+    used to throw it away the instant it read off the winner, which is
+    why this couldn't exist before).
+    """
+    pos = 0
+    last_shown = None
+    while pos < len(games):
+        upcoming = games[pos]
+        print()
+        print(f"  {_style('NEXT', 'bold', 'yellow')}   {upcoming['label']}   "
+              f"{upcoming['home']} vs {upcoming['away']}")
+        options = "Enter=sim this game, e=sim the rest"
+        if last_shown is not None:
+            options += ", b=box score of the last game"
+        raw = _prompt(f"  {options}: ").strip().lower()
+
+        action = {"": "next", "b": "box", "box": "box", "e": "end", "end": "end"}.get(raw)
+        if action is None:
+            print("  Please enter a blank line, 'e', or 'b'.")
+            continue
+        if action == "box":
+            if last_shown is None:
+                print("  No game shown yet -- press Enter first to see one.")
+                continue
+            print_box_score(last_shown, highlight)
+            continue
+
+        count = len(games) - pos if action == "end" else 1
+        shown = games[pos: pos + count]
+        for g in shown:
+            result = g["result"]
+            winner = g["home"] if result.home_score > result.away_score else g["away"]
+            score = f"{result.home_score:.0f}-{result.away_score:.0f}"
+            print(_highlight_team(
+                f"  {g['label']} ({g['home']} vs {g['away']}): {winner} wins, {score}", highlight))
+        if shown:
+            last_shown = shown[-1]["result"]
+        pos += len(shown)
+
+    # Same "one more chance at the last game's box score" fix as the
+    # season/series replays -- the game that just decided a seed is
+    # exactly the one someone wants to look back at.
+    while True:
+        raw = _prompt("  b=box score of the last game, or press Enter to continue: ").strip().lower()
+        if raw in ("b", "box"):
+            print_box_score(last_shown, highlight)
+            continue
+        if raw == "":
+            break
+        print("  Please enter 'b' or press Enter to continue.")
+    print()
 
 
 def _replay_playoff_series(series: dict, matchup_label: str, final_line: str, highlight: Optional[str]) -> None:
@@ -875,6 +959,15 @@ def _replay_playoff_series(series: dict, matchup_label: str, final_line: str, hi
     # producing a running record that couldn't even reach the real
     # final score (caught by testing: a 4-2 series showing as 3-3).
     report_team = highlight if highlight in (series["winner"], series["loser"]) else series["winner"]
+    # The MAXIMUM the series could go (best-of-7 -> 7, or best-of-5 for
+    # a pre-2003 first round -- see playoffs.simulate_series), NOT
+    # len(game_log) -- game_log only holds the games actually played,
+    # so a series that ended 4-1 has exactly 5 entries in it, and
+    # showing "Game 1 of 5" before game 1 even airs spoils that the
+    # series won't go past 5 (reported directly). Falls back to
+    # len(game_log) only if an older in-memory series somehow lacks
+    # "best_of" (shouldn't happen -- simulate_series always sets it).
+    max_games = series.get("best_of", len(game_log))
 
     pos = 0
     wins = losses = 0
@@ -885,7 +978,7 @@ def _replay_playoff_series(series: dict, matchup_label: str, final_line: str, hi
         upcoming_opp = upcoming.away_team if upcoming_is_home else upcoming.home_team
         vs_at = "vs" if upcoming_is_home else "@ "
         print()
-        print(f"  {_style('NEXT', 'bold', 'yellow')}   Game {pos + 1} of {len(game_log)}   "
+        print(f"  {_style('NEXT', 'bold', 'yellow')}   Game {pos + 1} of {max_games}   "
               f"{vs_at} {upcoming_opp:<26} ({wins}-{losses})")
 
         options = "Enter=sim this game, e=sim to the end of the series"
@@ -921,6 +1014,20 @@ def _replay_playoff_series(series: dict, matchup_label: str, final_line: str, hi
         if shown:
             last_shown = shown[-1]
         pos += len(shown)
+
+    # Same "one more chance at the last game's box score" fix as
+    # run_team_game_log_replay -- the clinching game of a series is
+    # exactly the one someone wants to look back at, and the while
+    # loop above used to end the instant it was shown, skipping
+    # straight to the final series line with no way back.
+    while True:
+        raw = _prompt("  b=box score of the last game, or press Enter to continue: ").strip().lower()
+        if raw in ("b", "box"):
+            print_box_score(last_shown, highlight)
+            continue
+        if raw == "":
+            break
+        print("  Please enter 'b' or press Enter to continue.")
 
     print()
     print(_format_playoff_line(final_line, highlight))
@@ -1463,6 +1570,29 @@ def _series_for_line(line: str, series_list: List[dict]) -> Optional[dict]:
     return None
 
 
+def _ask_and_show_series(matchup_label: str, series: dict, final_line: str, highlight: Optional[str]) -> None:
+    """
+    For a series the followed team ISN'T playing in (every other
+    series in a round, and the Finals whenever it's not asked for
+    unconditionally): asks BEFORE anything is revealed whether to
+    watch it game by game (box scores included) or just see the final
+    result.
+
+    This replaces printing the result INSTANTLY and only THEN offering
+    game-by-game detail -- that order already spoiled the outcome
+    before the offer to see more even appeared (reported directly:
+    "you have to give them the option to, not sim and then ask").
+    """
+    watch = _prompt(
+        f"  {matchup_label}: 'g' to watch game by game (box scores), "
+        f"or press Enter to just see the result: "
+    ).strip().lower()
+    if watch in ("g", "game", "gamebygame"):
+        _replay_playoff_series(series, matchup_label, final_line, highlight)
+    else:
+        print(_format_playoff_line(final_line, highlight))
+
+
 def _print_conference_bracket(conf_result: dict, abbrev: Dict[str, str], highlight: Optional[str] = None) -> None:
     """One conference's play-in, then each round in turn -- paused
     BETWEEN every stage (not just between conferences, see
@@ -1474,18 +1604,34 @@ def _print_conference_bracket(conf_result: dict, abbrev: Dict[str, str], highlig
     upfront would either be blank or spoil rounds not revealed yet.
 
     Whichever series the followed team is actually playing in gets
-    replayed game by game (_replay_playoff_series) instead of just
-    printing its final score line -- every OTHER series in the same
-    round still prints instantly, same "scoped to your team" rule as
-    the regular-season replay above."""
+    replayed game by game (_replay_playoff_series) automatically.
+    Every OTHER series in the round is asked about FIRST, before
+    anything is revealed (_ask_and_show_series) -- watch it game by
+    game, or just see the result -- rather than printing the result
+    instantly and only THEN offering more detail, which already
+    spoiled the outcome before that offer even appeared (reported
+    directly).
+
+    The play-in works the same way: asked about up front, whether or
+    not the followed team is actually in it (per the user -- it used
+    to just print, with no way to watch it or see a box score at all,
+    regardless of who was in it)."""
     # No header at all for a season that had no play-in (every season
     # before 2019-20 -- see playoffs.playoff_format). Printing an empty
     # "Play-In Tournament" heading implied a round that never existed.
     if conf_result["play_in_log"]:
         print()
         print(_style(f"-- {conf_result['conference']} Play-In Tournament --", "bold"))
-        for line in conf_result["play_in_log"]:
-            print(_format_play_in_line(line, highlight))
+        play_in_games = conf_result.get("play_in_games") or []
+        watch = play_in_games and _prompt(
+            "'g' to watch the play-in game by game (box scores included), "
+            "or press Enter to just see the results: "
+        ).strip().lower() in ("g", "game", "gamebygame")
+        if watch:
+            _replay_play_in(play_in_games, highlight)
+        else:
+            for line in conf_result["play_in_log"]:
+                print(_format_play_in_line(line, highlight))
 
     tree = conf_result["tree"]
     # Lined up with round_logs in [round1, round2, round3] order --
@@ -1500,9 +1646,11 @@ def _print_conference_bracket(conf_result: dict, abbrev: Dict[str, str], highlig
         print(_style(header, "bold"))
         for line in series_lines:
             series = _series_for_line(line, series_list)
+            matchup_label, _, _ = line.partition(":")
             if series and highlight in (series["winner"], series["loser"]):
-                matchup_label, _, _ = line.partition(":")
                 _replay_playoff_series(series, matchup_label.strip(), line, highlight)
+            elif series:
+                _ask_and_show_series(matchup_label.strip(), series, line, highlight)
             else:
                 print(_format_playoff_line(line, highlight))
 
@@ -1694,23 +1842,23 @@ def print_playoffs(result: dict, abbrev: Dict[str, str], highlight: Optional[str
     _prompt("Press Enter to see the NBA Finals...")
 
     finals = result["finals"]
-    print()
-    print(SECTION)
-    print(_style("-- NBA FINALS --", "bold"))
-    print(_highlight_team(f"  {result['east']['champion']} vs {result['west']['champion']}", highlight))
+    finals_label = f"{result['east']['champion']} vs {result['west']['champion']}"
     final_line = (
         f"  {finals['winner']} def. {finals['loser']}, "
         f"{finals['wins'][finals['winner']]}-{finals['wins'][finals['loser']]}"
     )
-    # Same "your team's series gets replayed game by game" rule as every
-    # conference round (see _print_conference_bracket) -- the Finals is
-    # just as much "the playoffs" as any earlier round, so it shouldn't
-    # be the one series that's always instant regardless of who's in it.
-    if highlight in (finals["winner"], finals["loser"]):
-        _replay_playoff_series(finals, f"{result['east']['champion']} vs {result['west']['champion']}",
-                                final_line, highlight)
-    else:
-        print(_format_playoff_line(final_line, highlight))
+    # Deliberately NOT auto-replayed game by game even when the
+    # followed team is playing in it, unlike every earlier round (see
+    # _print_conference_bracket) -- per the user, the Finals screen was
+    # too much all at once (champion banner, MVP, averages, AND a full
+    # forced game-by-game replay). Asked first instead (_ask_and_show_
+    # series, same as every other non-followed series), same shape
+    # either way, whether or not it's your team in it.
+    print()
+    print(SECTION)
+    print(_style("-- NBA FINALS --", "bold"))
+    print(_highlight_team(f"  {finals_label}", highlight))
+    _ask_and_show_series(finals_label, finals, final_line, highlight)
     print(SECTION)
     print()
     print(_style(f"NBA CHAMPION: {result['champion']}".center(LINE_WIDTH), "bold", "yellow"))
@@ -2167,22 +2315,25 @@ def print_season_note(season: str) -> None:
 
 def select_season(seasons: List[str]) -> Optional[str]:
     """
-    Pick which real season to play, BY NUMBER -- typing "1996-97"
-    exactly, hyphen and all, was needlessly fiddly (reported directly).
-    1 is the newest season, counting back through history.
+    Pick which real season's ROSTERS to pull from, BY NUMBER -- typing
+    "1996-97" exactly, hyphen and all, was needlessly fiddly (reported
+    directly). 1 is the newest season, counting back through history.
 
     Enter alone takes the newest, since that's what almost everyone
-    wants and what this project did before any other season was
-    playable. The season string itself is still accepted, so anyone
-    who already knows what they want can just type it.
+    wants. The season string itself is still accepted, so anyone who
+    already knows what they want can just type it.
+
+    Game Sim's ONLY caller now (History Sim moved to the richer
+    select_season_range screen) -- so the blurb only mentions real
+    rosters, not schedule/injuries/trades/playoff rules, none of which
+    apply to a single exhibition game (reported directly: that context
+    didn't make sense here).
     """
     print(DIVIDER)
     print(_style("PICK A SEASON".center(LINE_WIDTH), "bold", "cyan"))
     print(DIVIDER)
     print(f"{len(seasons)} real seasons are available, {seasons[-1]} through {seasons[0]}.")
-    print("Every one uses that season's real rosters, schedule, injuries, trades")
-    print("and playoff rules (no play-in before 2019-20; a best-of-5 first round")
-    print("before 2003).")
+    print("Every one pulls that season's real rosters.")
     print()
     # Numbered, five per line -- keeps all 30 in a compact block rather
     # than a 30-line list, while still giving every one a number to type.
@@ -2502,41 +2653,16 @@ def run_multi_season_flow(abbrev: Dict[str, str], run: List[str]) -> None:
         if _confirm("See this season's awards?"):
             if record:
                 print(f"  {_style(my_team, 'bold', 'cyan')}: {record['W']}-{record['L']}")
-            # Same one-line-per-season terseness as the record line
-            # above -- the full top-5 MVP/ROY breakdowns
-            # (print_season_mvp/roy) are still available via the 'm'
-            # pause below if wanted, not dumped into this recap.
-            sim_advanced = db.get_simulated_advanced_stats(conn, season)
-            mvp_ranked = simulated_mvp_candidates(conn, season, standings)
-            if mvp_ranked:
-                mvp_name = mvp_ranked[0][0]
-                mvp_team = sim_advanced.get(mvp_name, {}).get("team")
-                print(f"  MVP: {_style(mvp_name, 'bold')}"
-                      + ("  <-- YOUR TEAM" if mvp_team == my_team else ""))
-            roy_ranked = simulated_roy_candidates(conn, season, standings)
-            if roy_ranked:
-                roy_name = roy_ranked[0][0]
-                roy_team = sim_advanced.get(roy_name, {}).get("team")
-                print(f"  ROY: {_style(roy_name, 'bold')}"
-                      + ("  <-- YOUR TEAM" if roy_team == my_team else ""))
-            dpoy_ranked = simulated_dpoy_candidates(conn, season)
-            if dpoy_ranked:
-                dpoy_name = dpoy_ranked[0][0]
-                dpoy_team = sim_advanced.get(dpoy_name, {}).get("team")
-                print(f"  DPOY: {_style(dpoy_name, 'bold')}"
-                      + ("  <-- YOUR TEAM" if dpoy_team == my_team else ""))
-            mip_ranked = simulated_mip_candidates(conn, season)
-            if mip_ranked:
-                mip_name = mip_ranked[0][0]
-                mip_team = sim_advanced.get(mip_name, {}).get("team")
-                print(f"  MIP: {_style(mip_name, 'bold')}"
-                      + ("  <-- YOUR TEAM" if mip_team == my_team else ""))
-            coy_ranked = simulated_coy_candidates(conn, season, standings)
-            if coy_ranked:
-                coy_name = coy_ranked[0][0]
-                coy_team = {coach: team for team, coach in load_team_coaches(season).items() if coach}.get(coy_name)
-                print(f"  COY: {_style(coy_name, 'bold')}"
-                      + ("  <-- YOUR TEAM" if coy_team == my_team else ""))
+            # Full top-5 for every award, straight away -- per the
+            # user, this shouldn't be a terse one-line-per-award recap
+            # with the real breakdown only reachable as a SEPARATE 'm'
+            # step afterward. Saying yes here means seeing them, not
+            # just being told who won.
+            print_season_mvp(conn, season, standings, highlight=my_team)
+            print_season_roy(conn, season, standings, highlight=my_team)
+            print_season_dpoy(conn, season, standings, highlight=my_team)
+            print_season_mip(conn, season, standings, highlight=my_team)
+            print_season_coy(conn, season, standings, highlight=my_team)
 
         is_last = index == len(run) - 1
         # Pause with the usual "show me more" options -- this used to
@@ -2559,18 +2685,12 @@ def run_multi_season_flow(abbrev: Dict[str, str], run: List[str]) -> None:
             next_label = "e=stop here" if is_last else "e=stop here"
             cmd = _prompt(f"  {'Enter=finish' if is_last else 'Enter=next season'}, "
                           f"s=standings, b=bracket (game by game, box scores), "
-                          f"m=awards, {next_label}: ").strip().lower()
+                          f"{next_label}: ").strip().lower()
             if cmd == "s":
                 print_standings_by_conference(standings, teams, highlight=my_team)
             elif cmd == "b":
                 print_playoffs(playoff_result, abbrev, highlight=my_team)
                 viewed_playoffs = True
-            elif cmd == "m":
-                print_season_mvp(conn, season, standings, highlight=my_team)
-                print_season_roy(conn, season, standings, highlight=my_team)
-                print_season_dpoy(conn, season, standings, highlight=my_team)
-                print_season_mip(conn, season, standings, highlight=my_team)
-                print_season_coy(conn, season, standings, highlight=my_team)
             elif cmd == "e":
                 _print_dynasty_summary(history, my_team)
                 return
@@ -2579,12 +2699,19 @@ def run_multi_season_flow(abbrev: Dict[str, str], run: List[str]) -> None:
             elif cmd == "":
                 break
             else:
-                print("  Please enter 's', 'b', 'm', 'e', or press Enter once you've seen the playoffs.")
+                print("  Please enter 's', 'b', 'e', or press Enter once you've seen the playoffs.")
 
         if not is_last:
             # Follow the franchise across a rename into the next season.
             next_season = run[index + 1]
-            diff = diff_seasons(season, next_season)
+            # THIS run's own simulated PPG for the season just played --
+            # per the user, a departing/traded player's "notable"-ness
+            # should be judged by what happened in the sim, not his real
+            # career averages. Read from `conn` BEFORE the next loop
+            # iteration's simulate_season(fresh=True) wipes it -- this
+            # is the one and only point where it's both available and
+            # still accurate for `season`.
+            diff = diff_seasons(season, next_season, sim_ppg_a=db.get_simulated_player_ppg(conn, season))
             next_team = franchise_map(season, next_season).get(my_team, my_team)
             _offseason_report(diff, my_team, next_team,
                               team_names=sorted(load_teams(next_season)))

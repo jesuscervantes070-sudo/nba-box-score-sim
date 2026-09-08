@@ -283,6 +283,31 @@ def get_game_box_score(conn: sqlite3.Connection, game_id: str) -> Optional[GameR
                        overtime_periods=overtime_periods)
 
 
+def get_simulated_player_ppg(conn: sqlite3.Connection, season: str) -> Dict[str, float]:
+    """
+    Every player's simulated points-per-game for `season`, in one query
+    -- built for main.py's offseason report, which per the user should
+    judge a departing/traded player's "notable"-ness by what actually
+    happened in THIS RUN'S OWN simulated season, not his real one (a
+    real bench player can have a monster simulated year, and a real
+    star can have a quiet one). Only meaningful for the season most
+    recently simulated -- season.db is fully wiped every time a new
+    one is (see season.simulate_season's fresh=True), so this only
+    ever has something to say about the season a caller JUST played,
+    not one further back.
+    """
+    rows = conn.execute(
+        "SELECT p.player_name, COUNT(*), SUM(p.fgm), SUM(p.fg3m), SUM(p.ftm) "
+        "FROM player_game_stats p JOIN games g ON p.game_id = g.game_id "
+        "WHERE g.season = ? GROUP BY p.player_name",
+        (season,),
+    ).fetchall()
+    return {
+        name: (2 * (fgm - fg3m) + 3 * fg3m + ftm) / gp
+        for name, gp, fgm, fg3m, ftm in rows if gp
+    }
+
+
 def get_player_season_averages(conn: sqlite3.Connection, player_name: str, season: Optional[str] = None) -> dict:
     """
     Averages a player's SIMULATED games this season (only games they
