@@ -423,8 +423,13 @@ def select_game_mode() -> Optional[str]:
         mode = GAME_MODES[int(choice) - 1]
         if mode["playable"]:
             return mode["name"]
-        print(f"\n{mode['name']} isn't built yet -- History Sim is the only mode you can play "
-              f"right now.\n")
+        # Named dynamically from GAME_MODES, not hardcoded to "History
+        # Sim" -- that hardcoded version silently went stale and lied
+        # the moment Game Sim became playable too (reported directly).
+        playable = [m["name"] for m in GAME_MODES if m["playable"]]
+        print(f"\n{mode['name']} isn't built yet -- {' and '.join(playable)} "
+              f"{'is' if len(playable) == 1 else 'are'} the only mode{'' if len(playable) == 1 else 's'} "
+              f"you can play right now.\n")
 
 
 def print_team_list(team_names: List[str]) -> None:
