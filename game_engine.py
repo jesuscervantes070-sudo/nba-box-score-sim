@@ -201,9 +201,9 @@ _rng = np.random.default_rng()
 # only _simulate_fouls and the standalone simulate_player_game read it.
 # It does NOT control how streaky a player's SCORING is in a real
 # simulated game -- shot volume comes from _dirichlet_multinomial_split
-# with USAGE_CONCENTRATION / _scoring_concentrations instead. A note in
-# CLAUDE.md claimed otherwise for a long time and sent a round of
-# consistency work at the wrong constant.
+# with USAGE_CONCENTRATION / _scoring_concentrations instead. This was
+# misattributed for a long time and sent a round of player-consistency
+# work at the wrong constant before being traced back here.
 DISPERSION = 30
 
 # A real NBA player is disqualified the moment they reach 6 personal

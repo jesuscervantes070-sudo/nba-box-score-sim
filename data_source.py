@@ -914,7 +914,7 @@ def fetch_player_absence_stints(df, rosters: dict, schedule_games: list) -> dict
     real games all season (e.g. a real season-long Achilles tear) isn't
     covered by this at all -- they have no stat line to measure a rate
     from, and are already excluded from the whole player pool by the
-    existing "no real stat line" rule (see CLAUDE.md).
+    existing "no real stat line" rule.
 
     `df` is the already-fetched, already team-name-fixed league game log
     from _fetch_normalized_game_log -- passed in rather than fetched here

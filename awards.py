@@ -3,7 +3,8 @@ Season awards -- MVP first, with DPOY/ROY/MIP (and maybe Coach of the
 Year) to follow the same pattern.
 
 The core idea: one scoring FORMULA per award, built from real
-basketball logic (see the design discussion in CLAUDE.md), applied to
+basketball logic (see ACCURACY.md for the formulas and backtest
+numbers), applied to
 whichever set of per-player stats it's handed -- REAL season stats (to
 backtest the formula against who actually won, and to calibrate its
 weights) or SIMULATED season stats (to award the followed sim run).
@@ -140,7 +141,7 @@ ROY_MIN_MPG = 15.0
 
 # Starting point -- NOT yet tuned; see backtest_roy.py. Reuses the
 # MVP formula's SHAPE (this whole award was built on the idea "MVP's
-# formula, just restricted to rookies" -- see CLAUDE.md), but team
+# formula, just restricted to rookies"), but team
 # win_pct is zeroed out here since real ROY voting doesn't require a
 # good team at all (plenty of ROY winners come from lottery teams) --
 # left for the sweep to confirm or overrule, not assumed permanent.
@@ -355,7 +356,7 @@ def _team_win_pct_or_league_average(win_pct: Dict[str, float], team: Optional[st
     The proper fix is to carry each player's real team on
     player_advanced.json itself (the source dataframe has
     TEAM_ABBREVIATION; this project just never cached it), which would
-    also let DPOY stop silently excluding these players -- see CLAUDE.md.
+    also let DPOY stop silently excluding these players. Not yet done.
     """
     if team and team in win_pct:
         return win_pct[team]
@@ -432,8 +433,7 @@ def _previous_season(season: str) -> str:
 
 
 # =====================================================================
-# ROY -- literally the MVP formula, restricted to real rookies (this
-# whole award's design, per CLAUDE.md's discussion).
+# ROY -- literally the MVP formula, restricted to real rookies.
 # =====================================================================
 
 _debut_season_cache: Optional[Dict[str, str]] = None
@@ -446,10 +446,9 @@ def _debut_seasons() -> Dict[str, str]:
     the same "compare real game-log evidence across seasons" method
     offseason.py already uses to spot a real "new to the league"
     arrival, just built once here for every player rather than diffed
-    season-to-season. 1996-97 is a real, unavoidable floor (see
-    CLAUDE.md): a player who already has a stat line THERE looks like a
-    debut with no way to check further back, since this project's data
-    source has nothing before it either.
+    season-to-season. 1996-97 is a real, unavoidable floor -- the
+    stats API has nothing before it -- so a player who already has a
+    stat line THERE looks like a debut with no way to check further back.
 
     Memoized at module level -- this scans all 30 seasons' cached
     files, real work worth doing once, not once per candidate lookup.
