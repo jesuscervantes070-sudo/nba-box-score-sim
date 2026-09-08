@@ -83,7 +83,7 @@ holdout got re-checked across 8 successive tuning passes as the
 project evolved, and a holdout you keep looking at and reacting to
 stops being a clean, never-seen test after the first look. The current
 5.31 is honestly closer to a validation number by this point than a
-claim about brand-new unseen data. Credit to Reddit's **u/shaggy_camel**
+claim about brand-new unseen data. Credit to Reddit's **u/Bright_Mix_773**
 for reading the raw files in `benchmarks/` and `sweeps/` and catching
 this instead of taking this README's word for it — exactly the kind of
 feedback this project was posted to get.
