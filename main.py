@@ -2485,8 +2485,9 @@ def _offseason_report(diff: dict, team_name: str, next_team_name: str,
 # One real, short headline per season -- the mockup's "what happened
 # that year" column on the season-pick screen. These are recalled real
 # NBA facts, NOT verified against a live API the way every stat this
-# project actually simulates with is (see CLAUDE.md's ground-truth
-# rules for MVP/ROY/etc.) -- they're flavor text on a picker screen,
+# project actually simulates with is (see ACCURACY.md's "Season
+# awards" section for how MVP/ROY/etc. ground truth IS verified) --
+# they're flavor text on a picker screen,
 # not an input to anything computed, so the cost of being wrong is
 # "looks silly," not "breaks a number." Flag any that are wrong and
 # they get fixed on the spot, same as TEAM_DIVISIONS/TRADE_DEADLINE_

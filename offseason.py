@@ -14,7 +14,7 @@ decides free agency. What that buys is that every season stays as
 accurate as it was on its own; what it costs is that a simulated 1997
 champion can't change who's on which roster in 1998. Simulating the
 offseason itself (progression, contracts, AI decisions) is a much
-bigger, separate project -- see CLAUDE.md's Deferred list.
+bigger, separate project -- see ACCURACY.md's "Known limitations".
 
 Everything here is DERIVED from the two seasons' real cached rosters,
 including which teams are the same franchise after a rename -- see
