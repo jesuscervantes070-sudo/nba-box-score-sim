@@ -118,6 +118,10 @@ python data_source.py --season 2015-16
 
 `main.py` will list every season you've fetched and let you pick.
 
+## License
+
+MIT — see [LICENSE](LICENSE).
+
 ## Status
 
 This is a solo hobby project, actively worked on. History Sim and Game
