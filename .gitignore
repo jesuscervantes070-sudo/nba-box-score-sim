@@ -8,3 +8,10 @@ __pycache__/
 
 # macOS Finder metadata file that can end up in random folders.
 .DS_Store
+
+# Outreach copy for the user (Reddit/HN post drafts, comment-reply
+# drafts) -- not project documentation, deliberately kept out of the
+# shipped codebase. A pattern, not a growing list of exact filenames,
+# since there'll be more of these.
+docs/post_draft*.md
+docs/reply_to_*.md
