@@ -295,12 +295,17 @@ def seed_conference(conn, season: str, standings: List[dict], teams: Dict[str, T
     return ordered[:10]
 
 
-def _play_one_game(home: str, away: str, teams: Dict[str, Team], league_avg: LeagueAverages) -> Tuple[str, str]:
-    """Simulates one game, returns (winner, loser) by name."""
+def _play_one_game(home: str, away: str, teams: Dict[str, Team],
+                    league_avg: LeagueAverages) -> Tuple[str, str, GameResult]:
+    """Simulates one game, returns (winner, loser, the full GameResult)
+    -- the GameResult is kept (not discarded, as it used to be) so a
+    play-in game can still show its box score later, same as any
+    series game already can (reported directly: there was no way to
+    see one)."""
     result = simulate_game(teams[home], teams[away], league_avg)
     if result.home_score > result.away_score:
-        return home, away
-    return away, home
+        return home, away, result
+    return away, home, result
 
 
 def run_play_in(seeded10: List[str], teams: Dict[str, Team], league_avg: LeagueAverages,
@@ -327,15 +332,20 @@ def run_play_in(seeded10: List[str], teams: Dict[str, Team], league_avg: LeagueA
               7-seed team (still the better regular-season record of
               the two) -- winner takes the 8 seed.
 
-    Returns the final 7 and 8 seeds plus a plain-text log of what
-    happened, so main.py can print it without re-deriving any of this.
+    Returns the final 7 and 8 seeds, a plain-text log of what happened,
+    and (new) "games": [{"label", "home", "away", "result"}] -- every
+    actual game played, in order, each carrying its full GameResult so
+    a box score can still be pulled up later (see main.py's play-in
+    display) -- there used to be no way to, since _play_one_game threw
+    the GameResult away the instant it read off the winner.
     """
     seed7, seed8, seed9, seed10 = seeded10[6], seeded10[7], seeded10[8], seeded10[9]
     log = []
+    games = []
 
     if mode == "none":
         # No play-in existed. Seeds 7 and 8 go straight through.
-        return {"seed_7": seed7, "seed_8": seed8, "log": []}
+        return {"seed_7": seed7, "seed_8": seed8, "log": [], "games": []}
 
     if mode == "bubble":
         wins = wins or {}
@@ -343,29 +353,34 @@ def run_play_in(seeded10: List[str], teams: Dict[str, Team], league_avg: LeagueA
         if games_back > BUBBLE_PLAY_IN_MAX_GAMES_BACK:
             log.append(f"  No play-in: {seed9} finished more than "
                        f"{BUBBLE_PLAY_IN_MAX_GAMES_BACK} games behind {seed8}.")
-            return {"seed_7": seed7, "seed_8": seed8, "log": log}
+            return {"seed_7": seed7, "seed_8": seed8, "log": log, "games": games}
         # The 8th seed needs one win, the 9th needs two.
         log.append(f"  Play-in for the 8 seed: {seed9} must beat {seed8} twice.")
-        g1_winner, _ = _play_one_game(seed8, seed9, teams, league_avg)
+        g1_winner, _, g1_result = _play_one_game(seed8, seed9, teams, league_avg)
         log.append(f"  Game 1 ({seed8} vs {seed9}): {g1_winner} wins")
+        games.append({"label": "Game 1", "home": seed8, "away": seed9, "result": g1_result})
         if g1_winner == seed8:
             log.append(f"  {seed8} holds the 8 seed; {seed9} eliminated")
-            return {"seed_7": seed7, "seed_8": seed8, "log": log}
-        g2_winner, g2_loser = _play_one_game(seed8, seed9, teams, league_avg)
+            return {"seed_7": seed7, "seed_8": seed8, "log": log, "games": games}
+        g2_winner, g2_loser, g2_result = _play_one_game(seed8, seed9, teams, league_avg)
         log.append(f"  Game 2 ({seed8} vs {seed9}): {g2_winner} wins, takes the 8 seed; "
                    f"{g2_loser} eliminated")
-        return {"seed_7": seed7, "seed_8": g2_winner, "log": log}
+        games.append({"label": "Game 2", "home": seed8, "away": seed9, "result": g2_result})
+        return {"seed_7": seed7, "seed_8": g2_winner, "log": log, "games": games}
 
-    g1_winner, g1_loser = _play_one_game(seed7, seed8, teams, league_avg)
+    g1_winner, g1_loser, g1_result = _play_one_game(seed7, seed8, teams, league_avg)
     log.append(f"  Game 1 (7 vs 8): {seed7} vs {seed8} -> {g1_winner} wins, becomes the 7 seed")
+    games.append({"label": "Game 1 (7 vs 8)", "home": seed7, "away": seed8, "result": g1_result})
 
-    g2_winner, g2_loser = _play_one_game(seed9, seed10, teams, league_avg)
+    g2_winner, g2_loser, g2_result = _play_one_game(seed9, seed10, teams, league_avg)
     log.append(f"  Game 2 (9 vs 10): {seed9} vs {seed10} -> {g2_winner} wins, advances; {g2_loser} eliminated")
+    games.append({"label": "Game 2 (9 vs 10)", "home": seed9, "away": seed10, "result": g2_result})
 
-    g3_winner, g3_loser = _play_one_game(g1_loser, g2_winner, teams, league_avg)
+    g3_winner, g3_loser, g3_result = _play_one_game(g1_loser, g2_winner, teams, league_avg)
     log.append(f"  Game 3 ({g1_loser} vs {g2_winner}): {g3_winner} wins, becomes the 8 seed; {g3_loser} eliminated")
+    games.append({"label": "Game 3", "home": g1_loser, "away": g2_winner, "result": g3_result})
 
-    return {"seed_7": g1_winner, "seed_8": g3_winner, "log": log}
+    return {"seed_7": g1_winner, "seed_8": g3_winner, "log": log, "games": games}
 
 
 def simulate_series(favored: Seed, underdog: Seed, teams: Dict[str, Team],
@@ -414,6 +429,13 @@ def simulate_series(favored: Seed, underdog: Seed, teams: Dict[str, Team],
     return {
         "winner": winner, "winner_seed": winner_seed, "loser": loser,
         "wins": dict(wins), "game_log": game_log,
+        # The MAXIMUM this series could have gone, not len(game_log) --
+        # a series that ends 4-1 only has 5 games in game_log, and a
+        # replay showing "Game 1 of 5" up front spoils that the series
+        # won't go past 5 before a single game has even been shown
+        # (reported directly). best_of is the honest "how many could
+        # this series need," known before anything is simulated.
+        "best_of": best_of,
     }
 
 
@@ -552,6 +574,7 @@ def run_conference_bracket(conference: str, seeded10: List[str], teams: Dict[str
     return {
         "conference": conference,
         "play_in_log": play_in["log"],
+        "play_in_games": play_in["games"],
         "round_logs": round_logs,
         "tree": tree,
         "champion": conf_finals["winner"],
