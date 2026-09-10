@@ -89,6 +89,17 @@ AHEAD_OF_BALL = "AHEAD_OF_BALL"    # closer to the (new) defended rim than the b
 BEHIND_BALL = "BEHIND_BALL"        # farther from the defended rim than the ball -- caught upcourt (e.g. a crashing rebounder)
 NEAR_BALL = "NEAR_BALL"            # same coarse rank as the ball
 
+# IMPORTANT CALLER CONVENTION (a real, non-obvious point -- get this
+# wrong and every relational tag inverts): zone labels in this module,
+# same as everywhere else in this project, are relative to the NEW
+# OFFENSE's OWN attacking rim, not to "wherever the ball physically
+# changed hands." For a defensive rebound secured at the SHOOTING
+# team's basket, the new offense's own `ball_zone` should normally be
+# supplied as `BACKCOURT` (far from THEIR attacking rim, which is the
+# other end) -- NOT `RESTRICTED_RIM` (that would describe the ball as
+# already being at the new offense's attacking basket, which is
+# physically wrong immediately after a rebound at the other end).
+
 
 def relational_tag(player_zone: SpatialZone, ball_zone: SpatialZone) -> str:
     player_rank = _RIM_DISTANCE_RANK.get(player_zone, 3)
