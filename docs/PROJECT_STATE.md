@@ -6,7 +6,8 @@
 2. Read this file (`docs/PROJECT_STATE.md`) in full.
 3. Read the report for the most recently completed phase (see §M, the
    report index, for the exact filename — as of this writing that's
-   `docs/PHASE12A_ANTHROPOMETRICS_REPORT.md` — see §L for what's next).
+   `docs/PHASE23A_AUTONOMOUS_POSSESSION_KERNEL_REPORT.md`), then read
+   `docs/SIMULATION_ENGINE_ARCHITECTURE.md` before engine work.
 4. Run `git status` and compare against §M/§L below; if anything
    disagrees, **trust the repo, not this document**, and say so.
 5. Run the test suite (`python3 -m unittest discover -p "test_*.py"`)
@@ -26,10 +27,14 @@ A long-horizon, generative MyNBA-like NBA world simulator. Real
 historical data trains/validates latent player state; history informs
 **probabilistically**, not deterministically (a 2016-17 Warriors box
 score is evidence about that season's players' latent abilities, not a
-script to replay). The existing playable product (`README.md`) is a
-separate, legacy box-score replay simulator — the ability/tendency/
-physical work described below is offline research feeding a **future**
-possession-level engine, not yet integrated with the legacy sim.
+script to replay). The project intentionally has an asymmetric dual-
+engine architecture: the detailed possession engine is the authoritative
+causal path for future watched/tactical/play-by-play/generative games;
+`game_engine.py` remains a supported fast aggregate approximation for
+season and multi-season simulation, benchmarks, and legacy behavior.
+They share one player truth and must not fork identity, abilities,
+tendencies, roles, physical traits, provenance, or temporal cutoffs. See
+`docs/SIMULATION_ENGINE_ARCHITECTURE.md` for the binding doctrine.
 
 ## B. Layered architecture (top to bottom, causal order)
 
@@ -40,11 +45,15 @@ possession-level engine, not yet integrated with the legacy sim.
 3. **Player tendencies** — separate `PlayerTendencyProfile`-style layer
    (see §E). "Prefers/attempts," relative to contemporaneous league
    environment.
-4. **Lineup roles / team system** — not built yet (Phase 13 candidate).
-5. **Possession mechanics** — not built yet. Physicals + abilities +
-   tendencies + role/system will jointly resolve a possession; no
-   component directly shortcuts into another's job (e.g. a tendency must
-   never directly raise a shooting percentage).
+4. **Lineup roles / team system** — the Phase 13 offensive role profile
+   and defensive deployment axis are built; broader team system and
+   coaching layers are not.
+5. **Possession mechanics** — Phases 15-23A provide the event/state
+   kernel, action pipeline, core resolution primitives, and autonomous
+   single-possession orchestration. Physicals + abilities + tendencies +
+   role/system jointly resolve a possession; no component shortcuts into
+   another's job (e.g. a tendency must never directly raise a shooting
+   percentage).
 6. **Observed stats / evidence** — real box scores, tracking data, PBP —
    the training/validation signal for layers 1-3, never the target
    itself.
@@ -277,6 +286,43 @@ while `PlayerPhysicalProfile` is keyed by `player_id`, and no
 name↔player_id crosswalk exists yet in this repo. Do NOT re-ingest
 anthropometrics data — all of it is already cached.
 
+**Phase 13 — Role Inference (COMPLETE)**: added a stable-identity,
+non-archetypal `PlayerRoleProfile`, offensive responsibility signals,
+and a defensive deployment axis. Role is contextual responsibility, not
+ability or tendency; the profile is intentionally non-compositional and
+does not force players into fixed archetypes.
+
+**Phase 14 — Stable Identity Integration (COMPLETE)**: established real
+`player_id` as the engine-facing identity boundary and populated it
+through the player-profile path. Name resolution remains an ingestion/
+legacy bridge, not an acceptable identity inside possession mechanics.
+
+**Phases 15-16 — Possession Kernel + Action Pipeline (COMPLETE)**:
+introduced live possession/ball/defensive/advantage state, era rules, an
+event log, and the opportunity → perception → selection pipeline. The
+pipeline keeps objective world opportunity, player perception, tendency,
+role, and clock context separate; selection does not read hidden player
+truth through a belief shortcut.
+
+**Phases 17A-22A — Resolution Primitives (COMPLETE)**: added explicit
+drive, pass, perimeter/interior shot, shooting-contact/free-throw,
+rebound, transition-state/offense, on-ball pressure, floor-foul, and
+off-ball-screen resolution. Gates remain structural: a resolver handles
+an already selected eligible action, rebound ability is read only after
+a real opportunity exists, and subsystem results update the same live
+possession world rather than inventing parallel state.
+
+**Phase 23A — Autonomous Single-Possession Kernel (COMPLETE)**:
+`simulate_possession(...)` now owns one complete 5v5 possession from
+initialization through a typed terminal result, dispatching the existing
+Phase 15-22A components without callers hand-chaining them. The live
+state owns current basketball truth; the event stream owns accounting
+truth; typed terminal results own control flow. `StatDeltas` are
+provisional conveniences only, never a second authority. No legacy or
+product flow is routed through this kernel. See
+`docs/PHASE23A_AUTONOMOUS_POSSESSION_KERNEL_REPORT.md` and
+`docs/SIMULATION_ENGINE_ARCHITECTURE.md`.
+
 ## G. Verified data sources / coverage (by module)
 
 | Source (real endpoint) | Used by | Real floor / notes |
@@ -334,19 +380,28 @@ from POA outcomes. Do not retroactively residualize any existing skill
 estimator against a physical trait without new downstream
 (possession-engine-level) evidence.**
 
-## J. Major world-system architecture (provisional, mostly NOT built)
+## J. Major world-system architecture
 
 - **Development/aging**: not built. No fixed potential ceiling is to be
   assumed when it is built.
 - **Health/injury**: legacy sim has its own real injury-calendar system
   (`injuries.py`, part of the separate Codex workstream) — not the same
   system a future generative health model would use.
-- **Role/team system**: not built (Phase 13 candidate — "lineup/player
-  role inference").
-- **Possession engine**: not built. Documented conceptual sequences exist
-  per-attribute in each phase's own report (e.g. Phase 7 §"future
-  possession semantics", Phase 9's rim-access/perimeter-space sequence,
-  Phase 10's POA sequence) — read the specific report when building this.
+- **Role/team system**: the Phase 13 player-role foundation is built;
+  coaching and broader team-system models are not.
+- **Detailed possession engine**: autonomous single-possession execution
+  is built through Phase 23A. It is the authoritative causal/event-driven
+  path, but persistent multi-possession game state and a complete detailed
+  game loop are not built.
+- **Fast aggregate engine**: `game_engine.py` remains supported for
+  season/multi-season throughput, benchmarking, and legacy behavior. It
+  is an approximation and is not event-emergent. Both engines share one
+  player truth and should eventually expose compatible final game/box-
+  score outputs; calibration claims remain profile-specific and identical
+  seeded results are not required.
+- **Detailed-engine authority**: live state owns current basketball
+  state; the event stream owns accounting; typed terminal possession/game
+  results own control flow. `StatDeltas` are non-authoritative.
 - **Scouting/beliefs**: not built.
 - **Draft/contracts/trades/schedule/rules/awards**: the LEGACY sim
   already has real implementations of some of these
@@ -384,24 +439,29 @@ estimator against a physical trait without new downstream
 
 ## L. Current roadmap
 
-**COMPLETE**: Phase 12A — Anthropometrics Foundation (see §F and
-`docs/PHASE12A_ANTHROPOMETRICS_REPORT.md` for full results/methodology).
-**Deferred as an explicit small follow-up, not a new phase**: the
-diagnostic-only physical-vs-skill correlation pass, blocked on a real
-player-NAME-vs-`player_id` key mismatch between existing skill
-estimators and `PlayerPhysicalProfile` (report Sec. 12) — building a
-crosswalk is the concrete next piece of work if this is picked up.
+**COMPLETE THROUGH PHASE 23A**: empirical ability/tendency/physical
+foundations; role and stable-identity integration; the detailed
+possession state/event kernel; objective opportunity, perception, and
+selection gates; drive/pass/shot/contact/free-throw/rebound/transition/
+pressure/floor-foul/off-ball-screen resolution; and autonomous execution
+of one complete possession to a typed terminal result.
 
-**NEXT (likely)**: Phase 13 — Lineup / Player Role Inference. (The
-physical-vs-skill correlation follow-up above may be worth doing first
-if a name↔player_id crosswalk turns out to be cheap and generally
-useful — HQ's call.)
+**NEXT — Phase 23B**: chained possessions plus persistent game state.
+Preserve the authority hierarchy and dual-engine boundary in
+`docs/SIMULATION_ENGINE_ARCHITECTURE.md`. This roadmap entry intentionally
+does not prescribe the design or authorize product routing.
+
+**THEN — Phase 23C**: the minimal complete detailed game. This remains
+separate from integration into `main.py`, season/playoff/database flows,
+or replacement of the supported fast aggregate engine.
+
+**Deferred empirical follow-up**: the Phase 12A diagnostic physical-vs-
+skill correlation pass. Phase 14 removed the broad engine-facing
+identity ambiguity, but the relevant estimator datasets and joins still
+need a fresh, cutoff-safe audit before that analysis is resumed.
 
 **POSSIBLE LATER (12B)**: `vertical_pop` / `workload_capacity`, only if
 real evidence supports them — not promised.
-
-**THEN (no fixed order yet)**: role/system interfaces → possession-engine
-component calibration → a minimal game loop → development/world systems.
 
 ### Important unresolved empirical work (not yet scheduled to a specific phase)
 
@@ -436,10 +496,9 @@ component calibration → a minimal game loop → development/world systems.
 - A future "coach tactical fingerprint" (systematic team-level scheme
   effects) — named as a concept in several reports' contamination
   sections, never built.
-- Possession sub-mechanic calibration (the actual joint-resolution math
-  connecting physicals + abilities + tendencies + role into a single
-  possession outcome) — conceptual sequences only exist per-attribute so
-  far; no unified mechanic.
+- Possession sub-mechanic calibration remains incomplete even though the
+  executable causal structure now exists. Do not turn architectural
+  completion into an empirical accuracy claim.
 
 ## M. Phase report index (read the specific report for full methodology — this file only summarizes)
 
@@ -456,6 +515,22 @@ component calibration → a minimal game loop → development/world systems.
 | `docs/PHASE10_POA_DEFENSE_REPORT.md` | `poa_containment` — `leagueseasonmatchups` sourcing, steals/usage separation, scheme contamination. |
 | `docs/PHASE11_PLAYER_TENDENCIES_REPORT.md` | Tendency layer — all six candidates, era-relative representation, the `orb_crash` bug/redundancy finding. |
 | `docs/PHASE12A_ANTHROPOMETRICS_REPORT.md` | Physical traits (height/standing_reach/wingspan/mass) — source verification (combine/roster/commonplayerinfo), identity linkage, coverage, mass-staleness diagnostic, wingspan/standing_reach inference backtest, classifications. |
+| `docs/PHASE13_ROLE_INFERENCE_REPORT.md` | Non-archetypal player-role inference, natural experiments, and the role/ability/tendency boundary. |
+| `docs/PHASE14_IDENTITY_INTEGRATION_REPORT.md` | Stable `player_id` integration and sanctioned legacy name-resolution boundaries. |
+| `docs/PHASE15_POSSESSION_KERNEL_REPORT.md` | Possession state, event log, advantage model, era rules, and engine invariants. |
+| `docs/PHASE16_ACTION_SELECTION_REPORT.md` | Objective opportunity, perception, role/tendency/clock context, and action selection. |
+| `docs/PHASE17A_DRIVE_RESOLUTION_REPORT.md` | Drive resolution and interior penetration. |
+| `docs/PHASE17B_PASS_RESOLUTION_REPORT.md` | Pass-family resolution, in-flight disruption, arrival, and reception. |
+| `docs/PHASE18A_PERIMETER_SHOT_RESOLUTION_REPORT.md` | Midrange/three-point shot resolution and contest context. |
+| `docs/PHASE18B_INTERIOR_SHOT_RESOLUTION_REPORT.md` | Rim/floater resolution, geometric block eligibility, and blocks. |
+| `docs/PHASE18C_FOUL_RESOLUTION_REPORT.md` | Shooting contact, whistles, and-ones, and free-throw administration. |
+| `docs/PHASE19_REBOUND_RESOLUTION_REPORT.md` | Structural rebound opportunity, eligibility, box-outs, and resolution. |
+| `docs/PHASE20A_TRANSITION_STATE_REPORT.md` | Possession change, floor balance, and transition-state generation. |
+| `docs/PHASE20B_TRANSITION_OFFENSE_REPORT.md` | Advancement, outlets, early offense, and transition decay. |
+| `docs/PHASE21A_ON_BALL_PRESSURE_REPORT.md` | Pre-shot on-ball contact, strips, reach-ins, and collision outcomes. |
+| `docs/PHASE21B_FLOOR_FOUL_ADMINISTRATION_REPORT.md` | Personal/team-foul accounting, era-aware bonus evaluation, and floor-foul free throws. |
+| `docs/PHASE22A_OFF_BALL_SCREEN_INTERACTION_REPORT.md` | Off-ball screen world-state effects and ordinary action-pipeline handoff. |
+| `docs/PHASE23A_AUTONOMOUS_POSSESSION_KERNEL_REPORT.md` | Autonomous single-possession orchestration, terminal results, authority hierarchy, and dual-engine reconciliation. |
 
 Other `docs/` files present (`PHASE1_COUNTERFACTUAL_AUDIT.md`,
 `phase1_evidence.json`, `screenshot_*.png`) belong to the separate Codex
