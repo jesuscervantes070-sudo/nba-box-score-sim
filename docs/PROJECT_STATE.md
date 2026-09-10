@@ -449,7 +449,10 @@ of one complete possession to a typed terminal result.
 **NEXT — Phase 23B**: chained possessions plus persistent game state.
 Preserve the authority hierarchy and dual-engine boundary in
 `docs/SIMULATION_ENGINE_ARCHITECTURE.md`. This roadmap entry intentionally
-does not prescribe the design or authorize product routing.
+does not prescribe the design or authorize product routing. At a high
+level, the phase is expected to own possession alternation, persistent
+game clock/score/period state, team-foul and bonus state, possession IDs,
+transition/inbound handoff, and basic event aggregation.
 
 **THEN — Phase 23C**: the minimal complete detailed game. This remains
 separate from integration into `main.py`, season/playoff/database flows,
