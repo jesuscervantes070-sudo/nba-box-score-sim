@@ -187,6 +187,77 @@ class PossessionEngine:
         if self.state.ball_state != BallState.SHOT_IN_FLIGHT:
             raise ValueError("no shot is currently in flight to resolve")
 
+    def secure_offensive_rebound_from_loose(self, rebounder_id: str, offense_team_id: Optional[str] = None, dt: float = 0.0) -> None:
+        """Phase 19 addition -- a real, small gap: `resolve_shot_missed_offensive_rebound`
+        (above) requires `SHOT_IN_FLIGHT`, but by the time Phase 19 acts,
+        Phases 18A/18B/18C have already transitioned the ball to `LOOSE`
+        (via `resolve_shot_missed_pending_rebound`/`block_secured_by_defense`/
+        the final-missed-FT handoff). This method is the IDENTICAL real
+        logic as `resolve_shot_missed_offensive_rebound` (same SECOND_CHANCE
+        phase transition, same era-rule shot-clock reset, same advantage-
+        clearing rule), just guarded on the real state Phase 19 actually
+        receives. Not a parallel model -- the same rules, applied at the
+        correct point in the real pipeline. `offense_team_id`, if given,
+        RESTORES team possession -- several upstream LOOSE-ball
+        transitions (e.g. `block_secured_by_defense`) genuinely null
+        `offense_team_id` as "unresolved"; once an offensive rebound
+        confirms who kept it, that team id is real and known again, and
+        this is the one place it gets restored (never guessed)."""
+        _assert_player_id(rebounder_id)
+        if self.state.ball_state != BallState.LOOSE:
+            raise ValueError("no loose ball to secure as an offensive rebound")
+        old_shot_clock = self.state.shot_clock_remaining
+        self.state = self.state.with_ball_carrier(rebounder_id, BallState.HELD)
+        self.state = replace(self.state, phase=PossessionPhase.SECOND_CHANCE,
+                              shot_clock_remaining=oreb_reset_value(self.era_rules, old_shot_clock),
+                              offense_team_id=offense_team_id if offense_team_id is not None else self.state.offense_team_id)
+        self.advantage = None
+        self._log(EventType.OFFENSIVE_REBOUND, dt, primary=rebounder_id)
+
+    def secure_defensive_rebound_from_loose(self, rebounder_id: str, new_offense_team_id: str,
+                                              new_defense_team_id: str, dt: float = 0.0) -> None:
+        """Phase 19 addition -- same real logic as
+        `resolve_shot_missed_defensive_rebound`, guarded on `LOOSE`
+        instead of `SHOT_IN_FLIGHT`, and taking the real new team ids
+        directly (the caller knows them; this engine instance's own
+        `offense_team_id`/`defense_team_id` are updated in place rather
+        than requiring a brand-new `PossessionEngine`, since the
+        rebounding team's very next action -- Phase 16 selection --
+        happens on this SAME engine)."""
+        _assert_player_id(rebounder_id)
+        if self.state.ball_state != BallState.LOOSE:
+            raise ValueError("no loose ball to secure as a defensive rebound")
+        self.state = self.state.with_ball_carrier(rebounder_id, BallState.HELD)
+        self.state = replace(self.state, phase=PossessionPhase.TRANSITION,
+                              offense_team_id=new_offense_team_id, defense_team_id=new_defense_team_id)
+        self._log(EventType.DEFENSIVE_REBOUND, dt, primary=rebounder_id)
+
+    def credit_team_rebound(self, rebounding_side: str, new_offense_team_id: Optional[str] = None,
+                              new_defense_team_id: Optional[str] = None, dt: float = 0.0) -> None:
+        """A team rebound -- no individual player secures it (e.g. the
+        ball goes out of bounds off the miss). `rebounding_side` is
+        `"OFFENSE"` (a real offensive team rebound: SECOND_CHANCE, same
+        era-rule shot-clock handling as an individual OREB, no
+        individual carrier, current team ids unchanged) or `"DEFENSE"`
+        (possession flips to the real new team ids the caller supplies
+        -- this engine doesn't know team rosters, same convention as
+        every other terminal method in this class)."""
+        if self.state.ball_state != BallState.LOOSE:
+            raise ValueError("no loose ball to credit as a team rebound")
+        if rebounding_side == "OFFENSE":
+            old_shot_clock = self.state.shot_clock_remaining
+            self.state = replace(self.state, ball_state=BallState.DEAD, ball_carrier=None, ball_control=None,
+                                  phase=PossessionPhase.SECOND_CHANCE,
+                                  shot_clock_remaining=oreb_reset_value(self.era_rules, old_shot_clock))
+            self.advantage = None
+        elif rebounding_side == "DEFENSE":
+            self.state = replace(self.state, ball_state=BallState.DEAD, ball_carrier=None, ball_control=None,
+                                  phase=PossessionPhase.DEAD_BALL,
+                                  offense_team_id=new_offense_team_id, defense_team_id=new_defense_team_id)
+        else:
+            raise ValueError(f"rebounding_side must be 'OFFENSE' or 'DEFENSE', got {rebounding_side!r}")
+        self._log(EventType.OUT_OF_BOUNDS, dt)
+
     # --------------------------- fouls ---------------------------
 
     def shooting_foul(self, shooter_id: str, fouler_id: str, dt: float = 0.0) -> None:
