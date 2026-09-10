@@ -144,6 +144,22 @@ class PossessionEngine:
         self._log(EventType.SHOT_RESOLVED, dt, primary=shooter_id, meta={"made": False})
         self._log(EventType.DEFENSIVE_REBOUND, 0.0, primary=rebounder_id)
 
+    def resolve_shot_missed_pending_rebound(self, shooter_id: str, dt: float = 0.0) -> None:
+        """Phase 18A addition -- a real, small gap: a shot-resolution
+        phase (18A) that must NOT select a rebound winner needs a way to
+        represent "missed, ball now loose, rebound outcome deliberately
+        left to a future phase" -- neither existing miss method fits,
+        since both already require a real `rebounder_id`. Ball becomes
+        `LOOSE` and `offense_team_id` genuinely unresolved, same
+        convention as Phase 15's own `block_secured_by_defense` and
+        Phase 17B's `DEFLECTED_LOOSE_BALL` handling -- reused, not
+        reinvented. Purely additive; every other method is unchanged."""
+        _assert_player_id(shooter_id)
+        self._require_shot_in_flight()
+        self.state = replace(self.state, ball_state=BallState.LOOSE, ball_carrier=None,
+                              ball_control=None, offense_team_id=None, phase=PossessionPhase.DEAD_BALL)
+        self._log(EventType.SHOT_RESOLVED, dt, primary=shooter_id, meta={"made": False})
+
     def resolve_shot_missed_offensive_rebound(self, shooter_id: str, rebounder_id: str, dt: float = 0.0) -> None:
         """A real, offense-context-preserving CONTINUATION, not a
         termination -- but explicitly creates a NEW SECOND_CHANCE
