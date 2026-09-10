@@ -89,6 +89,26 @@ def load_player_advanced_stats(season: str = DEFAULT_SEASON) -> Dict[str, dict]:
         return json.load(f)["players"]
 
 
+def load_player_rebound_splits(season: str = DEFAULT_SEASON) -> Dict[str, dict]:
+    """
+    Real, TRUE per-player OREB_PCT/DREB_PCT for `season` -- see
+    data_source.build_and_cache_player_rebound_splits for exactly
+    where this comes from (the same real Advanced endpoint
+    player_advanced.json already uses, two more of its columns).
+
+    Returns {} when this season hasn't been backfilled yet -- a
+    missing entry (or the whole file missing) means "unknown," not
+    "use the combined REB% split instead." Callers that want that
+    fallback behavior make that choice explicitly themselves; this
+    function never makes it for them.
+    """
+    path = _season_cache_dir(season) / "player_rebound_splits.json"
+    if not path.exists():
+        return {}
+    with open(path) as f:
+        return json.load(f)["players"]
+
+
 def load_player_rim_defense(season: str = DEFAULT_SEASON) -> Dict[str, dict]:
     """
     Real per-player RIM DETERRENCE for `season` -- how far below/above

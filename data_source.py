@@ -100,6 +100,10 @@ def _player_advanced_cache_path(season: str) -> Path:
     return _season_cache_dir(season) / "player_advanced.json"
 
 
+def _player_rebound_splits_cache_path(season: str) -> Path:
+    return _season_cache_dir(season) / "player_rebound_splits.json"
+
+
 def _player_rim_defense_cache_path(season: str) -> Path:
     return _season_cache_dir(season) / "player_rim_defense.json"
 
@@ -353,6 +357,58 @@ def build_and_cache_player_advanced_stats(season: str = "2025-26", force: bool =
         json.dump({"season": season, "players": players}, f, indent=2)
 
     print(f"Cached advanced stats for {len(players)} players -> {cache_path}")
+
+
+def build_and_cache_player_rebound_splits(season: str = "2025-26", force: bool = False) -> None:
+    """
+    Real, TRUE offensive/defensive rebound percentages -- OREB_PCT and
+    DREB_PCT -- for `season`. NOT a new external source: the exact same
+    real API call build_and_cache_player_advanced_stats already makes
+    (leaguedashplayerstats, Advanced measure type) already returns both
+    columns in its raw response; this project's own ADVANCED_FIELD_MAP
+    just never extracted them, only the single COMBINED REB_PCT.
+    Checked directly across the full cached range (1996-97 through
+    2025-26): both columns are present and 100% non-null every season,
+    no real camera-tracking floor the way rim/perimeter defense have.
+
+    Cached SEPARATELY from player_advanced.json on purpose -- this is
+    an additive improvement to a real limitation
+    (player_ability_estimation.py's rebounding attributes previously
+    had to approximate ORB%/DRB% by splitting the one combined number),
+    not a reason to touch or reshape the existing, already-depended-on
+    file. Every downstream caller of player_advanced.json keeps working
+    exactly as before; a caller that wants the TRUE split reads this
+    new file instead, and treats a missing entry as "unknown," never a
+    silent 0.0 or a silent fallback to the combined split -- see
+    loader.load_player_rebound_splits.
+    """
+    cache_path = _player_rebound_splits_cache_path(season)
+    if cache_path.exists() and not force:
+        print(f"Player rebound-splits cache already exists at {cache_path}. Use --refresh to force an update.")
+        return
+
+    print(f"Fetching {season} real player OREB%/DREB% (same Advanced endpoint as player_advanced.json)...")
+    df = fetch_player_advanced_stats(season)
+    if df.empty:
+        raise RuntimeError(f"No advanced stats found for {season} -- check the season string.")
+    if "OREB_PCT" not in df.columns or "DREB_PCT" not in df.columns:
+        raise RuntimeError(
+            f"OREB_PCT/DREB_PCT missing from the Advanced endpoint response for {season} -- "
+            f"the real API may have changed shape; not silently falling back."
+        )
+
+    players = {}
+    for _, row in df.iterrows():
+        name = row["PLAYER_NAME"]
+        players[name] = {
+            "oreb_pct": float(row["OREB_PCT"]),
+            "dreb_pct": float(row["DREB_PCT"]),
+        }
+
+    with open(cache_path, "w") as f:
+        json.dump({"season": season, "source": "leaguedashplayerstats(Advanced)", "players": players}, f, indent=2)
+
+    print(f"Cached true rebound splits for {len(players)} players -> {cache_path}")
 
 
 def _fetch_ptdefend(season: str, defense_category: str, retries: int = 4):
