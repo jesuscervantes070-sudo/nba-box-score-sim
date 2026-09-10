@@ -227,6 +227,7 @@ class TestIntegrationScenarios(unittest.TestCase):
         self.assertGreater(result.stats.fga, 0)
         self.assertGreater(result.stats.fgm, 0)
         self.assertGreater(result.stats.points, 0)
+        self.assertEqual((result.resulting_offense_team_id, result.resulting_defense_team_id), ("B", "A"))
 
     def test_B_miss_to_dreb(self):
         seed, result = _find_seed(PossessionTerminalReason.DEFENSIVE_REBOUND)
@@ -311,6 +312,7 @@ class TestIntegrationScenarios(unittest.TestCase):
         profiles = _profiles(**{p: {"drive_aggression": 5.0} for p in OFF_FIVE})
         seed, result = _find_seed(PossessionTerminalReason.SHOT_CLOCK_VIOLATION, config=cfg, profiles=profiles)
         self.assertEqual(result.engine_state.ball_state.value, "DEAD")
+        self.assertEqual((result.resulting_offense_team_id, result.resulting_defense_team_id), ("B", "A"))
 
     def test_J_period_expiration(self):
         short_game = EraRules(era_name="test_short_game", shot_clock_seconds=24.0, oreb_shot_clock_reset_seconds=None,
@@ -368,6 +370,27 @@ class TestEventStatConsistency(unittest.TestCase):
     concrete test the reconciliation review asked for."""
 
     DERIVABLE_FIELDS = ("oreb", "dreb", "turnovers", "steals", "blocks")
+
+    def test_generic_loose_ball_uses_original_offense_when_live_ownership_is_unresolved(self):
+        """A deflection clears engine offense to None; an original-offense
+        recovery must remain a continuation, not become a same-team turnover."""
+        import random
+        from dataclasses import replace
+        from possession_orchestrator import resolve_generic_loose_ball
+        from possession_state import BallState
+
+        engine = PossessionEngine("loose", "A", "B", season="2023-24", rng_seed=1)
+        apply_matchup_assignments(engine, OFF_FIVE, DEF_FIVE)
+        engine.state = replace(engine.state, offense_team_id=None, ball_state=BallState.LOOSE,
+                               ball_carrier=None, ball_control=None, ball_zone=SpatialZone.TOP_OF_KEY)
+        world = PossessionWorld(team_a_id="A", team_b_id="B", team_a_five=OFF_FIVE,
+                                team_b_five=DEF_FIVE, profiles=_profiles(),
+                                player_zones={pid: SpatialZone.PAINT for pid in OFF_FIVE + DEF_FIVE})
+        world.player_zones[OFF_FIVE[0]] = SpatialZone.TOP_OF_KEY  # sole eligible winner
+
+        recovery = resolve_generic_loose_ball(engine, world, random.Random(1))
+        self.assertEqual(recovery, "OFFENSE_RECOVERED")
+        self.assertEqual(engine.state.offense_team_id, "A")
 
     def test_derivable_fields_match_across_many_seeds_and_configs(self):
         from possession_orchestrator import derive_stat_deltas_from_events

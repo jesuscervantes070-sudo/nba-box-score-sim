@@ -756,6 +756,10 @@ class PossessionConfig:
     force_on_ball_contact_established: bool = False
     default_free_throw_rate_if_missing: Optional[float] = None  # None = fail explicitly (see _require_ft_rate); no silent placeholder unless a caller opts in
     era_rules: Optional["EraRules"] = None  # overrides `season`-derived era rules when set -- e.g. a test constructing a short game clock to reach PERIOD_END quickly
+    # Phase 23B additive orchestration inputs. `None` preserves Phase 23A's
+    # original behavior (a fresh period clock and HALFCOURT start).
+    initial_game_clock_seconds: Optional[float] = None
+    initial_phase: PossessionPhase = PossessionPhase.HALFCOURT
 
 
 def _require(value: Optional[float], what: str) -> float:
@@ -812,6 +816,24 @@ class PossessionTerminalResult:
 
 def _terminal(reason: str, engine: PossessionEngine, world: PossessionWorld, steps: int,
               offense_team_id: Optional[str] = None, defense_team_id: Optional[str] = None) -> PossessionTerminalResult:
+    # Phase 23B reconciliation: a typed terminal result owns next-possession
+    # control flow, so every possession-ending flip must be explicit here.
+    # Several Phase 15 dead-ball transitions deliberately leave the OLD team
+    # ids on engine.state for a caller to replace; returning those old ids from
+    # Phase 23A made the supposedly typed handoff incorrect.
+    if offense_team_id is None and defense_team_id is None:
+        must_flip = reason in (
+            PossessionTerminalReason.MADE_FG,
+            PossessionTerminalReason.FINAL_FT_MADE,
+            PossessionTerminalReason.SHOT_CLOCK_VIOLATION,
+        ) or (reason == PossessionTerminalReason.TURNOVER and engine.state.phase == PossessionPhase.DEAD_BALL)
+        if must_flip:
+            # `world.team_a_id` is the offense at THIS possession's
+            # initialization and never mutates. It remains trustworthy even
+            # when a final missed/made FT temporarily clears team ownership
+            # on live state; deriving from `engine.state` here was the Phase
+            # 23A chaining bug this reconciliation closes.
+            offense_team_id, defense_team_id = world.team_b_id, world.team_a_id
     return PossessionTerminalResult(
         reason=reason,
         resulting_offense_team_id=offense_team_id if offense_team_id is not None else engine.state.offense_team_id,
@@ -867,7 +889,11 @@ def resolve_generic_loose_ball(engine: PossessionEngine, world: PossessionWorld,
             break
 
     winner_team = world.team_id_for(winner)
-    current_offense = engine.state.offense_team_id
+    # A pass deflection/strip may deliberately set live team possession to
+    # None while the ball is unresolved. `world.team_a_id` is the immutable
+    # offense at this possession's start, so it is the only sound reference
+    # for classifying the recovery as retained offense vs. turnover.
+    current_offense = world.team_a_id
     other_team = world.team_b_id if winner_team == world.team_a_id else world.team_a_id
     engine.secure_loose_ball(winner, winner_team, other_team)
     world.player_zones[winner] = zone
@@ -1342,13 +1368,21 @@ def simulate_possession(
                                defense_team_id=defense_team_id, era_rules=config.era_rules,
                                season=None if config.era_rules is not None else config.season,
                                rng_seed=rng.getrandbits(64))
+    if config.initial_game_clock_seconds is not None:
+        if config.initial_game_clock_seconds < 0.0:
+            raise ValueError("initial_game_clock_seconds cannot be negative")
+        if config.initial_game_clock_seconds > engine.era_rules.period_length_seconds:
+            raise ValueError("initial_game_clock_seconds cannot exceed the configured period length")
+        engine.state = replace(engine.state, game_clock_remaining=config.initial_game_clock_seconds)
+    if config.initial_phase not in (PossessionPhase.HALFCOURT, PossessionPhase.TRANSITION):
+        raise ValueError("initial_phase must be HALFCOURT or TRANSITION for a live possession start")
     apply_matchup_assignments(engine, offensive_five, defensive_five, matchup_pairs)
 
     world = PossessionWorld(team_a_id=offense_team_id, team_b_id=defense_team_id,
                              team_a_five=tuple(offensive_five), team_b_five=tuple(defensive_five),
                              profiles=dict(profiles), foul_state=foul_state or FoulAdministrationState())
 
-    engine.inbound(inbound_receiver_id, config.initial_ball_zone, PossessionPhase.HALFCOURT)
+    engine.inbound(inbound_receiver_id, config.initial_ball_zone, config.initial_phase)
     zones = initial_player_zones if initial_player_zones is not None else \
         default_v0_zone_placement(offensive_five, inbound_receiver_id, config.initial_ball_zone)
     world.player_zones = dict(zones)
