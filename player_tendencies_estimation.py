@@ -183,6 +183,13 @@ class PlayerTendencyEstimate:
     exposure: Optional[float] = None
     coverage_note: str = ""
     is_compositional: bool = True  # see module docstring point 1 -- always True for the four shot/pass-decision tendencies
+    # Phase 14: additive, backward-compatible field. Unset (None) unless
+    # populated by player_identity.estimate_tendency_by_id's adapter --
+    # estimate_tendency() itself still takes/keys on player_name and is
+    # otherwise untouched by Phase 14 (name remains this dataclass's own
+    # load-bearing field; player_id here is metadata added by the caller
+    # when a real, resolved id is available).
+    player_id: Optional[str] = None
 
 
 def _percentile(value: float, reference: List[float]) -> float:
