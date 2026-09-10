@@ -1,0 +1,14 @@
+{
+  "calibration_version": "v1",
+  "poa_containment": {
+    "lambda": 0.6,
+    "M": 800.0,
+    "weight": "expected_fga_covered",
+    "train_weighted_mae": 0.02069,
+    "heldout_weighted_mae": 0.02006,
+    "heldout_rank_corr": 0.3864,
+    "n_train": 1377,
+    "n_heldout": 1444,
+    "status": "KEEP_BUT_FLAG"
+  }
+}

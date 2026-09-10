@@ -1,0 +1,14 @@
+{
+  "calibration_version": "v1",
+  "rim_protection": {
+    "lambda": 0.5,
+    "M": 100.0,
+    "weight": "rim_fga_defended",
+    "train_weighted_mae": 0.036219,
+    "heldout_weighted_mae": 0.035244,
+    "heldout_rank_corr": 0.4553,
+    "n_train_observations": 2010,
+    "n_heldout_observations": 2232,
+    "status": "LOCK_V1"
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "calibration_version": "v2",
+  "ball_security": {
+    "lambda": 0.6,
+    "M": 0.0,
+    "denominator": "estimated_total_dribbles",
+    "exposure_unit": "real estimated total dribbles (TOUCHES * AVG_DRIB_PER_TOUCH)",
+    "weighted_mae": 0.00172,
+    "weighted_rmse": 0.00305,
+    "n_observations": 865,
+    "season_pairs": [
+      [
+        "2013-14",
+        "2018-19"
+      ],
+      [
+        "2018-19",
+        "2022-23"
+      ],
+      [
+        "2022-23",
+        "2023-24"
+      ]
+    ],
+    "status": "KEEP_BUT_FLAG"
+  }
+}

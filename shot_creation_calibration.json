@@ -1,0 +1,28 @@
+{
+  "calibration_version": "v1",
+  "components": {
+    "rim_access_creation": {
+      "lambda": 0.5,
+      "M": 50.0,
+      "weight": "drives",
+      "train_weighted_mae": 0.05375,
+      "heldout_weighted_mae": 0.05362,
+      "heldout_rank_corr": 0.7129,
+      "n_train": 1502,
+      "n_heldout": 1691,
+      "status": "KEEP_BUT_FLAG"
+    },
+    "perimeter_space_creation": {
+      "lambda": 0.3,
+      "M": 200.0,
+      "weight": "touches",
+      "residualized": true,
+      "train_weighted_mae": 0.01,
+      "heldout_weighted_mae": 0.01306,
+      "heldout_rank_corr": 0.7869,
+      "n_train": 2157,
+      "n_heldout": 2321,
+      "status": "KEEP_BUT_FLAG"
+    }
+  }
+}

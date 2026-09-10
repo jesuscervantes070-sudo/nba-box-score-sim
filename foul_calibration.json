@@ -1,0 +1,23 @@
+{
+  "calibration_version": "v1",
+  "attributes": {
+    "foul_drawing": {
+      "lambda": 0.9,
+      "M": 50.0,
+      "denominator": "drives",
+      "weighted_mae": 0.07857,
+      "weighted_rmse": 0.13529,
+      "n_observations": 1202,
+      "status": "KEEP_BUT_FLAG"
+    },
+    "foul_discipline": {
+      "lambda": 0.9,
+      "M": 3000.0,
+      "denominator": "minutes",
+      "weighted_mae": 0.024022,
+      "weighted_rmse": 0.0339,
+      "n_observations": 1362,
+      "status": "KEEP_BUT_FLAG"
+    }
+  }
+}
