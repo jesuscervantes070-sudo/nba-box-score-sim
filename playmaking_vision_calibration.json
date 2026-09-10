@@ -1,0 +1,14 @@
+{
+  "calibration_version": "v1",
+  "playmaking_vision": {
+    "lambda": 0.4,
+    "M": 800.0,
+    "weight": "touches",
+    "train_weighted_mae": 0.012153,
+    "heldout_weighted_mae": 0.02082,
+    "heldout_rank_corr": 0.4469,
+    "n_train_observations": 2157,
+    "n_heldout_observations": 2321,
+    "status": "KEEP_BUT_FLAG"
+  }
+}

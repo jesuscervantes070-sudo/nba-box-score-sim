@@ -1,0 +1,59 @@
+{
+  "calibration_version": "0.1.0",
+  "calibrated_at": "2026-09-09",
+  "methodology": "Walk-forward historical backtest: for each real consecutive season pair (T, T+1), predict T+1's real rate using only evidence through T, evaluated with weighted MAE (weighted by real T+1 sample size). Grid search over lambda in [0.40,0.95] and attribute-specific M grids, refined with a finer/lower M pass after the coarse grid showed several attributes preferred M near the grid floor. Selected by minimum weighted MAE across ALL walk-forward pairs (NOT a separate held-out subset of those pairs -- see KNOWN_LIMITATIONS in player_ability_calibration.py).",
+  "min_t1_sample_thresholds": {
+    "three_point": 50, "free_throw": 30, "passing": 500,
+    "offensive_rebounding": 500, "defensive_rebounding": 500, "defensive_playmaking": 500
+  },
+  "attributes": {
+    "three_point": {
+      "lambda": 0.70, "M": 50, "exposure_unit": "season total 3PA",
+      "weighted_mae": 0.0340, "weighted_rmse": 0.0450,
+      "baseline_A_raw_T_mae": 0.0428, "baseline_B_provisional_mae": 0.0376, "baseline_C_no_shrink_mae": 0.0360,
+      "n_observations": 5879, "training_range": ["1996-97", "2025-26"],
+      "provisional_before": {"lambda": 0.60, "M": 200}
+    },
+    "free_throw": {
+      "lambda": 0.55, "M": 25, "exposure_unit": "season total FTA",
+      "weighted_mae": 0.0430, "weighted_rmse": 0.0576,
+      "baseline_A_raw_T_mae": 0.0511, "baseline_B_provisional_mae": 0.0456, "baseline_C_no_shrink_mae": 0.0448,
+      "n_observations": 8189, "training_range": ["1996-97", "2025-26"],
+      "provisional_before": {"lambda": 0.60, "M": 125}
+    },
+    "passing": {
+      "lambda": 0.40, "M": 75, "exposure_unit": "season total minutes",
+      "weighted_mae": 0.0263, "weighted_rmse": 0.0359,
+      "baseline_A_raw_T_mae": 0.0277, "baseline_B_provisional_mae": 0.0339, "baseline_C_no_shrink_mae": 0.0273,
+      "n_observations": 8252, "training_range": ["1996-97", "2025-26"],
+      "provisional_before": {"lambda": 0.60, "M": 1500},
+      "note": "Real, large finding: provisional M=1500 was WAY too high -- even NO shrinkage (Baseline C) beat the old provisional system. True optimum needs much less shrinkage than assumed."
+    },
+    "offensive_rebounding": {
+      "lambda": 0.40, "M": 50, "exposure_unit": "season total minutes",
+      "weighted_mae": 0.0080, "weighted_rmse": 0.0111,
+      "baseline_A_raw_T_mae": 0.0087, "baseline_B_provisional_mae": 0.0124, "baseline_C_no_shrink_mae": 0.0082,
+      "n_observations": 8252, "training_range": ["1996-97", "2025-26"],
+      "provisional_before": {"lambda": 0.60, "M": 1500},
+      "note": "Largest improvement found (32.7% vs provisional B). Same over-shrinkage problem as passing."
+    },
+    "defensive_rebounding": {
+      "lambda": 0.55, "M": 75, "exposure_unit": "season total minutes",
+      "weighted_mae": 0.0153, "weighted_rmse": 0.0204,
+      "baseline_A_raw_T_mae": 0.0168, "baseline_B_provisional_mae": 0.0195, "baseline_C_no_shrink_mae": 0.0155,
+      "n_observations": 8252, "training_range": ["1996-97", "2025-26"],
+      "provisional_before": {"lambda": 0.60, "M": 1500}
+    },
+    "defensive_playmaking": {
+      "lambda": 0.55, "M": 300, "exposure_unit": "season total minutes",
+      "weighted_mae": 0.2945, "weighted_rmse": 0.3861,
+      "baseline_A_raw_T_mae": 0.3345, "baseline_B_provisional_mae": 0.3215, "baseline_C_no_shrink_mae": 0.3053,
+      "n_observations": 8252, "training_range": ["1996-97", "2025-26"],
+      "provisional_before": {"lambda": 0.60, "M": 1500},
+      "note": "Smallest relative improvement (8.3%) of the six. Real age-residual bias found (see report) that this simple lambda/M model cannot fix -- flagged for a future age-aware model, not addressed here."
+    }
+  },
+  "not_calibrated": {
+    "ball_security": "Explicitly excluded per this phase's scope -- the production estimator still uses the old total-TOV proxy, not the (unintegrated) turnover-subtype prototype."
+  }
+}

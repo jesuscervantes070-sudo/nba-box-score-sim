@@ -1,0 +1,68 @@
+{
+  "calibration_version": "0.2.0",
+  "based_on_version": "0.1.0",
+  "calibrated_at": "2026-09-09",
+  "methodology": "v2 adds an OPTIONAL, per-attribute age adjustment on top of v1's unchanged lambda/M (both were validated via nested held-out temporal testing first -- see the accompanying report). The age adjustment is a PREDICTIVE correction for the expected change in rate between season T and T+1 (fit on real training-period residuals only, tested on a real held-out period never used to fit it) -- NOT a discount applied to a player's current-season rating. Two forms used, chosen per-attribute by whichever won on held-out data: 'bucket' (age-bucket mean residual, additive) or 'linear' (weighted least-squares residual ~ age, additive). Attributes where neither model meaningfully beat no-adjustment on held-out data carry an empty adjustment (a real, tested null result, not an oversight).",
+  "temporal_validation": {
+    "train_target_seasons": "through 2015-16",
+    "heldout_target_seasons": "2016-17 through 2025-26",
+    "note": "Base lambda/M were re-selected using ONLY train-period pairs (nested recalibration) and found to match the full-dataset fit exactly for 5 of 6 attributes (three_point differed only within a confirmed flat optimum, lambda 0.70 vs 0.85, MAE difference 0.0001). Age adjustments were fit on train-period residuals only and evaluated on the held-out period."
+  },
+  "attributes": {
+    "three_point": {
+      "lambda": 0.70, "M": 50,
+      "age_adjustment": {
+        "type": "bucket", "unit": "additive rate correction",
+        "buckets": {"0-22": -0.0257, "22-24": -0.0224, "24-26": -0.0162, "26-28": -0.0124, "28-30": -0.0127, "30-32": -0.0075, "32-99": -0.0033},
+        "heldout_mae_no_adjustment": 0.0316, "heldout_mae_with_adjustment": 0.0308, "improvement_pct": 2.5
+      }
+    },
+    "free_throw": {
+      "lambda": 0.55, "M": 25,
+      "age_adjustment": {
+        "type": "bucket", "unit": "additive rate correction",
+        "buckets": {"0-22": -0.0144, "22-24": -0.0111, "24-26": -0.0132, "26-28": -0.0090, "28-30": -0.0047, "30-32": -0.0016, "32-99": -0.0010},
+        "heldout_mae_no_adjustment": 0.0423, "heldout_mae_with_adjustment": 0.0409, "improvement_pct": 3.3
+      }
+    },
+    "passing": {
+      "lambda": 0.40, "M": 75,
+      "age_adjustment": {
+        "type": "linear", "unit": "additive rate correction per year of age",
+        "slope_per_year": 0.0014984, "intercept": -0.0412927,
+        "heldout_mae_no_adjustment": 0.0284, "heldout_mae_with_adjustment": 0.0279, "improvement_pct": 1.9
+      }
+    },
+    "offensive_rebounding": {
+      "lambda": 0.40, "M": 50,
+      "age_adjustment": {
+        "type": "none", "reason": "No real held-out benefit found (0.0076 -> 0.0077, i.e. slightly WORSE) -- a real, tested null result. LOCK V1, no age adjustment."
+      }
+    },
+    "defensive_rebounding": {
+      "lambda": 0.55, "M": 75,
+      "age_adjustment": {
+        "type": "none", "reason": "Linear model gave a negligible +0.1% (0.0162 -> 0.0162, within noise) -- not adopted. LOCK V1, no age adjustment."
+      }
+    },
+    "defensive_playmaking": {
+      "lambda": 0.55, "M": 300,
+      "age_adjustment": {
+        "type": "bucket", "unit": "additive rate correction",
+        "buckets": {"0-22": -0.0062, "22-24": 0.0320, "24-26": 0.0326, "26-28": 0.0782, "28-30": 0.0847, "30-32": 0.1082, "32-99": 0.0673},
+        "heldout_mae_no_adjustment": 0.2972, "heldout_mae_with_adjustment": 0.2939, "improvement_pct": 1.1,
+        "note": "Real, large systematic bias (over-prediction growing through the late 20s) -- a coarse patch over what Part D's STL/BLK decomposition shows is really TWO different aging processes (BLK's bias onsets earlier/steeper than STL's). Flagged for Phase 4: consider a two-component underlying model rather than relying on this single bucket correction long-term."
+      }
+    }
+  },
+  "not_calibrated": {
+    "ball_security": "Still explicitly excluded, unchanged from v1."
+  },
+  "diagnostic_only_findings": {
+    "stl_vs_blk_decomposition": {
+      "stl_rate": {"lambda": 0.55, "M": 500, "heldout_mae": 0.2024},
+      "blk_rate": {"lambda": 0.55, "M": 150, "heldout_mae": 0.1845},
+      "conclusion": "Different optimal M (500 vs 150) and different aging-bias onset (BLK's overprediction starts by age 22-24 at +0.025; STL's stays under +0.01 until age 26-28). Real evidence the combined defensive_playmaking attribute hides two distinct aging processes. NOT split into separate core attributes this phase -- the 18-attribute vocabulary is unchanged. Recommend Phase 4 consider representing defensive playmaking as one combined DISPLAY attribute generated from two latent components (STL ability + BLK ability), not a vocabulary change."
+    }
+  }
+}

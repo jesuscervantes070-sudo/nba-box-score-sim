@@ -1,0 +1,32 @@
+{
+  "calibration_version": "v1",
+  "attributes": {
+    "rim_finishing": {
+      "lambda": 0.6,
+      "M": 50.0,
+      "exposure_unit": "real Restricted Area FGA",
+      "weighted_mae": 0.04153,
+      "weighted_rmse": 0.05379,
+      "n_observations": 9563,
+      "status": "LOCK_V1"
+    },
+    "floater_short_mid": {
+      "lambda": 0.6,
+      "M": 50.0,
+      "exposure_unit": "real In The Paint (Non-RA) FGA",
+      "weighted_mae": 0.04927,
+      "weighted_rmse": 0.06383,
+      "n_observations": 8057,
+      "status": "KEEP_BUT_FLAG"
+    },
+    "midrange": {
+      "lambda": 0.7,
+      "M": 100.0,
+      "exposure_unit": "real Mid-Range FGA",
+      "weighted_mae": 0.03635,
+      "weighted_rmse": 0.04786,
+      "n_observations": 8267,
+      "status": "LOCK_V1"
+    }
+  }
+}
