@@ -41,6 +41,7 @@ class EventType(Enum):
     ADVANTAGE_CHANGE = "ADVANTAGE_CHANGE"
     REACTION_CHECKPOINT = "REACTION_CHECKPOINT"  # a reactive-subevent checkpoint fired (see possession_engine.py)
     DRIVE_RESOLVED = "DRIVE_RESOLVED"  # Phase 17A -- one coarse drive-resolution outcome (see drive_resolution.py); NOT a shot/pass/turnover result itself
+    PASS_RESOLVED = "PASS_RESOLVED"  # Phase 17B -- one coarse pass-resolution outcome (see pass_resolution.py); distinct from PASS_RELEASED/PASS_RECEIVED (Phase 15's own selection-adjacent events)
 
 
 @dataclass(frozen=True)
