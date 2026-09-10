@@ -41,6 +41,7 @@ class ActionType(Enum):
     CLOSEOUT_ATTACK = "CLOSEOUT_ATTACK"
     TRANSITION_PUSH = "TRANSITION_PUSH"
     RECOVER_LOOSE_BALL = "RECOVER_LOOSE_BALL"  # the one action available while the ball is LOOSE -- not a normal offensive menu item
+    OUTLET_PASS = "OUTLET_PASS"  # Phase 20B addition -- a pass to a real, structurally AHEAD_OF_BALL teammate (Phase 20A's relational tag); distinct from SWING_PASS/KICKOUT because its objective precondition is transition-geometry-specific, not nearest-teammate or advantage-driven
 
 
 # Action-type groupings used by selection/clock logic -- named sets, not
@@ -48,10 +49,11 @@ class ActionType(Enum):
 # one grouping conceptually; these three are the only ones this phase's
 # policy actually consumes.
 SHOT_ACTIONS = frozenset({ActionType.PULL_UP, ActionType.CATCH_AND_SHOOT})
-PASS_ACTIONS = frozenset({ActionType.SWING_PASS, ActionType.KICKOUT, ActionType.POCKET_PASS, ActionType.RESET_PASS})
+PASS_ACTIONS = frozenset({ActionType.SWING_PASS, ActionType.KICKOUT, ActionType.POCKET_PASS, ActionType.RESET_PASS, ActionType.OUTLET_PASS})
 TERMINAL_ACTIONS = frozenset({ActionType.DRIVE, ActionType.ISOLATION_ATTACK, ActionType.PULL_UP,
                                ActionType.CATCH_AND_SHOOT, ActionType.CLOSEOUT_ATTACK})
-CREATION_ACTIONS = frozenset({ActionType.DRIVE, ActionType.ISOLATION_ATTACK, ActionType.PULL_UP, ActionType.POCKET_PASS})
+CREATION_ACTIONS = frozenset({ActionType.DRIVE, ActionType.ISOLATION_ATTACK, ActionType.PULL_UP, ActionType.POCKET_PASS,
+                               ActionType.TRANSITION_PUSH})  # Phase 20B addition -- pushing the ball upcourt is initiation-adjacent, so role_off_initiation's existing CREATION_ACTIONS boost legitimately extends to it, reusing Phase 16's scoring function unmodified
 
 
 class DurationClass(Enum):
@@ -77,6 +79,7 @@ _DEFAULT_CHECKPOINTS: Dict[ActionType, Tuple[str, ...]] = {
     ActionType.CLOSEOUT_ATTACK: ("closeout_engaged", "beat_or_hold_check", "release_opportunity"),
     ActionType.TRANSITION_PUSH: ("push_begins", "numbers_check", "release_opportunity"),
     ActionType.RECOVER_LOOSE_BALL: ("scramble", "secure_or_fail"),
+    ActionType.OUTLET_PASS: ("release", "reception"),
 }
 
 
