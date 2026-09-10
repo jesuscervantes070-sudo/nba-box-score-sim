@@ -35,6 +35,31 @@ class EraRules:
     bonus_foul_threshold: Optional[int]  # team fouls in a period that trigger bonus free throws -- PLACEHOLDER, not empirically verified per era
     period_length_seconds: float
     periods_per_game: int
+    # Phase 21B additions -- real, additive, trailing-defaulted fields (backward compatible with every
+    # existing keyword-arg EraRules construction site; no existing constructor call below needed to change).
+    #
+    # `bonus_free_throw_format`: "TWO_SHOT" (both attempts always awarded once in the bonus) is the real
+    # current-NBA format and the default for every era constant below. "THREE_TO_MAKE_TWO" (up to 3
+    # attempts, stopping as soon as 2 are made) is a REAL, documented historical NBA bonus format --
+    # confirmed abolished by the 1981-82 season -- included so the administration layer is not hardcoded to
+    # the modern format ("do not hardcode one modern-NBA bonus assumption into generic mechanics"). This is
+    # NOT the same thing as an NCAA-style "1-and-1" (a single bonus shot that only earns a second on a
+    # make) -- that format was never the real NBA rule and is not represented here. Deliberately NOT
+    # assigned to any of the three named era constants below: no exact historical season boundary for when
+    # THREE_TO_MAKE_TWO started, or precisely when after 1981-82 TWO_SHOT began, was independently verified
+    # this phase (do not assume an exact 1954-1981 rules block) -- every named era constant below keeps the
+    # TWO_SHOT default, same PLACEHOLDER posture as `bonus_foul_threshold` above; the alternate format is
+    # exercised only via a dedicated, clearly-synthetic test EraRules instance.
+    bonus_free_throw_format: str = "TWO_SHOT"  # "TWO_SHOT" | "THREE_TO_MAKE_TWO"
+    # `overtime_bonus_foul_threshold`: real NBA regulation/OT team-foul-limit structure is NOT the same
+    # number with the count simply reset (current rule: 4 non-penalty team fouls in a regulation period vs.
+    # 3 in overtime, before the next qualifying common foul is a penalty) -- so a single shared
+    # `bonus_foul_threshold` cannot correctly represent OT. `None` (the default) means "no distinct OT
+    # threshold configured for this era" -- callers needing OT-aware bonus evaluation fall back to
+    # `bonus_foul_threshold` explicitly (see `floor_foul_administration.effective_bonus_foul_threshold`),
+    # never silently treated as 0 (missing != zero). Like `bonus_foul_threshold`, this is an interface hook,
+    # not an empirically verified per-era table -- not set on any of the three named constants below.
+    overtime_bonus_foul_threshold: Optional[int] = None
 
 
 # Real, verified rule-change facts (see module docstring). Bonus
