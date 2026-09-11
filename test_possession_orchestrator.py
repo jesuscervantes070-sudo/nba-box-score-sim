@@ -1845,7 +1845,7 @@ class TestTransitionPushInteriorOpportunity(unittest.TestCase):
     dispatches through the EXISTING, unmodified `_dispatch_pass`/`resolve_pass` -- no new
     resolver, no new attribute, no random shot-family override after the fact."""
 
-    def _dispatch(self, phase=PossessionPhase.TRANSITION, target_zone=SpatialZone.RESTRICTED_RIM):
+    def _dispatch(self, phase=PossessionPhase.TRANSITION, target_zone=SpatialZone.RESTRICTED_RIM, rng_seed=1):
         import random
         from action_opportunity import generate_opportunities, StructuralContext
         from possession_orchestrator import dispatch_action
@@ -1857,7 +1857,13 @@ class TestTransitionPushInteriorOpportunity(unittest.TestCase):
                                  player_zones={pid: SpatialZone.TOP_OF_KEY for pid in OFF_FIVE + DEF_FIVE})
         intent = ActionIntent(action_type=ActionType.TRANSITION_PUSH, actor_player_id="1", possession_id="p1",
                                target_player_id="2", target_zone=target_zone.value)
-        result = dispatch_action(engine, world, intent, PossessionConfig(), random.Random(0), 0)
+        # "Expand interior scoring opportunities" phase: `dispatch_action` now ROLLS the real
+        # RESTRICTED_RIM/PAINT destination itself (see `_resolve_interior_pass_destination`),
+        # ignoring whatever `target_zone` the intent above already carries -- rng_seed=1 is the
+        # smallest seed (checked directly: random.Random(1).random() == 0.134 < the default 0.65
+        # rim_probability) that deterministically lands this call at RESTRICTED_RIM, so tests
+        # asserting the RIM branch stay meaningful without asserting a fixed, no-longer-true intent.
+        result = dispatch_action(engine, world, intent, PossessionConfig(), random.Random(rng_seed), 0)
         return engine, world, result
 
     def test_h_non_drive_possession_can_legally_reach_interior_zone(self):
@@ -1922,6 +1928,81 @@ class TestTransitionPushInteriorOpportunity(unittest.TestCase):
         self.assertEqual(len(push_rows), 1)
         resolved = [e for e in engine.log.events if e.event_type.name == "PASS_RESOLVED"]
         self.assertEqual(len(resolved), 1)
+
+
+class TestExpandInteriorScoringOpportunities(unittest.TestCase):
+    """"Expand interior scoring opportunities" phase -- focused tests A-E from the task's own
+    required list: (A) TRANSITION_PUSH can target PAINT, (B) TRANSITION_PUSH can target
+    RESTRICTED_RIM, (C) the destination is deterministic under a fixed seed, (D) the new
+    HALFCOURT INTERIOR_CUT opportunity is reachable, (E) it requires legitimate (non-fabricated)
+    context -- it is NOT generated absent that context."""
+
+    def _dispatch(self, rng_seed, action_type=ActionType.TRANSITION_PUSH,
+                  phase=PossessionPhase.TRANSITION, target_zone=SpatialZone.RESTRICTED_RIM):
+        import random
+        from possession_orchestrator import dispatch_action
+        engine = PossessionEngine("p1", "A", "B", season="2023-24", rng_seed=0)
+        apply_matchup_assignments(engine, OFF_FIVE, DEF_FIVE)
+        engine.inbound("1", SpatialZone.TOP_OF_KEY, phase)
+        world = PossessionWorld(team_a_id="A", team_b_id="B", team_a_five=OFF_FIVE, team_b_five=DEF_FIVE,
+                                 profiles=_profiles(),
+                                 player_zones={pid: SpatialZone.TOP_OF_KEY for pid in OFF_FIVE + DEF_FIVE})
+        intent = ActionIntent(action_type=action_type, actor_player_id="1", possession_id="p1",
+                               target_player_id="2", target_zone=target_zone.value)
+        dispatch_action(engine, world, intent, PossessionConfig(), random.Random(rng_seed), 0)
+        return world
+
+    def test_a_transition_push_can_target_paint(self):
+        # random.Random(0).random() == 0.8442... >= the default 0.65 rim_probability -> PAINT.
+        world = self._dispatch(rng_seed=0)
+        self.assertEqual(world.player_zones["2"], SpatialZone.PAINT)
+
+    def test_b_transition_push_can_target_restricted_rim(self):
+        # random.Random(1).random() == 0.1343... < the default 0.65 rim_probability -> RESTRICTED_RIM.
+        world = self._dispatch(rng_seed=1)
+        self.assertEqual(world.player_zones["2"], SpatialZone.RESTRICTED_RIM)
+
+    def test_c_destination_is_deterministic_under_a_fixed_seed(self):
+        """Tests A/B already confirm the FULL dispatch is deterministic under a fixed seed end to
+        end (same seed -> same destination, both re-run above); this test isolates the actual
+        ROLL itself -- `_resolve_interior_pass_destination` -- from any downstream pass-completion
+        variance (a later `resolve_pass` RNG draw can fail the pass independently of the
+        destination it was given, which is a different, unrelated source of nondeterminism this
+        test must not conflate with the destination roll)."""
+        import random
+        from possession_orchestrator import _resolve_interior_pass_destination
+        config = PossessionConfig()
+        first = _resolve_interior_pass_destination(ActionType.TRANSITION_PUSH, config, random.Random(7))
+        second = _resolve_interior_pass_destination(ActionType.TRANSITION_PUSH, config, random.Random(7))
+        self.assertEqual(first, second)
+
+    def test_d_halfcourt_interior_cut_opportunity_is_reachable(self):
+        from action_opportunity import generate_opportunities, StructuralContext
+        engine = PossessionEngine("p1", "A", "B", season="2023-24", rng_seed=0)
+        apply_matchup_assignments(engine, OFF_FIVE, DEF_FIVE)
+        engine.inbound("1", SpatialZone.TOP_OF_KEY, PossessionPhase.HALFCOURT)
+        defender_id = next(iter(engine.state.assignments))
+        engine.update_posture(defender_id, DefensivePosture.TRAILING)
+        ctx = StructuralContext(nearest_teammate_id="2", nearest_teammate_zone=SpatialZone.LEFT_WING,
+                                 ball_handler_defender_id=defender_id)
+        opps = generate_opportunities(engine.state, ctx)
+        cut = next((o for o in opps if o.action_type == ActionType.INTERIOR_CUT), None)
+        self.assertIsNotNone(cut)
+        self.assertEqual(cut.target_player_id, "2")
+
+    def test_e_interior_cut_requires_legitimate_context_not_fabricated(self):
+        """Absent a dislodged on-ball defender (the real, live structural signal this phase
+        reuses), INTERIOR_CUT is NOT generated -- it is never offered unconditionally."""
+        from action_opportunity import generate_opportunities, StructuralContext
+        engine = PossessionEngine("p1", "A", "B", season="2023-24", rng_seed=0)
+        apply_matchup_assignments(engine, OFF_FIVE, DEF_FIVE)
+        engine.inbound("1", SpatialZone.TOP_OF_KEY, PossessionPhase.HALFCOURT)
+        defender_id = next(iter(engine.state.assignments))
+        # defender left at its default SQUARE posture -- no real dislodging has occurred.
+        ctx = StructuralContext(nearest_teammate_id="2", nearest_teammate_zone=SpatialZone.LEFT_WING,
+                                 ball_handler_defender_id=defender_id)
+        opps = generate_opportunities(engine.state, ctx)
+        self.assertFalse(any(o.action_type == ActionType.INTERIOR_CUT for o in opps))
 
 
 if __name__ == "__main__":

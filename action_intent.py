@@ -42,6 +42,17 @@ class ActionType(Enum):
     TRANSITION_PUSH = "TRANSITION_PUSH"
     RECOVER_LOOSE_BALL = "RECOVER_LOOSE_BALL"  # the one action available while the ball is LOOSE -- not a normal offensive menu item
     OUTLET_PASS = "OUTLET_PASS"  # Phase 20B addition -- a pass to a real, structurally AHEAD_OF_BALL teammate (Phase 20A's relational tag); distinct from SWING_PASS/KICKOUT because its objective precondition is transition-geometry-specific, not nearest-teammate or advantage-driven
+    INTERIOR_CUT = "INTERIOR_CUT"  # "Expand interior scoring opportunities" phase -- the one HALFCOURT (non-transition, non-drive) path this
+    # project's own architecture audit found for a real teammate to reach an interior zone: a pass to the nearest teammate,
+    # gated on the SAME real `AdvantageModel.compromised_areas()` signal KICKOUT already reads (a compromised defensive
+    # area implies a real cutting lane somewhere on the floor), dispatched as a genuine pass via the EXISTING, unmodified
+    # `_dispatch_pass`/`resolve_pass` machinery (same reuse posture as TRANSITION_PUSH). Audited and rejected before
+    # adding this: POCKET_PASS already lands a receiver at PAINT, but only when `context.roller_id`/`context.screen_active`
+    # are set, and `build_structural_context` hardcodes BOTH to None/False in V0 (Phase 22A's off-ball screen primitive
+    # is caller-triggered only) -- activating that path would require fabricating a live-screen-engagement frequency
+    # model, which is a materially bigger, separate feature (a real off-ball screen/roll cadence) this phase was not
+    # asked to build, not a minimal activation of existing state. INTERIOR_CUT reuses strictly EXISTING signals
+    # (advantage, nearest-teammate) instead.
 
 
 # Action-type groupings used by selection/clock logic -- named sets, not
@@ -50,14 +61,18 @@ class ActionType(Enum):
 # policy actually consumes.
 SHOT_ACTIONS = frozenset({ActionType.PULL_UP, ActionType.CATCH_AND_SHOOT})
 PASS_ACTIONS = frozenset({ActionType.SWING_PASS, ActionType.KICKOUT, ActionType.POCKET_PASS, ActionType.RESET_PASS,
-                           ActionType.OUTLET_PASS, ActionType.TRANSITION_PUSH})  # "Add interior shot-opportunity
+                           ActionType.OUTLET_PASS, ActionType.TRANSITION_PUSH, ActionType.INTERIOR_CUT})  # "Add interior shot-opportunity
 # generation" -- TRANSITION_PUSH is now dispatched as a real pass (see possession_orchestrator.dispatch_action),
 # so it belongs in this grouping too (pass_vs_shoot's existing tendency term now legitimately applies to it,
-# same reuse-not-reinvent posture as every other grouping extension in this file).
+# same reuse-not-reinvent posture as every other grouping extension in this file). INTERIOR_CUT ("Expand interior
+# scoring opportunities" phase) is likewise dispatched as a real pass and belongs in this grouping for the same reason.
 TERMINAL_ACTIONS = frozenset({ActionType.DRIVE, ActionType.ISOLATION_ATTACK, ActionType.PULL_UP,
                                ActionType.CATCH_AND_SHOOT, ActionType.CLOSEOUT_ATTACK})
 CREATION_ACTIONS = frozenset({ActionType.DRIVE, ActionType.ISOLATION_ATTACK, ActionType.PULL_UP, ActionType.POCKET_PASS,
-                               ActionType.TRANSITION_PUSH})  # Phase 20B addition -- pushing the ball upcourt is initiation-adjacent, so role_off_initiation's existing CREATION_ACTIONS boost legitimately extends to it, reusing Phase 16's scoring function unmodified
+                               ActionType.TRANSITION_PUSH, ActionType.INTERIOR_CUT})  # Phase 20B addition -- pushing the ball
+# upcourt is initiation-adjacent, so role_off_initiation's existing CREATION_ACTIONS boost legitimately extends to it,
+# reusing Phase 16's scoring function unmodified. INTERIOR_CUT ("Expand interior scoring opportunities" phase) is the
+# same kind of scoring-chance-creating pass POCKET_PASS already is, so it belongs in this grouping for the same reason.
 
 
 class DurationClass(Enum):
@@ -84,6 +99,7 @@ _DEFAULT_CHECKPOINTS: Dict[ActionType, Tuple[str, ...]] = {
     ActionType.TRANSITION_PUSH: ("push_begins", "numbers_check", "release_opportunity"),
     ActionType.RECOVER_LOOSE_BALL: ("scramble", "secure_or_fail"),
     ActionType.OUTLET_PASS: ("release", "reception"),
+    ActionType.INTERIOR_CUT: ("cut_begins", "release", "reception"),
 }
 
 

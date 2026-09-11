@@ -33,13 +33,15 @@ class TestTurnoverDiagnosis(unittest.TestCase):
 
     def test_engine_accounting_is_exactly_once_and_shot_clock_is_explicitly_separate(self):
         assert_turnover_reconciliation(self.diagnosis)
-        # Re-pinned for "Add interior shot-opportunity generation": TRANSITION_PUSH now dispatches
-        # as a real pass (new live turnover opportunities), on top of the prior "Calibrate
-        # source-conditioned transition routing" re-pin (CONTROLLED_ADVANCE reduced total
-        # possessions/turnover opportunities). Not a turnover-logic change either time.
-        self.assertEqual(self.diagnosis.engine_accounted_turnovers, 4075)
-        self.assertEqual(self.diagnosis.player_charged_turnovers, 3690)
-        self.assertEqual(self.diagnosis.categories[TurnoverCategory.SHOT_CLOCK_VIOLATION].engine_accounted_turnovers, 385)
+        # Re-pinned for "Expand interior scoring opportunities": TRANSITION_PUSH's destination is now
+        # a real RESTRICTED_RIM/PAINT roll (was hardcoded RESTRICTED_RIM) and a new HALFCOURT
+        # INTERIOR_CUT pass opportunity was added (new live turnover-interception exposure) -- both
+        # intentionally shift possession outcomes. Not a turnover-logic change. (Previously re-pinned
+        # for "Add interior shot-opportunity generation" and "Calibrate source-conditioned transition
+        # routing".)
+        self.assertEqual(self.diagnosis.engine_accounted_turnovers, 4051)
+        self.assertEqual(self.diagnosis.player_charged_turnovers, 3689)
+        self.assertEqual(self.diagnosis.categories[TurnoverCategory.SHOT_CLOCK_VIOLATION].engine_accounted_turnovers, 362)
 
     def test_steals_are_consistent_with_current_clean_interception_semantics(self):
         steals = sum(o.steal_credited for o in self.diagnosis.observations)

@@ -175,4 +175,48 @@ def generate_opportunities(state: PossessionState, context: StructuralContext,
             source="transition_phase",
         ))
 
+    # Interior cut ("Expand interior scoring opportunities" phase): the one HALFCOURT (non-drive,
+    # non-transition) path this project's own architecture audit found for a real teammate to reach
+    # an interior zone -- see `ActionType.INTERIOR_CUT`'s own docstring in `action_intent.py` for the
+    # full audit (POCKET_PASS was considered and rejected: its `roller_id`/`screen_active`
+    # preconditions are hardcoded off in V0).
+    #
+    # GATE, REVISED TWICE FROM A FIRST DRAFT (see the docstring linked above for the full audit
+    # trail): a first version gated this on `AdvantageModel.compromised_areas()` (the same interface
+    # KICKOUT reads) -- direct inspection of `possession_orchestrator.py` found `engine.advantage` is
+    # NEVER constructed anywhere in the actual game loop (`detailed_game.py`/
+    # `detailed_game_orchestrator.py`/`simulate_possession` all leave it at its `None` default), so
+    # KICKOUT/POCKET_PASS are themselves silently-dead opportunity types in current production play --
+    # gating a NEW action on that same always-`None` interface would have made INTERIOR_CUT dead code
+    # too. A second version gated this on the NEAREST TEAMMATE's own assigned defender's posture
+    # (`state.assignments`) -- also dead: direct inspection found `PossessionEngine.update_posture`/
+    # `.switch()` are ONLY ever invoked (a) by `drive_resolution.py`, for the DRIVER's OWN defender,
+    # and (b) by `off_ball_screen_resolution.py`, which (like `AdvantageModel`) is caller-triggered
+    # only and never invoked from this game loop -- so an OFF-BALL teammate's defender posture never
+    # leaves its initial SQUARE value in production, ever.
+    #
+    # The one genuinely LIVE, non-SQUARE-forever posture signal in production is the CURRENT ball
+    # handler's OWN on-ball defender (`context.ball_handler_defender_id`, already read by
+    # CLOSEOUT_ATTACK above) -- it really does move to RECOVERING/TRAILING/HELPING, via
+    # `drive_resolution.py`'s own `_POSTURE_AFTER_OUTCOME`, whenever a CLEAN_PENETRATION/PARTIAL_EDGE
+    # drive has just happened. A dislodged on-ball defender is real basketball evidence that dribble
+    # penetration has drawn attention/help -- exactly the condition under which a teammate would cut
+    # into the interior (a dunker-spot/dive cut off dribble penetration), so INTERIOR_CUT reuses that
+    # SAME live signal for a DIFFERENT real consequence (a cut for a teammate, not an attack by the
+    # ball handler). Restricted to HALFCOURT (not TRANSITION, which already has its own
+    # `TRANSITION_PUSH` interior path above) to keep the two sources structurally distinct and
+    # separately diagnosable. `target_zone` here is a PLACEHOLDER only (PAINT) --
+    # `possession_orchestrator._resolve_interior_pass_destination` rolls the REAL RESTRICTED_RIM/PAINT
+    # destination at dispatch time, same as TRANSITION_PUSH.
+    if (state.phase == PossessionPhase.HALFCOURT and context.nearest_teammate_id is not None
+            and context.ball_handler_defender_id is not None):
+        on_ball_defender = state.assignments.get(context.ball_handler_defender_id)
+        if on_ball_defender is not None and on_ball_defender.posture in (
+                DefensivePosture.RECOVERING, DefensivePosture.TRAILING, DefensivePosture.HELPING):
+            opportunities.append(ObjectiveOpportunity(
+                _next_id(ActionType.INTERIOR_CUT), ActionType.INTERIOR_CUT, carrier,
+                target_player_id=context.nearest_teammate_id, target_zone=SpatialZone.PAINT,
+                source=f"on_ball_defender_posture:{on_ball_defender.posture.value}",
+            ))
+
     return opportunities

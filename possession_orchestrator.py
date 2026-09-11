@@ -178,6 +178,9 @@ SUPPORTED_ACTION_TYPES = frozenset({
     # (see `dispatch_action`'s own PASS_ACTIONS branch, reused unmodified) -- moved OUT of
     # CAPABILITY_GATED_ACTION_TYPES below, not duplicated in both.
     ActionType.TRANSITION_PUSH,
+    # "Expand interior scoring opportunities" phase -- INTERIOR_CUT dispatches as a real pass too
+    # (same PASS_ACTIONS branch, same reuse posture as TRANSITION_PUSH above).
+    ActionType.INTERIOR_CUT,
 })
 CAPABILITY_GATED_ACTION_TYPES = frozenset({
     ActionType.ISOLATION_ATTACK, ActionType.CLOSEOUT_ATTACK,
@@ -988,6 +991,29 @@ class PossessionConfig:
     ordinary_entry_seconds: float = 9.0      # FIRST-PASS CALIBRATED (was 3.0 UNCALIBRATED) -- a new halfcourt possession's advance/organize time
     transition_entry_seconds: float = 1.5    # UNCALIBRATED PLACEHOLDER (unchanged this pass) -- a new live-transition possession's advance time
     second_chance_reset_seconds: float = 1.0  # UNCALIBRATED PLACEHOLDER (unchanged this pass) -- post-OREB re-organization, SAME possession
+    # ACTIVATED ("Expand interior scoring opportunities" phase). TRANSITION_PUSH's landing spot is
+    # no longer hardcoded to RESTRICTED_RIM (see `_resolve_interior_pass_destination` below) --
+    # this is the probability the push lands the receiver at RESTRICTED_RIM rather than PAINT.
+    # PROVISIONAL V1, NOT fit to final shot-family totals: no direct event-level "did this
+    # transition push land at the rim vs. the leg of the paint" dataset exists publicly, so this
+    # is a labeled, defensible structural split -- a high-advantage numbers-attacking push (which
+    # is what TRANSITION_PUSH structurally represents: `state.phase == TRANSITION`, a teammate
+    # already running ahead of the ball) should reach the rim MORE often than it stalls at the
+    # nail/paint, but both destinations must remain reachable. 0.65 chosen as the smallest
+    # defensible majority split satisfying "rim > paint" without asserting a precise ratio this
+    # repo cannot observe. Reused, unmodified, by INTERIOR_CUT's own destination roll (see
+    # `interior_cut_rim_probability` below) -- SAME two-zone destination concept, deliberately
+    # SEPARATE, independently-labeled knob (a halfcourt pass-created cut is a different basketball
+    # event than a live numbers-advantage push and is not assumed to share the same split).
+    transition_push_rim_probability: float = 0.65
+    # ACTIVATED ("Expand interior scoring opportunities" phase). INTERIOR_CUT's own destination
+    # split -- see `transition_push_rim_probability`'s docstring for the shared methodology. A
+    # halfcourt cut exploiting a compromised defensive area is judged LESS likely than a live
+    # transition numbers-advantage push to finish directly at the rim (a half-court defense that
+    # is compromised in one area, per `AdvantageModel.compromised_areas()`, has more recovery time
+    # than a defense still getting back in transition) -- set slightly below the transition value.
+    # PROVISIONAL V1, NOT fit to final shot-family totals.
+    interior_cut_rim_probability: float = 0.55
     # ACTIVATED ("Calibrate source-conditioned transition routing" phase). Real, first-pass value
     # -- NOT a target-fit, NOT a midpoint of `transition_entry_seconds`/`ordinary_entry_seconds`:
     # derived directly from `transition_rate_ingestion.py`'s real 2025-26 extraction, specifically
@@ -2049,6 +2075,31 @@ def _loose_ball_continuation_or_terminal(engine: PossessionEngine, world: Posses
 # ---------------------------------------------------------------------
 # 14. Dispatcher -- the one authoritative seam.
 # ---------------------------------------------------------------------
+def _resolve_interior_pass_destination(action_type: ActionType, config: PossessionConfig,
+                                        rng: random.Random) -> SpatialZone:
+    """"Expand interior scoring opportunities" phase: TRANSITION_PUSH/INTERIOR_CUT no longer
+    hardcode their landing zone to RESTRICTED_RIM at opportunity-generation time --
+    `action_opportunity.py` still stamps a placeholder `target_zone` on the `ObjectiveOpportunity`
+    it emits (RESTRICTED_RIM for TRANSITION_PUSH, PAINT for INTERIOR_CUT -- see that module), but
+    the REAL destination is rolled here, once, at dispatch time, from `rng` (the SAME
+    possession-seeded `random.Random` every other dispatch decision already consumes) against a
+    centralized, labeled `PossessionConfig` probability. This is the ONE place either action's
+    destination is decided -- `_dispatch_pass` itself is untouched and still just reads whatever
+    `target_zone` it is handed. Deterministic under a fixed seed (same rng stream position ->
+    same destination), consumes exactly one `rng.random()` call, and never touches any other
+    action type's target zone."""
+    if action_type == ActionType.TRANSITION_PUSH:
+        rim_probability = config.transition_push_rim_probability
+    elif action_type == ActionType.INTERIOR_CUT:
+        rim_probability = config.interior_cut_rim_probability
+    else:
+        raise UnsupportedActionError(f"_resolve_interior_pass_destination has no split defined for {action_type}")
+    return SpatialZone.RESTRICTED_RIM if rng.random() < rim_probability else SpatialZone.PAINT
+
+
+_INTERIOR_DESTINATION_ACTIONS = frozenset({ActionType.TRANSITION_PUSH, ActionType.INTERIOR_CUT})
+
+
 def dispatch_action(engine: PossessionEngine, world: PossessionWorld, intent: ActionIntent,
                      config: PossessionConfig, rng: random.Random, steps: int) -> Optional[PossessionTerminalResult]:
     if intent.action_type not in SUPPORTED_ACTION_TYPES:
@@ -2059,6 +2110,9 @@ def dispatch_action(engine: PossessionEngine, world: PossessionWorld, intent: Ac
     if intent.action_type in (ActionType.PULL_UP, ActionType.CATCH_AND_SHOOT):
         return _dispatch_shot(engine, world, intent, config, rng, steps)
     if intent.action_type in PASS_ACTIONS:
+        if intent.action_type in _INTERIOR_DESTINATION_ACTIONS:
+            destination = _resolve_interior_pass_destination(intent.action_type, config, rng)
+            intent = replace(intent, target_zone=destination.value)
         return _dispatch_pass(engine, world, intent, rng, steps, config)
     raise UnsupportedActionError(f"dispatch_action has no route for {intent.action_type} despite it being "
                                   f"in SUPPORTED_ACTION_TYPES -- a real implementation gap, not a gate")

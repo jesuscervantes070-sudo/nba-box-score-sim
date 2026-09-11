@@ -110,14 +110,14 @@ class TestTurnoverAccountingReconciliation(unittest.TestCase):
         # Top-level family choice changes continuation/flip state and therefore
         # the later deterministic RNG trajectory; these pin the first shot-mix
         # baseline without changing turnover logic.
-        # Re-pinned for "Add interior shot-opportunity generation": TRANSITION_PUSH now dispatches
-        # as a real pass (new live turnover opportunities -- a TRANSITION_PUSH can now be
-        # intercepted/disrupted exactly like any other pass), on top of the prior
-        # "Calibrate source-conditioned transition routing" re-pin (which reduced total
-        # possessions/turnover opportunities). (Previously re-pinned for "Fix missed and-one
+        # Re-pinned for "Expand interior scoring opportunities": TRANSITION_PUSH's destination is now
+        # a real RESTRICTED_RIM/PAINT roll (was hardcoded RESTRICTED_RIM) and a new HALFCOURT
+        # INTERIOR_CUT pass opportunity was added (new live turnover-interception exposure). Not a
+        # turnover-logic change. (Previously re-pinned for "Add interior shot-opportunity
+        # generation" and "Calibrate source-conditioned transition routing", and "Fix missed and-one
         # rebound continuation".)
-        self.assertEqual(team_total, 4075)
-        self.assertEqual(player_total, 3690)
+        self.assertEqual(team_total, 4051)
+        self.assertEqual(player_total, 3689)
 
     def test_basketball_output_digest_matches_first_shot_mix_baseline(self):
         payload = []
@@ -150,12 +150,15 @@ class TestTurnoverAccountingReconciliation(unittest.TestCase):
                             "ot": result.overtime_periods, "rows": rows})
         digest = hashlib.sha256(json.dumps(payload, sort_keys=True,
                                            separators=(",", ":")).encode()).hexdigest()
-        # Re-pinned for "Add interior shot-opportunity generation" -- see
-        # test_benchmark_uses_team_turnovers_and_preserves_player_total's own comment above for why
-        # this baseline moved. (Previously re-pinned for "Calibrate source-conditioned transition
-        # routing", "Model drive floor fouls as observable outcomes", and "Fix missed and-one
-        # rebound continuation".)
-        self.assertEqual(digest, "80bc65551a988149ad8eeb9764348adda5e1f2c89807ff2ea10fcf99a9536ddb")
+        # Re-pinned for "Expand interior scoring opportunities" -- TRANSITION_PUSH's destination is
+        # no longer hardcoded to RESTRICTED_RIM (now a real config-driven RESTRICTED_RIM/PAINT roll,
+        # `PossessionConfig.transition_push_rim_probability`) and a new HALFCOURT INTERIOR_CUT
+        # opportunity/dispatch path was added -- both intentionally change simulated possession
+        # output. See test_benchmark_uses_team_turnovers_and_preserves_player_total's own comment
+        # above for why this baseline moved. (Previously re-pinned for "Add interior shot-opportunity
+        # generation", "Calibrate source-conditioned transition routing", "Model drive floor fouls as
+        # observable outcomes", and "Fix missed and-one rebound continuation".)
+        self.assertEqual(digest, "2f610ee26303b180f453887beefcf95f98e11c70227466d061cb403d98745e73")
 
 
 if __name__ == "__main__":

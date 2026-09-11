@@ -51,8 +51,16 @@ class TestShotFamilyDiagnostics(unittest.TestCase):
 
     def test_late_clock_family_telemetry_reconciles(self):
         self.assertGreater(self.diagnosis.late_clock_activations, 0)
-        self.assertEqual(sum(self.diagnosis.late_clock_selected_shot_actions.values()),
-                         self.diagnosis.late_clock_activations)
+        # NOT a strict equality: `evaluate_clock_feasibility`'s late-clock gate only removes a
+        # continuation whose OWN minimum completion time exceeds the remaining shot clock -- a
+        # short-flight pass (e.g. a PAINT->RESTRICTED_RIM TRANSITION_PUSH/INTERIOR_CUT, both real,
+        # legal quick interior passes) can genuinely survive that gate and still get selected over
+        # a terminal shot. Confirmed by direct inspection of a real "Expand interior scoring
+        # opportunities"-phase possession (seed 25001, PAINT->RESTRICTED_RIM TRANSITION_PUSH
+        # selected under late_clock_filter_activated=True with 3.4s shot-clock remaining) -- this is
+        # correct engine behavior, not a diagnostic bug, so the invariant here is <=, not ==.
+        self.assertLessEqual(sum(self.diagnosis.late_clock_selected_shot_actions.values()),
+                             self.diagnosis.late_clock_activations)
         self.assertLessEqual(self.diagnosis.late_clock_fga,
                              self.diagnosis.late_clock_activations)
         self.assertTrue(set(self.diagnosis.late_clock_fga_by_family) <= {
