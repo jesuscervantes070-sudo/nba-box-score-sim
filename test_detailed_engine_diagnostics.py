@@ -1,0 +1,195 @@
+"""Focused tests proving detailed_engine_diagnostics.py's telemetry is
+correct and purely observational (First Diagnostic instrumentation)."""
+import unittest
+
+from detailed_engine_diagnostics import (
+    ActionTelemetry,
+    diagnose_game,
+    diagnose_games,
+    diagnose_possession,
+)
+from detailed_game import DetailedGameConfig, simulate_detailed_game
+from possession_orchestrator import PlayerSimulationProfile, PossessionConfig
+
+OFF_FIVE = tuple(str(i) for i in range(1, 6))
+DEF_FIVE = tuple(str(i) for i in range(11, 16))
+
+
+def _profiles():
+    profiles = {}
+    for p in OFF_FIVE:
+        profiles[p] = PlayerSimulationProfile.synthetic(p, "HOME")
+    for p in DEF_FIVE:
+        profiles[p] = PlayerSimulationProfile.synthetic(p, "AWAY")
+    return profiles
+
+
+def _game(seed=23024, config=None):
+    return simulate_detailed_game("HOME", "AWAY", OFF_FIVE, DEF_FIVE, _profiles(), rng_seed=seed, config=config)
+
+
+class TestPossessionDiagnostics(unittest.TestCase):
+    def setUp(self):
+        self.result = _game()
+
+    def test_elapsed_equals_start_minus_end_and_never_negative(self):
+        for record in self.result.possessions:
+            d = diagnose_possession(record)
+            self.assertAlmostEqual(d.elapsed_game_clock_seconds, record.start_game_clock - record.end_game_clock)
+            self.assertGreaterEqual(d.elapsed_game_clock_seconds, 0.0)
+            self.assertLessEqual(d.elapsed_game_clock_seconds, record.start_game_clock + 1e-9)
+
+    def test_action_count_matches_real_dispatch_count(self):
+        for record in self.result.possessions:
+            d = diagnose_possession(record)
+            self.assertEqual(d.action_count, len(record.terminal_result.world.action_log))
+            # steps and actions are DELIBERATELY never conflated into one field -- `step_count` is
+            # `PossessionTerminalResult`'s own 0-based loop-iteration index (Phase 23A semantics,
+            # unchanged here), while `action_count` is a real COUNT of dispatched ActionIntents; they
+            # measure different things by design and are not expected to satisfy a fixed numeric
+            # relationship (e.g. a possession terminating on its very first dispatch has
+            # step_count=0, action_count=1).
+            self.assertGreaterEqual(d.step_count, 0)
+            self.assertGreaterEqual(d.action_count, 1)
+
+    def test_misses_counted_exactly_once_per_shot(self):
+        for record in self.result.possessions:
+            d = diagnose_possession(record)
+            self.assertEqual(d.misses, d.fga - d.fgm)
+            self.assertGreaterEqual(d.misses, 0)
+
+    def test_rebound_opportunity_not_double_counted(self):
+        """Exactly one REBOUND_OPPORTUNITY trace entry exists per real
+        `_dispatch_rebound` invocation -- never duplicated by telemetry
+        itself (telemetry only counts what's already in the trace, it
+        never re-derives or re-triggers a resolution)."""
+        for record in self.result.possessions:
+            trace = record.terminal_result.world.trace
+            real_count = sum(1 for e in trace if e.get("action") == "REBOUND_OPPORTUNITY")
+            d = diagnose_possession(record)
+            self.assertEqual(d.rebound_opportunities, real_count)
+
+    def test_oreb_dreb_classification_matches_provisional_deltas(self):
+        for record in self.result.possessions:
+            d = diagnose_possession(record)
+            self.assertEqual(d.oreb, record.provisional_deltas.oreb)
+            self.assertEqual(d.dreb, record.provisional_deltas.dreb)
+
+    def test_multiple_orebs_in_one_possession_represented(self):
+        multi_oreb = [diagnose_possession(r) for r in self.result.possessions
+                      if r.provisional_deltas.oreb >= 2]
+        self.assertTrue(multi_oreb, "expected at least one possession with 2+ OREBs in this real game")
+        for d in multi_oreb:
+            self.assertEqual(d.second_chance_count, d.oreb)
+            self.assertGreaterEqual(d.rebound_opportunities, d.oreb)
+
+    def test_turnover_subtype_classification(self):
+        found_subtypes = set()
+        for record in self.result.possessions:
+            d = diagnose_possession(record)
+            if record.terminal_result.reason == "TURNOVER":
+                self.assertIsNotNone(d.turnover_subtype)
+                found_subtypes.add(d.turnover_subtype)
+            elif record.terminal_result.reason == "OFFENSIVE_FOUL_TURNOVER":
+                self.assertEqual(d.turnover_subtype, "OFFENSIVE_CHARGE")
+            else:
+                self.assertIsNone(d.turnover_subtype)
+        self.assertTrue(found_subtypes, "expected at least one classified turnover subtype in this real game")
+        self.assertLessEqual(found_subtypes, {"BAD_PASS_OUT_OF_BOUNDS", "BAD_PASS_TO_DEFENDER", "CLEAN_INTERCEPTION",
+                                               "LOOSE_BALL_DEFENSE_RECOVERED", "OTHER_DEAD_BALL_TURNOVER",
+                                               "OTHER_LIVE_BALL_TURNOVER", "OTHER_TURNOVER"})
+
+
+class TestGameDiagnostics(unittest.TestCase):
+    def setUp(self):
+        self.result = _game()
+        self.diag = diagnose_game(self.result)
+
+    def test_terminal_reason_aggregation_sums_to_total_possessions(self):
+        self.assertEqual(sum(self.diag.terminal_reason_distribution.values()), self.diag.total_possessions)
+
+    def test_game_level_equals_sum_of_possession_diagnostics(self):
+        per_possession = [diagnose_possession(r) for r in self.result.possessions]
+        self.assertEqual(self.diag.oreb, sum(d.oreb for d in per_possession))
+        self.assertEqual(self.diag.dreb, sum(d.dreb for d in per_possession))
+        self.assertEqual(self.diag.fga, sum(d.fga for d in per_possession))
+        self.assertEqual(self.diag.fgm, sum(d.fgm for d in per_possession))
+        self.assertEqual(self.diag.rebound_opportunities, sum(d.rebound_opportunities for d in per_possession))
+        self.assertEqual(self.diag.turnovers, sum(1 for d in per_possession if d.turnover_subtype is not None))
+        self.assertEqual(self.diag.personal_fouls, sum(d.personal_fouls for d in per_possession))
+        self.assertEqual(self.diag.fta, sum(d.fta for d in per_possession))
+        for name, telem in self.diag.action_telemetry.items():
+            expected_count = sum(pd.action_telemetry.get(name, ActionTelemetry(name)).count for pd in per_possession)
+            self.assertEqual(telem.count, expected_count)
+
+    def test_oreb_share_matches_oreb_over_oreb_plus_dreb(self):
+        self.assertAlmostEqual(self.diag.oreb_share, self.diag.oreb / (self.diag.oreb + self.diag.dreb))
+
+    def test_oreb_count_distribution_sums_to_total_possessions(self):
+        self.assertEqual(sum(self.diag.oreb_count_distribution.values()), self.diag.total_possessions)
+
+    def test_rebound_opportunities_per_miss_is_close_to_one_not_duplicated(self):
+        """The primary diagnostic question: is exactly one rebound
+        opportunity produced per miss? (Not asserting realism -- just
+        that telemetry can answer the question and there is no gross
+        multiplicative duplication.)"""
+        self.assertIsNotNone(self.diag.rebound_opportunities_per_miss)
+        self.assertLess(self.diag.rebound_opportunities_per_miss, 1.5)
+
+    def test_no_faults_and_deterministic_output_unaffected_by_telemetry(self):
+        """Computing diagnostics twice from the SAME already-produced
+        result must never mutate it, and re-running the simulation with
+        the identical seed (with or without ever calling diagnostics)
+        must reproduce the identical basketball result."""
+        again = diagnose_game(self.result)
+        self.assertEqual(again.total_possessions, self.diag.total_possessions)
+        self.assertEqual(again.oreb, self.diag.oreb)
+
+        fresh_result = _game()  # a brand-new simulate_detailed_game call, same seed
+        self.assertEqual(fresh_result.final_home_score, self.result.final_home_score)
+        self.assertEqual(fresh_result.final_away_score, self.result.final_away_score)
+        self.assertEqual(fresh_result.total_possessions, self.result.total_possessions)
+        # and diagnosing it produces identical aggregate telemetry
+        fresh_diag = diagnose_game(fresh_result)
+        self.assertEqual(fresh_diag.oreb, self.diag.oreb)
+        self.assertEqual(fresh_diag.turnovers, self.diag.turnovers)
+
+
+class TestMultiGameDiagnostics(unittest.TestCase):
+    def test_ten_game_sample_matches_known_reported_aggregate(self):
+        results = [_game(seed=s) for s in range(23024, 23034)]
+        multi = diagnose_games(results)
+        self.assertEqual(multi.game_count, 10)
+        # loose bounds around the previously reported 10-game means -- not a calibration assertion,
+        # just confirming the telemetry reconstructs the same order of magnitude every run.
+        self.assertGreater(multi.mean_total_possessions, 600)
+        self.assertLess(multi.mean_total_possessions, 750)
+        self.assertGreater(multi.mean_oreb, 250)
+
+
+class TestTelemetryIsObservationalOnly(unittest.TestCase):
+    def test_diagnostics_module_never_imports_rng_or_selection(self):
+        """Namespace-name scan (same methodology this project already
+        established for firewall checks) -- checks the module's actual
+        top-level symbols/imports, not prose. The module's own docstring
+        legitimately NAMES `SelectionPolicy`/`simulate_possession` in
+        prose to explain the doctrine boundary; a raw full-text scan
+        would false-positive on that documentation."""
+        import detailed_engine_diagnostics as mod
+        self.assertNotIn("random", vars(mod))
+        self.assertNotIn("SelectionPolicy", vars(mod))
+        self.assertNotIn("simulate_possession", vars(mod))
+        self.assertNotIn("simulate_detailed_game", vars(mod))
+
+    def test_diagnostics_never_imported_by_simulation_modules(self):
+        import inspect
+        import possession_orchestrator
+        import detailed_game_orchestrator
+        import detailed_game
+        for mod in (possession_orchestrator, detailed_game_orchestrator, detailed_game):
+            src = inspect.getsource(mod)
+            self.assertNotIn("detailed_engine_diagnostics", src)
+
+
+if __name__ == "__main__":
+    unittest.main()

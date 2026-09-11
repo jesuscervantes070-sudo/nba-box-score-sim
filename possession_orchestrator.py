@@ -603,6 +603,12 @@ class PossessionWorld:
     foul_state: FoulAdministrationState = field(default_factory=FoulAdministrationState)
     stats: StatDeltas = field(default_factory=StatDeltas)
     trace: List[dict] = field(default_factory=list)
+    # DIAGNOSTIC ONLY (observability, see docs/DETAILED_ENGINE_FIRST_DIAGNOSTIC_REPORT.md) -- one entry per
+    # real dispatched ActionIntent (`{"step", "action_type", "elapsed_game_clock_seconds"}`), populated by a
+    # single hook in `simulate_possession`'s own loop. Distinct from `step`/`steps_taken`, which also counts
+    # top-of-loop clock checks and LOOSE-ball iterations that are NOT a dispatched action -- never conflated.
+    # Never read by any simulation decision; purely an observation of clock state already computed elsewhere.
+    action_log: List[dict] = field(default_factory=list)
 
     def team_id_for(self, player_id: str) -> str:
         if player_id in self.team_a_five:
@@ -957,6 +963,12 @@ def _dispatch_rebound(engine: PossessionEngine, world: PossessionWorld, rng: ran
         new_offense_team_id=defense_team_id, new_defense_team_id=offense_team_id,
         original_offense_team_id=offense_team_id,
     )
+    # Diagnostic-only trace entry (no prior hook existed here at all) -- captures the rebound opportunity's
+    # own real, structural inputs (source, eligible-candidate count, outcome, rebounder) for
+    # docs/DETAILED_ENGINE_FIRST_DIAGNOSTIC_REPORT.md's rebound-opportunity diagnostics. Never read by any
+    # simulation decision.
+    world.log_trace(step=steps, action="REBOUND_OPPORTUNITY", source=source, shot_family=shot_family,
+                     eligible_count=result.eligible_count, outcome=result.outcome, rebounder=result.rebounder_id)
     if result.outcome in (ReboundOutcome.SECURED_OFFENSE, ReboundOutcome.TEAM_REBOUND_OFFENSE):
         world.stats.oreb += 1
         if result.rebounder_id is not None:
@@ -1432,7 +1444,15 @@ def simulate_possession(
             engine.shot_clock_violation()
             return _terminal(PossessionTerminalReason.SHOT_CLOCK_VIOLATION, engine, world, step)
 
+        # Diagnostic-only hook (observational, never a simulation decision): records exactly one entry
+        # per real dispatched ActionIntent (distinct from `step`, which also counts top-of-loop clock/
+        # LOOSE-ball iterations -- see `PossessionWorld.action_log`'s own docstring). Clock is read before
+        # and after the SAME dispatch call this module already makes; nothing about dispatch itself changes.
+        clock_before = engine.state.game_clock_remaining
         terminal = dispatch_action(engine, world, intent, config, rng, step)
+        clock_after = (terminal.engine_state if terminal is not None else engine.state).game_clock_remaining
+        elapsed = (clock_before - clock_after) if clock_before is not None and clock_after is not None else None
+        world.action_log.append({"step": step, "action_type": intent.action_type.value, "elapsed_game_clock_seconds": elapsed})
         if terminal is not None:
             return terminal
 
