@@ -429,3 +429,212 @@ not fine-tuning-scale gaps — this is well past "structurally
 benchmarkable but otherwise unknown" and well short of anything
 approaching realistic. **Never described as `ACCURATE` or `REALISTIC`
 at this stage.**
+
+---
+
+## Turnover Root-Cause Diagnosis
+
+This diagnostic-only follow-up uses the identical seeds `25000–25099`,
+synthetic profiles, and calibrated timing. No probability, selection weight,
+player attribute, clock value, or basketball resolver changed.
+`turnover_diagnostics.py` observes completed results; the only simulation-
+module additions are clock snapshots that read existing state without
+consuming RNG or changing flow.
+
+### Turnover path map and taxonomy
+
+The engine has no reachable travel, illegal-screen, generic-violation, or
+standalone `DriveOutcome.LOST_BALL` path in its default game runner. The last
+is scaffolded but disabled. These are all current paths:
+
+| Terminal / event | Origin | Exact resolver/function | Live? | Steal? | Player TOV | Team TOV | Clock behavior | Next possession | Probability inputs |
+|---|---|---|---|---|---|---|---|---|---|
+| `TURNOVER` / `CLEAN_INTERCEPTION` | selected pass | `pass_resolution._resolve_disruption_and_delivery` → `_dispatch_pass` | yes | yes, with identified defender | passer retained in event; no player-TOV counter | exactly 1 | pass flight | live transition / `LIVE_STEAL` | eligible defenders, playmaking, posture; 0.35 given disruption |
+| `TURNOVER` / `BAD_PASS_OUT_OF_BOUNDS` | selected pass | same | no | no | passer identifiable, not accumulated | exactly 1 | pass flight | dead-ball inbound | passing-accuracy bad-pass logit; fixed outcome branches |
+| `TURNOVER` / identified `BAD_PASS_TO_DEFENDER` | selected pass | same | yes | no currently | passer identifiable, not accumulated | exactly 1 | pass flight | live transition / `LIVE_BAD_PASS_INTERCEPTION` | same bad-pass roll plus defender-identification draw |
+| `TURNOVER` / defense-recovered pass loose ball | pass deflection, retained-offense deflection, or unidentified bad pass | `resolve_generic_loose_ball` → `_loose_ball_continuation_or_terminal` | yes | no | passer identifiable, not accumulated | exactly 1 on defense recovery | pass flight + 0.5s scramble | live transition / `LOOSE_BALL_RECOVERY` | pass disruption, then weighted recovery geometry |
+| `TURNOVER` / defense-recovered handle strip | drive pressure → `CLEAN_STRIP_LOOSE` | `_resolve_pressure` → generic loose-ball resolver | yes | no | handler identifiable, not accumulated | exactly 1 on defense recovery | 2.5s drive + 0.5s scramble | live transition / `LOOSE_BALL_RECOVERY` | ball security, playmaking, posture; 0.20 strip given disruption; recovery geometry |
+| `OFFENSIVE_FOUL_TURNOVER` / `DEAD_BALL_TURNOVER` + foul checkpoint | drive collision | `_resolve_collision` → `_dispatch_floor_foul` | no | no | driver gets personal foul; no player-TOV counter | exactly 1 | 2.5s drive; administration adds no live time | dead-ball inbound | supplied contact, no-call/charge/foul constants, optional foul attributes |
+| `SHOT_CLOCK_VIOLATION` | clock exhaustion, no feasible action, or pass arrival | possession loop or `resolve_pass` | no | no | none | **0 in current TOV accounting** | clock already zero | dead-ball inbound | deterministic clock/control flow, not a turnover roll |
+
+Normalized categories are `PASS_CLEAN_INTERCEPTION`, `PASS_BAD_PASS`,
+`PASS_LOOSE_BALL_LOST`, `HANDLE_STRIP_LOST`, `OFFENSIVE_FOUL`, and
+`SHOT_CLOCK_VIOLATION`; `OTHER_TURNOVER` is a coverage alarm whose observed
+count is zero. Raw terminal/outcome, action, context, live/dead status, steal,
+and accounting fields remain alongside every normalized observation.
+
+### Fixed-seed 100-game decomposition
+
+- True alternating possessions: **22,398**.
+- Engine-accounted turnovers: **4,846** = **24.23/team-game** =
+  **0.21636/true possession**.
+- Target implication: 14.3 × **200 team-games** = **2,860**; observed excess
+  is **1,986**. At league scale the rounded implication is correctly
+  14.3 × 2,460 = **35,178**.
+- Broad possession losses including shot-clock violations: **5,967**. This
+  diagnostic total is not substituted for the benchmark TOV numerator.
+
+| Category | Count | Share of engine TOV | Share of broad losses | Rate / possession | Steals | Live / dead |
+|---|---:|---:|---:|---:|---:|---:|
+| `PASS_CLEAN_INTERCEPTION` | 2,334 | 48.16% | 39.12% | 10.42% | 2,334 | 2,334 / 0 |
+| `PASS_LOOSE_BALL_LOST` | 1,851 | 38.20% | 31.02% | 8.26% | 0 | 1,851 / 0 |
+| `PASS_BAD_PASS` | 436 | 9.00% | 7.31% | 1.95% | 0 | 138 / 298 |
+| `HANDLE_STRIP_LOST` | 225 | 4.64% | 3.77% | 1.00% | 0 | 225 / 0 |
+| `OFFENSIVE_FOUL` | 0 | 0% | 0% | 0% | 0 | 0 / 0 |
+| `SHOT_CLOCK_VIOLATION` | 1,121 | excluded | 18.79% | 5.00% | 0 | 0 / 1,121 |
+
+Engine-accounted turnovers are **93.85% live ball** (4,548/4,846) and
+**6.15% dead ball** (298/4,846). Including shot-clock losses gives 4,548
+live and 1,419 dead possession losses.
+
+### Passing exposure and failure
+
+The run generated **29,979 pass attempts**, or **1.3385/possession**.
+Exactly two defenders were eligible on every attempt. Passes caused **4,621
+turnovers**: **15.414%/attempt** and **0.20631/possession**, or **95.36%** of
+engine-accounted turnovers.
+
+| Selected action family | Attempts | Completed | TOV | TOV/attempt | Clean interceptions | Other bad-pass outcomes | Deflected loose outcomes | Steals |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| `SWING_PASS` | 15,804 | 11,991 | 2,428 | 15.36% | 1,211 | 336 | 2,250 | 1,211 |
+| `RESET_PASS` | 14,175 | 10,805 | 2,193 | 15.47% | 1,123 | 258 | 1,989 | 1,123 |
+| `KICKOUT` | 0 | 0 | 0 | — | 0 | 0 | 0 | 0 |
+| `POCKET_PASS` | 0 | 0 | 0 | — | 0 | 0 | 0 | 0 |
+| `OUTLET_PASS` | 0 | 0 | 0 | — | 0 | 0 | 0 | 0 |
+
+The two active families have effectively equal failure rates. `SWING_PASS`
+produces 52.5% of pass turnovers because it supplies 52.7% of exposure, not
+because its resolver is uniquely worse. Outcomes were 14,376 clean and 8,420
+adjusted completions, 2,334 clean interceptions, 2,280 retained-offense and
+1,959 unresolved deflections, 298 out-of-bounds bad passes, 296 bad passes
+toward a defender, and 16 shot-clock violations on arrival.
+
+### Handling / strip exposure and failure
+
+- Pressure opportunities: **11,084** (**0.495/possession**).
+- Meaningful disruptions: **2,335** (**21.07%/opportunity**).
+- Distinct strip attempts are not represented; only resolved outcomes exist.
+- `CLEAN_STRIP_LOOSE`: **463** (**4.18%/opportunity**).
+- Defense/offense recoveries: **225/238**.
+- Handling turnovers: **225** = **2.03%/eligible opportunity**.
+- Steals: **0**. `STRIP != STEAL`; recovery does not automatically add one.
+- `DriveOutcome.LOST_BALL` is disabled, so unforced handling-loss exposure is
+  zero in this benchmark.
+
+### Shot clock and offensive fouls
+
+There were **1,121 shot-clock violations**: **11.21/game**,
+**5.605/team-game**, **0.05005/possession**, and **18.79%** of broad losses.
+That is 23.13% of the current engine-TOV count, but shot-clock violations are
+excluded from that count and therefore do not cause the reported +69.4%
+directly. Sources were 1,105 top-of-loop expirations and 16 pass-arrival
+expirations; there were zero no-feasible-action cases. All followed at least
+four selected actions. After the preceding action the clock was 0.0–2.8s
+(mean 1.61): 17 were already zero and 1,104 were in `(0,3]`, after which
+existing inter-action or flight time exhausted the clock.
+
+Offensive-foul turnovers were **zero**. Default
+`force_on_ball_contact_established=False` gives the collision branch zero
+exposure. Under the existing explicit test hook, a charge produces
+`OFFENSIVE_FOUL_TURNOVER`, one personal foul and turnover, no steal, no team
+foul, and no bonus free throws. Phase 21B administration is unchanged.
+
+### Steal and duplicate-accounting reconciliation
+
+- Turnovers/steals: **4,846/2,334**. Every steal belongs to exactly one clean
+  interception; none exists without a turnover.
+- **2,512** accounted turnovers have no steal. Of these, 2,214 are live:
+  1,851 pass loose-ball losses, 225 handle losses, and 138 identified
+  `BAD_PASS_TO_DEFENDER` outcomes. The last creates defender control but no
+  steal; that is an accounting-semantics review candidate, not changed here.
+- Every turnover possession has exactly one turnover delta. Pass terminals do
+  not also emit generic turnover events. Loose loss uses one recovery
+  checkpoint. A charge's turnover event and foul checkpoint derive different
+  stats. Shot-clock events remain outside TOV. No double-counting was found.
+
+### Stage and context splits
+
+Ordinary/transition denominators are starting exposures; second-chance
+exposure counts possessions reaching an OREB. A loss after an OREB is assigned
+to second chance rather than duplicated into its original entry.
+
+| Context | Exposures | Engine TOV | Rate | Broad losses | Broad rate |
+|---|---:|---:|---:|---:|---:|
+| Ordinary entry before second chance | 10,126 starts | 1,521 | 15.02% | 1,988 | 19.63% |
+| Transition entry before second chance | 12,272 starts | 2,025 | 16.50% | 2,213 | 18.03% |
+| Second-chance continuation | 5,404 reached | 1,300 | 24.06% | 1,766 | 32.68% |
+
+Engine turnovers occurred 1,444 times on the first selected action and 3,402
+times later; all 1,121 clock violations occurred later. The second-chance
+concentration is real internally, but exposure is inflated by the known OREB
+error, so it is not an independent turnover calibration target.
+
+### Player attributes and exact formulas
+
+All synthetic profiles are homogeneous, so realized between-player dependence
+cannot be estimated from this sample. Source authority is clear:
+
+- `passing_accuracy_ast_pct=0.18` affects only independent bad-pass risk and
+  arrival quality. `playmaking_vision_shrunk_rate` is disabled.
+- `defensive_playmaking_per36=1.5` affects eligible-defender pass disruption
+  and on-ball disruption.
+- `ball_security_error_rate=0.0086` affects only on-ball disruption.
+- generic loose-ball recovery reads no player attribute.
+
+Exact unchanged decision structures:
+
+1. Bad pass: `sigmoid(logit(.02) - .15*passing_accuracy)` = **1.9478%** at
+   the synthetic value, followed by fixed/random outcome branches.
+2. Each eligible defender, sequentially:
+   `sigmoid(logit(.12) + .5*z(defensive_playmaking;1.5,.7) + posture)`,
+   where posture is `+.3 HELPING`, `-.3 TRAILING`, otherwise zero. First
+   success wins. Given disruption: .35 interception, .30 unresolved loose,
+   .35 retained-offense loose. Observed disruption was **21.93%/pass** with
+   two eligible defenders every time. Sequential defender exposure is a
+   nonlinear amplifier; `.12` is not the per-pass rate.
+3. On ball:
+   `clamp(sigmoid(-1.6 + z(ball_security;.00858,.00737) +
+   .35*z(defensive_playmaking;1.5,.7) + posture),.005,.995)`; posture is
+   `+.3 SQUARE`, `0 RECOVERING`, `-.4 TRAILING/HELPING`. Given disruption,
+   strip is .20 and forced pickup .35.
+4. Loose recovery is a categorical draw over players in the ball zone,
+   fallback all ten, weight 1 normally and 2 for an already-favored team.
+5. When contact is enabled, no-call is
+   `clamp(sigmoid(logit(.55)-.15*foul_drawing-(-.15)*foul_discipline),
+   .005,.995)`; charge/defensive-foul weights are .20/.25 after a whistle.
+6. Shot-clock violation has no stochastic turnover formula; clock decrements
+   deterministically produce the zero-clock terminal.
+
+The disruption base rate, sequential defender loop, 35% interception split,
+pass volume, and attribute-free recovery are `CALIBRATION CANDIDATE`s, not
+logic bugs. The live bad-pass/no-steal semantic is an accounting review
+candidate. No value changed.
+
+### Ranked contributors and smallest next calibration
+
+Exact NBA category shares remain unverified, so the 1,986 excess cannot be
+honestly allocated into category-specific empirical excess counts. Ranking is
+by observed contribution and mechanism evidence:
+
+| Cause | Observed contribution | Evidence | Confidence | Candidate? |
+|---|---:|---|---|---|
+| Shared pass-disruption resolver | 4,185 TOV (86.36%) | 2,334 interceptions + 1,851 pass loose losses; 21.93% passes disrupted; two sequential defender rolls | high | yes |
+| Pass exposure | 29,979 attempts; 1.338/possession | amplifies 15.41% pass failure into .206 TOV/possession; family rates equal | high as amplifier; target unknown | yes, but not first alone |
+| Independent bad pass | 436 TOV (9.00%) | explicit ~1.95%/pass branch; some loose outcomes recover | high | later |
+| Handling strip/recovery | 225 TOV (4.64%) | 11,084 exposures; 4.18% loose; 48.6% defense recovery | high | not first |
+| Shot clock | 1,121 broad losses, zero current TOV | material loss but excluded from +69.4% numerator | high | timing follow-up |
+| Offensive foul | 0 | no default collision exposure | high | no |
+| Duplicate accounting | 0 | event/terminal/delta reconciliation | high | no |
+
+**Smallest recommended next calibration target: the pass-disruption attempt
+resolver only**, specifically the per-eligible-defender attempt structure/base
+rate in `_resolve_disruption_and_delivery`. Hold independent bad passes,
+handling strips, loose recovery, timing, action selection, and every other
+basketball probability fixed. The shared branch supplies 86.36% of observed
+turnovers, while active pass families show no family-specific failure anomaly.
+
+**Classification: TURNOVER ROOT CAUSE IDENTIFIED.**
+
+Verification after the diagnostic additions: **10/10** new turnover-focused
+tests, **222/222** combined detailed-engine diagnostic/orchestrator tests, and
+**1002/1002** repository tests pass.

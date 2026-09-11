@@ -1522,6 +1522,8 @@ def _dispatch_pass(engine: PossessionEngine, world: PossessionWorld, intent: Act
 
     if outcome == "SHOT_CLOCK_VIOLATION_ON_ARRIVAL":
         # engine.shot_clock_violation() was already called INSIDE resolve_pass -- not called again here.
+        world.log_trace(step=steps, action="SHOT_CLOCK_VIOLATION_DIAGNOSTIC",
+                        source="PASS_ARRIVAL", shot_clock_remaining=engine.state.shot_clock_remaining)
         return _terminal(PossessionTerminalReason.SHOT_CLOCK_VIOLATION, engine, world, steps)
 
     if outcome in (PassOutcome.COMPLETED_CLEAN, PassOutcome.COMPLETED_ADJUSTED):
@@ -1657,6 +1659,8 @@ def simulate_possession(
     for step in range(config.max_steps_per_possession):
         if engine.state.shot_clock_remaining is not None and engine.state.shot_clock_remaining <= 0.0 \
                 and engine.state.ball_state != BallState.LOOSE:
+            world.log_trace(step=step, action="SHOT_CLOCK_VIOLATION_DIAGNOSTIC",
+                            source="TOP_OF_LOOP", shot_clock_remaining=engine.state.shot_clock_remaining)
             engine.shot_clock_violation()
             return _terminal(PossessionTerminalReason.SHOT_CLOCK_VIOLATION, engine, world, step)
         if engine.state.game_clock_remaining is not None and engine.state.game_clock_remaining <= 0.0:
@@ -1692,6 +1696,8 @@ def simulate_possession(
         if intent is None:
             # genuinely no feasible supported action (e.g. clock too low for anything but an
             # already-infeasible RESET_PASS) -- the real, structural analog of a shot-clock violation.
+            world.log_trace(step=step, action="SHOT_CLOCK_VIOLATION_DIAGNOSTIC",
+                            source="NO_FEASIBLE_ACTION", shot_clock_remaining=engine.state.shot_clock_remaining)
             engine.shot_clock_violation()
             return _terminal(PossessionTerminalReason.SHOT_CLOCK_VIOLATION, engine, world, step)
 
@@ -1704,16 +1710,21 @@ def simulate_possession(
         # in `world.stage_timing_log`; it is explicitly EXCLUDED from this action_log entry's own elapsed
         # so the two diagnostic categories never double-count the same real clock decrement.
         clock_before = engine.state.game_clock_remaining
+        shot_clock_before = engine.state.shot_clock_remaining
         stage_log_len_before = len(world.stage_timing_log)
         terminal = dispatch_action(engine, world, intent, config, rng, step)
         clock_after = (terminal.engine_state if terminal is not None else engine.state).game_clock_remaining
+        shot_clock_after = (terminal.engine_state if terminal is not None else engine.state).shot_clock_remaining
         elapsed = (clock_before - clock_after) if clock_before is not None and clock_after is not None else None
         if elapsed is not None:
             nested_stage_seconds = sum(
                 (e.get("elapsed_game_clock_seconds") or 0.0) for e in world.stage_timing_log[stage_log_len_before:]
             )
             elapsed -= nested_stage_seconds
-        world.action_log.append({"step": step, "action_type": intent.action_type.value, "elapsed_game_clock_seconds": elapsed})
+        world.action_log.append({"step": step, "action_type": intent.action_type.value,
+                                 "elapsed_game_clock_seconds": elapsed,
+                                 "shot_clock_before": shot_clock_before,
+                                 "shot_clock_after": shot_clock_after})
         if terminal is not None:
             return terminal
 
