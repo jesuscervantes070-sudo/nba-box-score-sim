@@ -112,7 +112,7 @@ from typing import Dict, List, Optional, Tuple
 from action_intent import ActionIntent, ActionType, PASS_ACTIONS
 from action_opportunity import INTERIOR_ZONES, PERIMETER_ZONES, StructuralContext, generate_opportunities
 from action_perception import perceive
-from action_selection import ClockContext, RoleContext, SelectionPolicy, TendencyContext
+from action_selection import ClockContext, RoleContext, SelectionPolicy, TendencyContext, _clock_feasible
 from drive_resolution import DriveResolutionContext, DriveOutcome, resolve_drive
 from floor_foul_administration import (
     DEFENSIVE_FLOOR_FOUL,
@@ -686,6 +686,15 @@ class PossessionWorld:
     # `_possession_stage_origin`'s own "which entry founded this possession" lookup. Never read by any
     # simulation decision; purely an observation of clock state already computed elsewhere.
     inter_action_log: List[dict] = field(default_factory=list)
+    # DIAGNOSTIC ONLY -- complete clock-charge ledger. No simulation
+    # decision reads these entries and recording them consumes no RNG.
+    clock_charge_log: List[dict] = field(default_factory=list)
+    # DIAGNOSTIC ONLY -- the exact perceived/clock-feasible menu and
+    # already-selected intent at every decision boundary.
+    decision_log: List[dict] = field(default_factory=list)
+    # DIAGNOSTIC ONLY -- exactly one causal summary for each terminal
+    # SHOT_CLOCK_VIOLATION. Populated immediately before returning.
+    shot_clock_violation_log: List[dict] = field(default_factory=list)
 
     def team_id_for(self, player_id: str) -> str:
         if player_id in self.team_a_five:
@@ -834,12 +843,43 @@ def build_structural_context(engine: PossessionEngine, world: PossessionWorld) -
 # ---------------------------------------------------------------------
 # 6. Clock ownership -- see module docstring.
 # ---------------------------------------------------------------------
-def _charge_time(engine: PossessionEngine, dt: float) -> None:
+def _log_clock_charge(world: PossessionWorld, step: Optional[int], timing_category: str,
+                      configured_seconds: float, shot_before: Optional[float], shot_after: Optional[float],
+                      game_before: Optional[float], game_after: Optional[float],
+                      metadata: Optional[dict] = None) -> None:
+    """Record an already-applied clock mutation without affecting control flow."""
+    entry = {
+        "step": step, "timing_category": timing_category,
+        "configured_seconds": configured_seconds,
+        "shot_clock_before": shot_before, "shot_clock_after": shot_after,
+        "elapsed_shot_clock_seconds": (
+            shot_before - shot_after if shot_before is not None and shot_after is not None else None
+        ),
+        "game_clock_before": game_before, "game_clock_after": game_after,
+        "elapsed_game_clock_seconds": (
+            game_before - game_after if game_before is not None and game_after is not None else None
+        ),
+        "crossed_shot_clock_zero": (
+            shot_before is not None and shot_after is not None and shot_before > 0.0 and shot_after <= 0.0
+        ),
+    }
+    if metadata:
+        entry.update(metadata)
+    world.clock_charge_log.append(entry)
+
+
+def _charge_time(engine: PossessionEngine, dt: float, world: Optional[PossessionWorld] = None,
+                 timing_category: Optional[str] = None, step: Optional[int] = None) -> None:
     if dt <= 0.0:
         raise ValueError("every dispatched LIVE action must consume dt > 0 -- got a non-positive duration")
+    shot_before = engine.state.shot_clock_remaining
+    game_before = engine.state.game_clock_remaining
     new_shot = None if engine.state.shot_clock_remaining is None else max(0.0, engine.state.shot_clock_remaining - dt)
     new_game = None if engine.state.game_clock_remaining is None else max(0.0, engine.state.game_clock_remaining - dt)
     engine.state = replace(engine.state, shot_clock_remaining=new_shot, game_clock_remaining=new_game)
+    if world is not None:
+        _log_clock_charge(world, step, timing_category or "UNSPECIFIED", dt,
+                          shot_before, new_shot, game_before, new_game)
 
 
 @dataclass
@@ -963,7 +1003,7 @@ def _charge_possession_stage_time(engine: PossessionEngine, world: PossessionWor
     if stage not in seconds_by_stage:
         raise ValueError(f"unknown PossessionStage {stage!r}")
     clock_before = engine.state.game_clock_remaining
-    _charge_time(engine, seconds_by_stage[stage])
+    _charge_time(engine, seconds_by_stage[stage], world, stage, step)
     clock_after = engine.state.game_clock_remaining
     elapsed = (clock_before - clock_after) if clock_before is not None and clock_after is not None else None
     world.stage_timing_log.append({"step": step, "stage": stage, "elapsed_game_clock_seconds": elapsed})
@@ -986,7 +1026,7 @@ def _charge_inter_action_time(engine: PossessionEngine, world: PossessionWorld, 
     deciding WHETHER this should be charged at all for a given
     continuation -- this function only performs the charge once called."""
     clock_before = engine.state.game_clock_remaining
-    _charge_time(engine, config.inter_action_seconds)
+    _charge_time(engine, config.inter_action_seconds, world, ContinuationStage.INTER_ACTION, step)
     clock_after = engine.state.game_clock_remaining
     elapsed = (clock_before - clock_after) if clock_before is not None and clock_after is not None else None
     world.inter_action_log.append({"step": step, "stage": ContinuationStage.INTER_ACTION, "elapsed_game_clock_seconds": elapsed})
@@ -1112,6 +1152,94 @@ def _terminal(reason: str, engine: PossessionEngine, world: PossessionWorld, ste
         resulting_defense_team_id=defense_team_id if defense_team_id is not None else engine.state.defense_team_id,
         stats=world.stats, steps_taken=steps, engine_state=engine.state, events=engine.log.events, world=world,
     )
+
+
+def _record_shot_clock_violation(world: PossessionWorld, engine: PossessionEngine,
+                                  step: int, terminal_source: str) -> None:
+    """Capture one complete, zero-RNG explanation of an already-detected violation."""
+    crossings = [entry for entry in world.clock_charge_log if entry.get("crossed_shot_clock_zero")]
+    causal_charge = crossings[-1] if crossings else None
+    previous_action = world.action_log[-1] if world.action_log else None
+    previous_decision = world.decision_log[-1] if world.decision_log else None
+    previous_action_type = previous_action.get("action_type") if previous_action else None
+    previous_action_outcome = None
+    if previous_action is not None:
+        matching = [entry for entry in world.trace
+                    if entry.get("step") == previous_action.get("step")
+                    and entry.get("action") == previous_action_type]
+        if not matching:
+            matching = [entry for entry in world.trace
+                        if entry.get("step") == previous_action.get("step") and "outcome" in entry]
+        if matching:
+            previous_action_outcome = matching[-1].get("outcome")
+
+    initial_stage = world.stage_timing_log[0]["stage"] if world.stage_timing_log else "UNKNOWN"
+    followed_oreb = any(entry.get("stage") == PossessionStage.SECOND_CHANCE_RESET
+                        for entry in world.stage_timing_log)
+    origin = "SECOND_CHANCE" if followed_oreb else (
+        "TRANSITION" if initial_stage == PossessionStage.TRANSITION_ENTRY else "ORDINARY"
+    )
+    action_types = [entry.get("action_type") for entry in world.action_log]
+    totals = {}
+    for category in (PossessionStage.HALFCOURT_ENTRY, PossessionStage.TRANSITION_ENTRY,
+                     PossessionStage.SECOND_CHANCE_RESET, ContinuationStage.INTER_ACTION,
+                     "PASS_FLIGHT", "DRIVE_EXECUTION", "SHOT_EXECUTION"):
+        totals[category] = sum(
+            entry.get("elapsed_shot_clock_seconds") or 0.0
+            for entry in world.clock_charge_log if entry.get("timing_category") == category
+        )
+    entry_time = (totals[PossessionStage.HALFCOURT_ENTRY]
+                  + totals[PossessionStage.TRANSITION_ENTRY]
+                  + totals[PossessionStage.SECOND_CHANCE_RESET])
+    world.shot_clock_violation_log.append({
+        "possession_id": engine.state.possession_id,
+        "offense_team_id": world.team_a_id,
+        "possession_origin": origin,
+        "initial_entry_origin": (
+            "TRANSITION" if initial_stage == PossessionStage.TRANSITION_ENTRY else "ORDINARY"
+        ),
+        "action_index": len(world.action_log),
+        "shot_clock_at_start_of_previous_decision": (
+            previous_decision.get("shot_clock_remaining") if previous_decision else None
+        ),
+        "shot_clock_after_previous_action": (
+            previous_action.get("shot_clock_after") if previous_action else None
+        ),
+        "shot_clock_immediately_before_final_timing_charge": (
+            causal_charge.get("shot_clock_before") if causal_charge else None
+        ),
+        "timing_category_that_crossed_zero": (
+            causal_charge.get("timing_category") if causal_charge else None
+        ),
+        "pass_family": causal_charge.get("pass_family") if causal_charge else None,
+        "configured_final_timing_seconds": (
+            causal_charge.get("configured_seconds") if causal_charge else None
+        ),
+        "elapsed_final_timing_seconds": (
+            causal_charge.get("elapsed_shot_clock_seconds") if causal_charge else None
+        ),
+        "previous_action_type": previous_action_type,
+        "previous_action_outcome": previous_action_outcome,
+        "passes": sum(action in {a.value for a in PASS_ACTIONS} for action in action_types),
+        "drives": sum(action == ActionType.DRIVE.value for action in action_types),
+        "total_modeled_actions": len(world.action_log),
+        "total_entry_time": entry_time,
+        "total_inter_action_time": totals[ContinuationStage.INTER_ACTION],
+        "total_pass_time": totals["PASS_FLIGHT"],
+        "total_drive_time": totals["DRIVE_EXECUTION"],
+        "total_shot_time": totals["SHOT_EXECUTION"],
+        "shot_attempt_occurred_previously": bool(world.shot_attempt_log),
+        "followed_oreb": followed_oreb,
+        "terminal_source": terminal_source,
+        "action_was_selected_before_expiration": previous_action is not None,
+        "feasible_action_existed_at_previous_decision": bool(
+            previous_decision and previous_decision.get("feasible_action_types")
+        ),
+        "feasible_shot_existed_at_previous_decision": bool(
+            previous_decision and set(previous_decision.get("feasible_action_types", ()))
+            & {a.value for a in (ActionType.PULL_UP, ActionType.CATCH_AND_SHOOT)}
+        ),
+    })
 
 
 # ---------------------------------------------------------------------
@@ -1355,16 +1483,16 @@ def _dispatch_drive(engine: PossessionEngine, world: PossessionWorld, intent: Ac
             # here, reusing the existing constant verbatim (no new duration invented). Foul ADMINISTRATION
             # itself (`_dispatch_floor_foul`) remains real dead-ball time -- charges nothing additional,
             # unchanged offensive/defensive-foul semantics, unchanged administration ownership.
-            _charge_time(engine, config.drive_action_seconds)
+            _charge_time(engine, config.drive_action_seconds, world, "DRIVE_EXECUTION", steps)
             return _dispatch_floor_foul(engine, world, config, rng, steps, OFFENSIVE_CHARGE, driver_id, defender_id)
         if pressure_outcome == OnBallContactOutcome.DEFENSIVE_FLOOR_FOUL:
-            _charge_time(engine, config.drive_action_seconds)  # same fix, same reasoning, as above
+            _charge_time(engine, config.drive_action_seconds, world, "DRIVE_EXECUTION", steps)  # same fix, same reasoning, as above
             return _dispatch_floor_foul(engine, world, config, rng, steps, DEFENSIVE_FLOOR_FOUL, defender_id, driver_id)
         if pressure_outcome == OnBallContactOutcome.FORCED_PICKUP:
-            _charge_time(engine, config.drive_action_seconds)
+            _charge_time(engine, config.drive_action_seconds, world, "DRIVE_EXECUTION", steps)
             return None  # dribble is now DEAD_DRIBBLE -- selection re-runs, DRIVE no longer offered
         if pressure_outcome == OnBallContactOutcome.CLEAN_STRIP_LOOSE:
-            _charge_time(engine, config.drive_action_seconds)
+            _charge_time(engine, config.drive_action_seconds, world, "DRIVE_EXECUTION", steps)
             world.loose_ball_favored_team_id = None  # genuinely unresolved -- no favored side
             return None  # top-of-loop LOOSE check handles it next iteration
         # CLEAN_CONTROL / DISRUPTED / NO_CALL_CONTACT -> fall through to the ordinary drive leverage roll
@@ -1377,7 +1505,7 @@ def _dispatch_drive(engine: PossessionEngine, world: PossessionWorld, intent: Ac
         # scaffolding stay DISABLED this phase (enable_physical_adjustment=False, enable_lost_ball=False).
     )
     outcome = resolve_drive(engine, driver_id, defender_id, drive_ctx, rng)
-    _charge_time(engine, config.drive_action_seconds)
+    _charge_time(engine, config.drive_action_seconds, world, "DRIVE_EXECUTION", steps)
     world.player_zones[driver_id] = engine.state.ball_zone
     _sync_assigned_defender_zone(engine, world, driver_id, engine.state.ball_zone)
     world.log_trace(step=steps, action="DRIVE", outcome=outcome, driver=driver_id, defender=defender_id,
@@ -1452,7 +1580,7 @@ def _dispatch_shot(engine: PossessionEngine, world: PossessionWorld, intent: Act
 
     if is_interior:
         result = apply_interior_shot_to_engine(engine, shooter_id, interior_ctx, rng, zone=zone.value)
-        _charge_time(engine, action_seconds)
+        _charge_time(engine, action_seconds, world, "SHOT_EXECUTION", steps)
         world.stats.fga += 1
         world.log_trace(step=steps, action=intent.action_type.value, shot_family=shot_family, outcome=result.outcome,
                          shooter=shooter_id, zone=zone.value)
@@ -1469,7 +1597,7 @@ def _dispatch_shot(engine: PossessionEngine, world: PossessionWorld, intent: Act
                                   offense_team_id=offense_team_id, defense_team_id=defense_team_id)
     else:
         result = apply_shot_resolution_to_engine(engine, shooter_id, perimeter_ctx, rng, zone=zone.value)
-        _charge_time(engine, action_seconds)
+        _charge_time(engine, action_seconds, world, "SHOT_EXECUTION", steps)
         world.stats.fga += 1
         world.stats.fg3a += 1
         world.log_trace(step=steps, action=intent.action_type.value, shot_family=shot_family, outcome=result.outcome,
@@ -1509,7 +1637,7 @@ def _dispatch_shooting_foul(engine: PossessionEngine, world: PossessionWorld, co
     engine.begin_shot(zone, dt=0.0)
     made, points, awarded_fts = resolve_shooting_foul_shot(shooter_id, shot_family, make_probability, rng)
     engine.shooting_foul(shooter_id, fouler_id, dt=0.0)
-    _charge_time(engine, action_seconds)
+    _charge_time(engine, action_seconds, world, "SHOT_EXECUTION", steps)
 
     if fouler_id is not None:
         world.foul_state = replace(world.foul_state, personal_fouls=world.foul_state.personal_fouls.increment(fouler_id))
@@ -1580,7 +1708,20 @@ def _dispatch_pass(engine: PossessionEngine, world: PossessionWorld, intent: Act
         advantage=engine.advantage,
         disruption_base_rate=(config.pass_disruption_base_rate if config is not None else None),
     )
+    shot_clock_before_pass = engine.state.shot_clock_remaining
+    game_clock_before_pass = engine.state.game_clock_remaining
     outcome = resolve_pass(engine, intent, pass_ctx, rng)
+    pass_event = next(
+        (event for event in reversed(engine.log.events) if event.event_type == EventType.PASS_RESOLVED),
+        None,
+    )
+    pass_flight_seconds = pass_event.delta_t if pass_event is not None else 0.0
+    _log_clock_charge(
+        world, steps, "PASS_FLIGHT", pass_flight_seconds,
+        shot_clock_before_pass, engine.state.shot_clock_remaining,
+        game_clock_before_pass, engine.state.game_clock_remaining,
+        {"pass_family": pass_event.metadata.get("pass_family") if pass_event is not None else None},
+    )
     world.log_trace(step=steps, action=intent.action_type.value, outcome=outcome, passer=passer_id, receiver=receiver_id,
                      zone=destination_zone.value)
 
@@ -1737,6 +1878,7 @@ def simulate_possession(
                 and engine.state.ball_state != BallState.LOOSE:
             world.log_trace(step=step, action="SHOT_CLOCK_VIOLATION_DIAGNOSTIC",
                             source="TOP_OF_LOOP", shot_clock_remaining=engine.state.shot_clock_remaining)
+            _record_shot_clock_violation(world, engine, step, "TOP_OF_LOOP")
             engine.shot_clock_violation()
             world.stats.add_team_only_turnover()
             return _terminal(PossessionTerminalReason.SHOT_CLOCK_VIOLATION, engine, world, step)
@@ -1747,7 +1889,7 @@ def simulate_possession(
         if engine.state.ball_state == BallState.LOOSE:
             recovery = resolve_generic_loose_ball(engine, world, rng, favored_team_id=world.loose_ball_favored_team_id)
             world.loose_ball_favored_team_id = None
-            _charge_time(engine, config.loose_ball_action_seconds)
+            _charge_time(engine, config.loose_ball_action_seconds, world, "LOOSE_BALL_RECOVERY", step)
             world.log_trace(step=step, action="LOOSE_BALL_RECOVERY", recovery=recovery)
             terminal = _loose_ball_continuation_or_terminal(engine, world, step, recovery)
             if terminal is not None:
@@ -1770,11 +1912,23 @@ def simulate_possession(
         policy = SelectionPolicy(rng)
         intent = policy.select(perceived, _role_context(carrier_profile), _tendency_context(carrier_profile),
                                 clock_ctx, engine.state.possession_id)
+        feasible_action_types = [
+            p.opportunity.action_type.value for p in perceived
+            if _clock_feasible(p.opportunity.action_type, clock_ctx)
+        ]
+        world.decision_log.append({
+            "step": step,
+            "shot_clock_remaining": engine.state.shot_clock_remaining,
+            "perceived_action_types": [p.opportunity.action_type.value for p in perceived],
+            "feasible_action_types": feasible_action_types,
+            "selected_action_type": intent.action_type.value if intent is not None else None,
+        })
         if intent is None:
             # genuinely no feasible supported action (e.g. clock too low for anything but an
             # already-infeasible RESET_PASS) -- the real, structural analog of a shot-clock violation.
             world.log_trace(step=step, action="SHOT_CLOCK_VIOLATION_DIAGNOSTIC",
                             source="NO_FEASIBLE_ACTION", shot_clock_remaining=engine.state.shot_clock_remaining)
+            _record_shot_clock_violation(world, engine, step, "NO_FEASIBLE_ACTION")
             engine.shot_clock_violation()
             world.stats.add_team_only_turnover()
             return _terminal(PossessionTerminalReason.SHOT_CLOCK_VIOLATION, engine, world, step)
@@ -1804,6 +1958,9 @@ def simulate_possession(
                                  "shot_clock_before": shot_clock_before,
                                  "shot_clock_after": shot_clock_after})
         if terminal is not None:
+            if terminal.reason == PossessionTerminalReason.SHOT_CLOCK_VIOLATION \
+                    and not world.shot_clock_violation_log:
+                _record_shot_clock_violation(world, engine, step, "PASS_ARRIVAL")
             return terminal
 
         # Inter-Action Timing Structure -- charged exactly once, AFTER this dispatched action's own

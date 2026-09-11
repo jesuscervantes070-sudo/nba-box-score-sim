@@ -887,3 +887,240 @@ prevents claiming direct NBA pass-event calibration.
 
 Verification: **7/7** new calibration guardrails, **278/278** combined
 detailed-engine focused tests, and **1021/1021** repository tests pass.
+
+---
+
+## Shot-Clock Violation Root-Cause Diagnosis
+
+This section is diagnostic only. The accepted `.08` pass-disruption base,
+all other basketball probabilities and weights, action selection, player
+attributes, and timing values remain unchanged. The real 2024–25 NBA
+shot-clock-violation rate is **NOT YET VERIFIED**, so the simulator rate is
+not described as empirically correct or incorrect; its magnitude warrants the
+structural diagnosis below.
+
+### Complete path map and causal telemetry
+
+There are three terminal accounting locations, but more causal timing stages:
+
+| Terminal location | Trigger | Possible causal charge | Action already selected? | Accounting |
+|---|---|---|---|---|
+| `TOP_OF_LOOP` | shot clock is `<= 0` and ball is not loose | entry, inter-action, drive execution, loose-ball recovery, or a non-completing pass flight | no new action after expiration; a prior action may have caused it | 1 team TOV, 0 player TOV, 0 steals |
+| `PASS_ARRIVAL` | a pass flight reaches zero and the pre-resolved outcome would otherwise complete | pass flight | yes, the pass | 1 team TOV, 0 player TOV, 0 steals |
+| `NO_FEASIBLE_ACTION` | perception/clock filtering leaves no selectable supported action | no required zero-crossing charge | no | 1 team TOV, 0 player TOV, 0 steals |
+
+Shot execution can reduce the clock to zero without creating a violation: the
+shot was released while the clock was positive and its made/miss/rebound path
+terminates or continues under shot/rebound semantics. A drive can cross zero,
+but detection is deferred to a later loop. While the ball is loose, the
+top-of-loop shot-clock check is deliberately skipped; if the offense recovers,
+the next non-loose iteration recognizes expiration. Entry expiration is also
+recognized by the first top-of-loop check. `NO_FEASIBLE_ACTION` is reachable
+with positive clock but did not occur in this benchmark.
+
+The new zero-RNG telemetry records a complete clock-charge ledger, every
+perceived and clock-feasible decision menu, and exactly one terminal summary
+per violation. It captures possession/team/origin, action count, previous
+decision and post-action clocks, the exact zero-crossing charge, prior action
+and outcome, pass/drive/action counts, entry/inter-action/pass/drive/shot time,
+prior shot/OREB state, terminal location, and action/shot feasibility. No
+simulation decision reads these logs.
+
+### Canonical 100-game decomposition
+
+Seeds `25000–25099`, accepted default `.08`:
+
+| Measure | Result |
+|---|---:|
+| Total violations | **1,331** |
+| Violations/game | **13.310** |
+| Violations/team-game | **6.655** |
+| Violations/true possession | **6.2893%** |
+| Share of all team turnovers | **28.0565%** (1,331 / 4,744) |
+| True possessions | 21,163 |
+
+Accounting location and actual causal stage are sharply different:
+
+| Accounting location | Causal stage | Count | Share |
+|---|---|---:|---:|
+| `TOP_OF_LOOP` | `INTER_ACTION` | **1,292** | **97.07%** |
+| `TOP_OF_LOOP` | `LOOSE_BALL_RECOVERY` | 18 | 1.35% |
+| `TOP_OF_LOOP` | `PASS_FLIGHT` | 2 | 0.15% |
+| `PASS_ARRIVAL` | `PASS_FLIGHT` | 19 | 1.43% |
+| `NO_FEASIBLE_ACTION` | none | 0 | 0% |
+
+Thus 1,312 violations are reported at `TOP_OF_LOOP`, but only the check
+location is “top of loop.” In all 1,312 cases a previous charge had already
+exhausted the clock, and no new selection or dispatch occurred before
+recognition. For the 1,292 inter-action cases, the prior action left positive
+clock and the subsequent inter-action charge crossed zero. The two pass-flight
+cases became loose on a retained-offense deflection; the loose-state exemption
+delayed recognition. The 18 loose-ball cases crossed during the 0.5-second
+recovery charge.
+
+Current segment at violation, mutually exclusive:
+
+| Segment origin | Violations | Share |
+|---|---:|---:|
+| Ordinary halfcourt, no prior OREB | 562 | 42.22% |
+| Transition, no prior OREB | 199 | 14.95% |
+| After an OREB | 570 | 42.82% |
+
+Initial possession origin and exposure rates are:
+
+| Initial origin/context | Exposure | Violations | Rate |
+|---|---:|---:|---:|
+| Ordinary dead-ball possessions | 10,293 | 831 | 8.073% |
+| Live-transition possessions | 10,870 | 500 | 4.600% |
+| Second-chance continuations | 7,004 | 570 | 8.138% |
+
+The second-chance denominator overlaps the two initial-origin denominators.
+Every OREB correctly resets the clock to 14.0, then the unchanged 1.0-second
+setup leaves 13.0 before the next decision. Among the 570 later violations,
+actions after the last OREB were: 3 actions in 147 cases, 4 in 402, 5 in 20,
+and 6 in 1. A prior recorded FGA existed in 566 cases; the remaining four
+reflect existing shot-log/accounting conventions, not a different reset rule.
+
+The terminal action-count distribution (one-based number of modeled actions
+completed/selected before the violation) was:
+
+| Actions | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Violations | 543 | 326 | 189 | 131 | 62 | 30 | 27 | 12 | 5 | 3 | 3 |
+| Share | 40.80% | 24.49% | 14.20% | 9.84% | 4.66% | 2.25% | 2.03% | 0.90% | 0.38% | 0.23% | 0.23% |
+
+Passes before violation were 1:71, 2:209, 3:525, 4:263, 5:140,
+6:81, 7:29, 8:10, 9:2, and 10:1 (mean **3.466**). Drives were 0:151,
+1:691, 2:354, 3:117, 4:17, and 5:1 (mean **1.370**). Mean total modeled
+actions were **5.381**. Every violation’s immediately preceding modeled
+action was `SWING_PASS`.
+
+### Inter-action and fixed-duration behavior
+
+All **1,292** inter-action-caused violations began below the configured
+3.0-second charge; there were no other inter-action charges starting below
+three seconds that survived. Clock before the charge:
+
+| Remaining clock | Count |
+|---|---:|
+| floating-point near zero | 6 |
+| `(0, 0.5)` | 282 |
+| `[0.5, 1.0)` | 103 |
+| `[1.0, 2.0)` | 228 |
+| `[2.0, 3.0)` | 673 |
+
+Mean remaining clock was **1.641 seconds**. `_charge_time` conceptually applies
+the full configured 3.0 seconds, clamps the shot clock at zero, and separately
+subtracts the full 3.0 seconds from the game clock. It therefore matches
+fixed-duration behavior **B** in the requested taxonomy: the action gap is
+modeled as three seconds and then clamped, rather than truncated semantically
+at the horn. Mean modeled overshoot was 1.359 seconds (1,755.4 seconds total
+across the sample). Control flow does not allow another action after this;
+the next loop terminates immediately.
+
+Ordinary entry itself caused zero benchmark expirations because a fresh
+24-second clock becomes exactly 15.0 after the unchanged 9.0-second charge.
+Transition first decisions begin at 22.5 after the unchanged 1.5 seconds.
+The higher initial ordinary-origin violation rate shows that the 9-second
+entry materially reduces later flexibility, but it is not the immediate
+zero-crossing cause and is not independently calibrated here.
+
+### Pass-arrival behavior
+
+There were 21 pass-flight zero crossings: 19 immediate `PASS_ARRIVAL`
+violations and two later `TOP_OF_LOOP` violations after retained-offense loose
+deflections. All selected intents were `SWING_PASS`; all classified to the
+resolver's `DIRECT` family, whose unchanged flight duration is 0.4 seconds.
+Twenty began with only floating-point residue above zero; one began at 0.2
+seconds. A feasible shot had been present in all 21 prior decision menus.
+
+For otherwise-completing passes, the resolver does not allow possession to
+continue after the horn: it replaces the completion with a shot-clock
+violation on arrival. It does, however, resolve the pass outcome before the
+clock check, and disrupted outcomes are not uniformly overridden. The early
+return on an arrival violation also leaves game clock undecremented even
+though shot clock consumed the flight. Those are real mechanical consistency
+flags, but only 21/1,331 violations involve pass-flight zero crossing and no
+fix is made here.
+
+### Late-clock decision audit and feasible-action classification
+
+Remaining shot clock enters `ClockContext`, but it changes only feasibility:
+extended actions disappear below 7 seconds and `RESET_PASS` disappears below
+4. It does not change scores or add urgency. `SWING_PASS`, `KICKOUT`, and
+`POCKET_PASS` remain equally eligible near zero, so continuation passes can be
+selected until the clock expires.
+
+| Clock threshold | Decisions | Pass selected | Shot selected | Reset selected | Pass available | Shot available |
+|---:|---:|---:|---:|---:|---:|---:|
+| `<= 7` | 10,585 | 5,486 (51.83%) | 5,099 (48.17%) | 1,894 | 10,585 | 9,682 |
+| `<= 4` | 4,510 | 1,927 (42.73%) | 2,583 (57.27%) | 104 | 4,510 | 4,170 |
+| `<= 2` | 1,924 | 753 (39.14%) | 1,171 (60.86%) | 0 | 1,924 | 1,823 |
+
+At the previous decision, all 1,331 violations had at least one feasible
+action and 1,143 had a feasible shot. Primary causal classification:
+
+| Class | Count | Reason |
+|---|---:|---|
+| A. Legitimate live action/timing | 0 | no benchmark case lacked the structural flags below |
+| B. No action feasible | 0 | `NO_FEASIBLE_ACTION` was never reached |
+| C. Late-clock action not attempted | 21 | a pass was selected with a feasible shot and its flight crossed zero |
+| D. Fixed timing charge overshot remaining clock | **1,310** | 1,292 inter-action + 18 loose-ball recovery |
+| E. Other | 0 | complete coverage |
+
+This primary classification assigns the immediate zero-crossing mechanism.
+Late-clock selection remains an upstream contributor to class D: 1,104 of the
+1,292 inter-action cases had a feasible shot at the prior decision, selected a
+pass instead, and then applied a full continuation gap.
+
+### Why `.08` increased realized violations
+
+The `.12` and `.08` canonical runs use identical seeds and timing. Reducing
+pass disruption lets more passes survive, creating more and longer live action
+chains and therefore more late-clock exposure:
+
+| Measure | `.12` | `.08` | Change |
+|---|---:|---:|---:|
+| Violations | 1,121 | 1,331 | +210 |
+| Inter-action-caused | 1,083 | 1,292 | **+209** |
+| Pass-flight-caused | 17 | 21 | +4 |
+| Loose-recovery-caused | 21 | 18 | -3 |
+| Inter-action charges | 33,496 | 34,632 | +1,136 |
+| Actions before violating | 5,990 | 7,162 | +1,172 |
+| Passes before violating | 3,814 | 4,613 | +799 |
+| Drives before violating | 1,608 | 1,823 | +215 |
+| Violations after OREB | 466 | 570 | +104 |
+
+The net +210 is therefore almost entirely the +209 inter-action cases. There
+is no hidden interaction with the `.08` probability: fewer pass turnovers
+simply expose the unchanged late-clock continuation model more often.
+
+### Ranked causes and smallest next intervention
+
+1. **Late-clock continuation plus fixed 3.0-second inter-action charge:**
+   1,292 direct crossings (97.07%); 1,104 followed a decision where a shot was
+   feasible, but a pass was selected.
+2. **No urgency in action scoring:** passes remain 39.14% of selections at
+   two seconds or less and remain available down to floating-point residue.
+3. **Ordinary-entry and second-chance exposure:** entry does not directly
+   expire the clock, but ordinary starts leave 15 seconds and second chances
+   leave 13; each context has an approximately 8.1% violation rate.
+4. **Loose-ball recovery crossing:** 18 cases (1.35%).
+5. **Pass-flight boundary semantics:** 21 crossings (1.58%), including 20
+   selected from effectively zero, plus outcome-ordering and game-clock flags.
+6. **No-feasible-action path:** zero observed cases.
+
+The smallest recommended next intervention is a **late-clock terminal-action
+feasibility/urgency gate**, not a global duration reduction: when the remaining
+clock cannot support a pass flight plus the modeled continuation gap and a
+shot is feasible, continuation passes should yield to the terminal shot. This
+directly targets the traced decision failure without using shot-clock
+violations as a global pace knob. After that isolated change, residual
+fixed-duration/game-clock truncation and pass-arrival ordering should be
+re-diagnosed separately before any timing value is calibrated.
+
+**Classification: SHOT-CLOCK ROOT CAUSE IDENTIFIED.**
+
+Verification: **7/7** new shot-clock diagnostic tests, **256/256**
+focused diagnostic/timing/pass/benchmark tests, and **1028/1028** repository
+tests pass.
