@@ -35,7 +35,14 @@ from possession_orchestrator import (
 )
 from possession_rules import EraRules, get_era_rules
 from possession_state import BallState, PossessionPhase, SpatialZone, _assert_player_id
-from transition_state import PossessionChangeSource, TransitionDiagnostic, build_transition_diagnostic
+from transition_state import (
+    PossessionChangeSource,
+    TransitionDiagnostic,
+    TransitionRestartType,
+    build_transition_diagnostic,
+    classify_source,
+    decide_restart_type,
+)
 
 
 class DetailedGameInvariantError(RuntimeError):
@@ -43,8 +50,9 @@ class DetailedGameInvariantError(RuntimeError):
 
 
 class RestartType:
-    DEAD_BALL_INBOUND = "DEAD_BALL_INBOUND"
-    LIVE_TRANSITION = "LIVE_TRANSITION"
+    """Compatibility names backed by the canonical Phase 20 vocabulary."""
+    DEAD_BALL_INBOUND = TransitionRestartType.DEAD_BALL_INBOUND
+    LIVE_TRANSITION = TransitionRestartType.LIVE_TRANSITION
 
 
 class SegmentStopReason:
@@ -333,11 +341,7 @@ def next_restart_context(result: PossessionTerminalResult,
 
     if result.reason == PossessionTerminalReason.DEFENSIVE_REBOUND and live_control:
         source = PossessionChangeSource.DEFENSIVE_REBOUND
-        diagnostic = build_transition_diagnostic(source, result.world, new_state.current_offense_team_id,
-                                                  new_state.current_defense_team_id, carrier)
-        return RestartContext(RestartType.LIVE_TRANSITION, source,
-                              carrier, SpatialZone.TOP_OF_KEY, transition_diagnostic=diagnostic)
-    if result.reason == PossessionTerminalReason.TURNOVER and live_control:
+    elif result.reason == PossessionTerminalReason.TURNOVER and live_control:
         source = PossessionChangeSource.LIVE_STEAL
         for event in result.events:
             if event.event_type == EventType.REACTION_CHECKPOINT \
@@ -346,15 +350,19 @@ def next_restart_context(result: PossessionTerminalResult,
             elif event.event_type == EventType.PASS_RESOLVED \
                     and event.metadata.get("outcome") == "BAD_PASS_TO_DEFENDER":
                 source = PossessionChangeSource.LIVE_BAD_PASS_INTERCEPTION
-        diagnostic = build_transition_diagnostic(source, result.world, new_state.current_offense_team_id,
-                                                  new_state.current_defense_team_id, carrier)
-        return RestartContext(RestartType.LIVE_TRANSITION, source,
-                              carrier, SpatialZone.TOP_OF_KEY, transition_diagnostic=diagnostic)
-    if result.reason in (PossessionTerminalReason.MADE_FG, PossessionTerminalReason.FINAL_FT_MADE):
+    elif result.reason in (PossessionTerminalReason.MADE_FG, PossessionTerminalReason.FINAL_FT_MADE):
         source = PossessionChangeSource.MADE_BASKET_INBOUND
     else:
         source = PossessionChangeSource.DEAD_BALL_TURNOVER
-    return RestartContext(RestartType.DEAD_BALL_INBOUND, source, next_five[0], SpatialZone.TOP_OF_KEY)
+
+    source_taxonomy = classify_source(source)
+    restart_type = decide_restart_type(source, source_taxonomy)
+    if restart_type == RestartType.LIVE_TRANSITION:
+        diagnostic = build_transition_diagnostic(source, result.world, new_state.current_offense_team_id,
+                                                  new_state.current_defense_team_id, carrier)
+        return RestartContext(restart_type, source,
+                              carrier, SpatialZone.TOP_OF_KEY, transition_diagnostic=diagnostic)
+    return RestartContext(restart_type, source, next_five[0], SpatialZone.TOP_OF_KEY)
 
 
 def simulate_possessions(home_five: Tuple[str, ...], away_five: Tuple[str, ...],

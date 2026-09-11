@@ -19,7 +19,7 @@ from possession_orchestrator import (
 )
 from possession_rules import EraRules
 from possession_state import BallState, PossessionPhase, SpatialZone
-from transition_state import PossessionChangeSource
+from transition_state import PossessionChangeSource, TransitionRestartType
 
 
 HOME = tuple(str(i) for i in range(1, 6))
@@ -547,6 +547,40 @@ class TestTransitionDiagnosticWiring(unittest.TestCase):
         stubbed_diag_present = any(r.restart_context.transition_diagnostic is not None for r in stubbed.possessions)
         self.assertTrue(real_diag_present, "expected at least one live-transition restart in this seed's real run")
         self.assertFalse(stubbed_diag_present)
+
+    def test_invalid_spatial_diagnostics_cannot_change_restart_choice(self):
+        """All currently invalid geometry is trapped inside the diagnostic
+        object and cannot reach the source-taxonomy routing seam."""
+        class GarbageGeometry:
+            old_offense_interior_count = 999
+            offense_ahead_count = -999
+            defenders_back_count = 999
+            fresh_compromised_zones = ("EVERYWHERE",)
+
+        specs = [
+            {"reason": PossessionTerminalReason.DEFENSIVE_REBOUND, "live_carrier": AWAY[2]},
+            {"reason": PossessionTerminalReason.MADE_FG},
+        ]
+        with patch.object(game, "simulate_possession", side_effect=scripted_runner(specs)), \
+             patch.object(game, "build_transition_diagnostic", return_value=GarbageGeometry()):
+            result = game.simulate_possessions(HOME, AWAY, profiles(), initial_state(), 2, 1)
+        context = result.possessions[1].restart_context
+        self.assertEqual(context.restart_type, TransitionRestartType.LIVE_TRANSITION)
+        self.assertEqual(context.source, PossessionChangeSource.DEFENSIVE_REBOUND)
+        self.assertIsInstance(context.transition_diagnostic, GarbageGeometry)
+
+    def test_orchestration_routes_restart_type_through_phase20_boundary(self):
+        specs = [
+            {"reason": PossessionTerminalReason.DEFENSIVE_REBOUND, "live_carrier": AWAY[2]},
+            {"reason": PossessionTerminalReason.MADE_FG},
+        ]
+        with patch.object(game, "simulate_possession", side_effect=scripted_runner(specs)), \
+             patch.object(game, "decide_restart_type", wraps=game.decide_restart_type) as decision:
+            game.simulate_possessions(HOME, AWAY, profiles(), initial_state(), 2, 1)
+        decision.assert_any_call(
+            PossessionChangeSource.DEFENSIVE_REBOUND,
+            "LIVE_TRANSITION_CAPABLE",
+        )
 
 
 if __name__ == "__main__":

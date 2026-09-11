@@ -72,6 +72,46 @@ SOURCE_CLASSIFICATION = {
     PossessionChangeSource.PERIOD_START: DEAD_BALL_INBOUND,
 }
 
+
+class TransitionRestartType:
+    """Canonical possession-boundary restart vocabulary.
+
+    These are structural outcomes, not calibrated transition probabilities.
+    ``CONTROLLED_ADVANCE`` is intentionally represented for the future split
+    between a live change and a genuine fast break, but no V1 source routes to
+    it until trustworthy source-conditioned evidence exists.
+    """
+    DEAD_BALL_INBOUND = "DEAD_BALL_INBOUND"
+    LIVE_TRANSITION = "LIVE_TRANSITION"
+    CONTROLLED_ADVANCE = "CONTROLLED_ADVANCE"
+
+
+def decide_restart_type(source: str, source_taxonomy: str) -> str:
+    """Return today's deterministic restart for one concrete source.
+
+    ``source_taxonomy`` must be the canonical Phase 20 classification for
+    ``source``.  Requiring both makes the source -> taxonomy -> restart seam
+    explicit while preventing a caller from silently overriding taxonomy.
+
+    V1 deliberately preserves the pre-existing all-live behavior for every
+    ``LIVE_TRANSITION_CAPABLE`` source.  ``CONTEXT_DEPENDENT`` likewise maps
+    to live transition to preserve the current blocked-shot recovery behavior,
+    which orchestration presently observes under the defensive-rebound label.
+    Neither branch is presented as an empirical probability.  This function
+    consumes no RNG, clock, geometry, pace target, or future state.
+    """
+    canonical_taxonomy = classify_source(source)
+    if source_taxonomy != canonical_taxonomy:
+        raise ValueError(
+            f"source taxonomy mismatch for {source!r}: "
+            f"expected {canonical_taxonomy!r}, got {source_taxonomy!r}"
+        )
+    if source_taxonomy == DEAD_BALL_INBOUND:
+        return TransitionRestartType.DEAD_BALL_INBOUND
+    if source_taxonomy in (LIVE_TRANSITION_CAPABLE, CONTEXT_DEPENDENT):
+        return TransitionRestartType.LIVE_TRANSITION
+    raise ValueError(f"unsupported possession-change taxonomy {source_taxonomy!r}")
+
 # A real, coarse "distance from the defended rim" ranking over the
 # existing coarse-zone topology -- reused, not replaced. Used ONLY to derive
 # the relational ahead/behind-ball tags below; no continuous coordinate

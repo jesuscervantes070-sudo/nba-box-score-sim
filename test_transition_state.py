@@ -7,8 +7,10 @@ from possession_advantage import DiscreteTierAdvantage, SpatialMagnitudeAdvantag
 from possession_engine import PossessionEngine
 from possession_state import BallState, PossessionPhase, SpatialZone
 from transition_state import (
-    AHEAD_OF_BALL, BEHIND_BALL, DEAD_BALL_INBOUND, LIVE_TRANSITION_CAPABLE, NEAR_BALL,
-    FloorPlayer, PossessionChangeSource, TransitionState, _COURT_FLIP_MAP, classify_source,
+    AHEAD_OF_BALL, BEHIND_BALL, CONTEXT_DEPENDENT, DEAD_BALL_INBOUND,
+    LIVE_TRANSITION_CAPABLE, NEAR_BALL, SOURCE_CLASSIFICATION,
+    FloorPlayer, PossessionChangeSource, TransitionRestartType, TransitionState,
+    _COURT_FLIP_MAP, classify_source, decide_restart_type,
     flip_zone_to_new_offense_frame, initialize_transition_state, relational_tag,
 )
 
@@ -323,6 +325,74 @@ class TestCourtFlipTransform(unittest.TestCase):
         BACKCOURT for the new offense -- not RESTRICTED_RIM."""
         self.assertEqual(flip_zone_to_new_offense_frame(SpatialZone.RESTRICTED_RIM), SpatialZone.BACKCOURT)
         self.assertNotEqual(flip_zone_to_new_offense_frame(SpatialZone.RESTRICTED_RIM), SpatialZone.RESTRICTED_RIM)
+
+
+class TestCanonicalRestartRouting(unittest.TestCase):
+    def test_every_concrete_source_has_one_canonical_taxonomy(self):
+        concrete_sources = {
+            value for name, value in vars(PossessionChangeSource).items()
+            if not name.startswith("_") and isinstance(value, str)
+        }
+        self.assertEqual(concrete_sources, set(SOURCE_CLASSIFICATION))
+
+    def test_live_capable_sources_preserve_current_live_restart(self):
+        for source in (
+            PossessionChangeSource.DEFENSIVE_REBOUND,
+            PossessionChangeSource.LIVE_STEAL,
+            PossessionChangeSource.LIVE_BAD_PASS_INTERCEPTION,
+            PossessionChangeSource.LOOSE_BALL_RECOVERY,
+        ):
+            with self.subTest(source=source):
+                self.assertEqual(classify_source(source), LIVE_TRANSITION_CAPABLE)
+                self.assertEqual(
+                    decide_restart_type(source, LIVE_TRANSITION_CAPABLE),
+                    TransitionRestartType.LIVE_TRANSITION,
+                )
+
+    def test_dead_ball_sources_remain_settled(self):
+        for source in (
+            PossessionChangeSource.DEAD_BALL_TURNOVER,
+            PossessionChangeSource.MADE_BASKET_INBOUND,
+            PossessionChangeSource.PERIOD_START,
+        ):
+            with self.subTest(source=source):
+                self.assertEqual(classify_source(source), DEAD_BALL_INBOUND)
+                self.assertEqual(
+                    decide_restart_type(source, DEAD_BALL_INBOUND),
+                    TransitionRestartType.DEAD_BALL_INBOUND,
+                )
+
+    def test_context_dependent_source_preserves_current_live_behavior(self):
+        source = PossessionChangeSource.BLOCK_RECOVERY_DEFENSE
+        self.assertEqual(classify_source(source), CONTEXT_DEPENDENT)
+        self.assertEqual(
+            decide_restart_type(source, CONTEXT_DEPENDENT),
+            TransitionRestartType.LIVE_TRANSITION,
+        )
+
+    def test_controlled_advance_is_represented_but_not_routed(self):
+        routed = {
+            decide_restart_type(source, taxonomy)
+            for source, taxonomy in SOURCE_CLASSIFICATION.items()
+        }
+        self.assertNotIn(TransitionRestartType.CONTROLLED_ADVANCE, routed)
+
+    def test_callers_cannot_override_canonical_taxonomy(self):
+        with self.assertRaises(ValueError):
+            decide_restart_type(
+                PossessionChangeSource.DEFENSIVE_REBOUND,
+                DEAD_BALL_INBOUND,
+            )
+
+    def test_routing_seam_has_no_rng_geometry_clock_or_target_inputs(self):
+        import inspect as _inspect
+        self.assertEqual(
+            tuple(_inspect.signature(decide_restart_type).parameters),
+            ("source", "source_taxonomy"),
+        )
+        referenced_names = set(decide_restart_type.__code__.co_names)
+        for forbidden in ("random", "rng", "SpatialZone", "clock", "pace", "target"):
+            self.assertNotIn(forbidden, referenced_names)
 
 
 if __name__ == "__main__":
