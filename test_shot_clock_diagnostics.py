@@ -43,7 +43,6 @@ class TestShotClockViolationDiagnostics(unittest.TestCase):
         observed_stages = set(self.diagnosis.expiration_stages)
         self.assertTrue(observed_stages <= {"INTER_ACTION", "PASS_FLIGHT", "LOOSE_BALL_RECOVERY"})
         self.assertIn("TOP_OF_LOOP", self.diagnosis.terminal_sources)
-        self.assertIn("PASS_ARRIVAL", self.diagnosis.terminal_sources)
         self.assertNotEqual(self.diagnosis.expiration_stages, self.diagnosis.terminal_sources)
 
     def test_top_of_loop_has_prior_causal_charge_and_no_new_dispatch(self):
@@ -53,15 +52,9 @@ class TestShotClockViolationDiagnostics(unittest.TestCase):
         self.assertTrue(all(obs.action_was_selected_before_expiration for obs in top))
         self.assertTrue(all(obs.shot_clock_at_start_of_previous_decision is not None for obs in top))
 
-    def test_pass_arrival_attribution_is_complete(self):
+    def test_canonical_late_gate_removes_pass_arrival_violations(self):
         arrivals = [obs for obs in self.diagnosis.observations if obs.terminal_source == "PASS_ARRIVAL"]
-        self.assertTrue(arrivals)
-        for obs in arrivals:
-            self.assertEqual(obs.timing_category_that_crossed_zero, "PASS_FLIGHT")
-            self.assertEqual(obs.previous_action_type, "SWING_PASS")
-            self.assertEqual(obs.pass_family, "DIRECT")
-            self.assertEqual(obs.previous_action_outcome, "SHOT_CLOCK_VIOLATION_ON_ARRIVAL")
-            self.assertGreater(obs.configured_final_timing_seconds, 0.0)
+        self.assertEqual(arrivals, [])
 
     def test_oreb_context_records_real_fourteen_second_reset(self):
         second_chances = [obs for obs in self.diagnosis.observations if obs.followed_oreb]

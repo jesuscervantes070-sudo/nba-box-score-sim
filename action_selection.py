@@ -49,6 +49,7 @@ from action_intent import (
 )
 from action_opportunity import INTERIOR_ZONES, PERIMETER_ZONES
 from action_perception import PerceivedOpportunity
+from clock_semantics import CLOCK_EPSILON_SECONDS
 from possession_state import SpatialZone
 
 # --------------------------- context inputs (no hidden ability anywhere) ---------------------------
@@ -86,6 +87,23 @@ class ClockContext:
     shot_clock_remaining: Optional[float]
     slow_action_shot_clock_floor: float = 7.0     # below this, EXTENDED-duration actions (drive/iso/closeout) become infeasible
     reset_pass_shot_clock_floor: float = 4.0      # below this, RESET_PASS is removed from the menu (it wastes clock a possession can't afford)
+    # Populated by the orchestrator from the resolution layer's existing
+    # pass-flight durations plus its existing inter-action duration. Only
+    # continuation opportunities belong here; terminal shots deliberately do
+    # not acquire a new timing threshold.
+    continuation_minimum_seconds_by_opportunity_id: Dict[str, float] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class ClockFeasibilityResult:
+    """The one pre-scoring clock filter result, including zero-RNG telemetry."""
+    feasible: Tuple[PerceivedOpportunity, ...]
+    removed_for_late_clock: Tuple[PerceivedOpportunity, ...]
+    terminal_shots_available: Tuple[PerceivedOpportunity, ...]
+
+    @property
+    def late_clock_filter_activated(self) -> bool:
+        return bool(self.removed_for_late_clock)
 
 
 # Base weights -- a flat, hand-set prior per action type, NOT derived
@@ -165,6 +183,38 @@ def _clock_feasible(action_type: ActionType, clock: ClockContext) -> bool:
     return True
 
 
+def evaluate_clock_feasibility(perceived: List[PerceivedOpportunity],
+                               clock: ClockContext) -> ClockFeasibilityResult:
+    """Apply all clock availability constraints once, before scoring.
+
+    The new late-clock gate removes a continuation opportunity only when
+    (1) a genuine terminal shot survives the existing structural/base clock
+    gates and (2) that continuation's known minimum time exceeds the active
+    shot clock by more than the shared clock epsilon. Exact equality remains
+    feasible and is resolved deterministically by the authoritative horn rule.
+    """
+    base_feasible = tuple(
+        p for p in perceived if _clock_feasible(p.opportunity.action_type, clock)
+    )
+    terminal_shots = tuple(
+        p for p in base_feasible if p.opportunity.action_type in SHOT_ACTIONS
+    )
+    if clock.shot_clock_remaining is None or not terminal_shots:
+        return ClockFeasibilityResult(base_feasible, (), terminal_shots)
+
+    removed = tuple(
+        p for p in base_feasible
+        if (p.opportunity.opportunity_id in clock.continuation_minimum_seconds_by_opportunity_id
+            and clock.continuation_minimum_seconds_by_opportunity_id[p.opportunity.opportunity_id]
+            > clock.shot_clock_remaining + CLOCK_EPSILON_SECONDS)
+    )
+    removed_ids = {p.opportunity.opportunity_id for p in removed}
+    feasible = tuple(
+        p for p in base_feasible if p.opportunity.opportunity_id not in removed_ids
+    )
+    return ClockFeasibilityResult(feasible, removed, terminal_shots)
+
+
 def _select_shot_zone(action_type: ActionType, default_zone: Optional[SpatialZone],
                        tendency: TendencyContext) -> Optional[SpatialZone]:
     """A minimal sub-choice for shot-type actions: when both an interior
@@ -200,7 +250,7 @@ class SelectionPolicy:
         after clock-feasibility filtering (e.g. a LOOSE-ball state with
         no recovery opportunities, or every remaining option infeasible)
         -- never a fabricated default action."""
-        feasible = [p for p in perceived if _clock_feasible(p.opportunity.action_type, clock)]
+        feasible = list(evaluate_clock_feasibility(perceived, clock).feasible)
         if not feasible:
             return None
 

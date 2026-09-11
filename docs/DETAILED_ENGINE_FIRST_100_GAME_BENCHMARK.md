@@ -1218,3 +1218,130 @@ or timing-constant adjustment.
 Verification: **17/17** focused clock-expiration tests and **1045/1045**
 repository tests pass. No action-selection weight, probability, pass-disruption
 rate, player attribute, or configured timing constant changed.
+
+## Late-Clock Decision Feasibility
+
+### Old behavior and insertion point
+
+The corrected clock primitive stopped phantom time consumption, but selection
+still treated `SWING_PASS` as available with too little clock to complete its
+flight and reach another decision. The narrow correction belongs in the
+existing clock-feasibility layer: structural opportunities are generated and
+perceived exactly as before, clock availability is filtered, and only then are
+the unchanged action scores converted to probabilities and sampled. There is
+no post-selection override and no forced choice of a particular shot.
+
+Current pass control flow has no direct-terminal catch-and-shoot path. A
+completed pass first consumes its real family flight time, then the generic
+3.0-second inter-action stage, and only afterward generates the receiver's
+next menu (including a possible `CATCH_AND_SHOOT`). The conservative pass
+minimum therefore reflects the control flow that actually exists rather than
+assuming an unmodeled immediate release.
+
+### Minimum-time model and exact rule
+
+| Selectable family | Existing timing requirement | Late-clock treatment |
+|---|---:|---|
+| `SWING_PASS`, `KICKOUT`, `POCKET_PASS` | family flight 0.4/0.6/0.9s + inter-action 3.0s | 3.4/3.6/3.9s to reach another decision |
+| `RESET_PASS` | same actual family flight + inter-action | same continuation rule; existing 4.0s floor still applies first |
+| `DRIVE` | existing 2.5s execution | unchanged; existing 7.0s extended-action floor is already stricter |
+| `PULL_UP` | release begins at dispatch; 1.5s resolution | terminal shot remains available with positive clock |
+| `CATCH_AND_SHOOT` | release begins at dispatch; 1.0s resolution | terminal shot remains available with positive clock |
+
+For each perceived opportunity, the orchestrator supplies its requirement from
+the existing pass-family duration table and the existing configured
+inter-action duration. The feasibility layer removes a continuation only when:
+
+1. at least one structurally valid terminal shot survives the pre-existing
+   feasibility gates; and
+2. `minimum continuation time > remaining shot clock + 1e-9`.
+
+The tolerance is the authoritative clock module's existing `1e-9`; no second
+epsilon was introduced. Exact equality remains feasible. If selected at exact
+equality, the already-validated clock rule deterministically expires at the
+horn. When no terminal shot exists, no continuation is removed and no shot is
+invented; normal violation behavior remains reachable.
+
+### Zero-RNG telemetry
+
+Every decision now records whether filtering activated, each removed
+opportunity and its minimum requirement, remaining shot clock, terminal shots
+available, the action selected from the reduced menu, and whether that
+possession ultimately violated. “Selected replacement” means the normal
+selector's choice from the feasible menu; it is not a separately sampled or
+counterfactual choice. Terminal annotation mutates diagnostic rows only and
+consumes no RNG.
+
+Canonical seeds `25000–25099` produced **3,619 activations** in **3,285
+possessions**. All 3,619 removed opportunities were `SWING_PASS`; all 3,619
+normal post-filter selections were terminal shots. Seventeen activated
+possessions still violated later in their possession sequence.
+
+### Canonical 100-game before/after
+
+The “before” column is pushed clock-semantics checkpoint `6623edb`; both runs
+use default pass disruption `.08` and identical seeds `25000–25099`.
+
+| Measure | Before | After | Change |
+|---|---:|---:|---:|
+| Shot-clock violations | 1,425 | 274 | -1,151 |
+| Violations/game | 14.250 | 2.740 | -11.510 |
+| Violations/team-game | 7.125 | 1.370 | -5.755 |
+| Violations/true possession | 6.6848% | 1.2855% | -5.3993 pp |
+| Inter-action causes | 1,379 | 274 | -1,105 |
+| Loose-ball recovery causes | 38 | 0 | -38 |
+| Pass-flight causes | 8 | 0 | -8 |
+| True possessions/game | 213.17 | 213.15 | -0.02 |
+| Mean shot clock at FGA | 13.083s | 12.539s | -0.543s |
+| Actions/possession | 2.9679 | 3.0312 | +0.0634 |
+| Team TOV/team-game | 24.120 | 18.170 | -5.950 |
+| Player TOV/team-game | 16.995 | 16.800 | -0.195 |
+| STL/team-game | 8.280 | 8.230 | -0.050 |
+| FGA/team-game | 114.405 | 122.855 | +8.450 |
+| PTS/team-game | 121.040 | 128.835 | +7.795 |
+| ORtg (true possessions) | 113.562 | 120.887 | +7.325 |
+| OREB% | 47.3901% | 47.3271% | -0.0630 pp |
+| FTA/FGA | 3.8591% | 3.8338% | -0.0253 pp |
+| 3PAr | 92.7232% | 91.5225% | -1.2007 pp |
+| PF/team-game | 2.075 | 2.245 | +0.170 |
+| Faults | 0 | 0 | 0 |
+
+Shot-clock-at-FGA distribution moved later without altering any shot
+probability:
+
+| Shot-clock bin | Before count (share) | After count (share) |
+|---|---:|---:|
+| 24–22 | 4,262 (18.63%) | 4,490 (18.27%) |
+| 22–18 | 1,587 (6.94%) | 1,677 (6.83%) |
+| 18–15 | 4,947 (21.62%) | 4,777 (19.44%) |
+| 15–7 | 7,081 (30.95%) | 7,209 (29.34%) |
+| 7–4 | 2,576 (11.26%) | 2,633 (10.72%) |
+| 4–0 | 2,428 (10.61%) | 3,785 (15.40%) |
+
+First-action counts remained nearly unchanged: drive 4,303→4,299,
+`SWING_PASS` 4,247→4,235, catch-and-shoot 4,234→4,247, pull-up
+4,219→4,217, and reset pass 4,147→4,143. This is consistent with the gate
+being inactive outside its late-clock boundary.
+
+### Remaining violations and empirical limits
+
+Of the 274 remaining violations, **200** reached their previous decision with
+no feasible terminal shot, so the gate correctly did not invent one. The other
+**74** had a feasible shot but selected a `SWING_PASS` at exact minimum-time
+equality; all 74 then expired during the exactly 3.0-second inter-action stage.
+They are deterministic boundary cases under the specified strict-`>` rule,
+not timing overshoot. The reduction of 1,151 violations is not treated as a
+paired causal count because changed choices alter subsequent RNG trajectories.
+
+No verified real shot-clock-violation target or empirical per-action timing
+distribution exists yet. The current flight and inter-action values remain the
+existing placeholders/calibrated macro hooks, and the model still cannot
+express a truly immediate pass-to-shot release. The large FGA/PTS/ORtg movement
+is reported for observation only and is not calibration success.
+
+**Classification: LATE-CLOCK FEASIBILITY VALIDATED.**
+
+Verification: **15/15** focused late-clock tests and **1060/1060** repository
+tests pass. No probability, scoring weight, timing constant, pass-disruption
+rate, shot/rebound/foul model, player attribute, or protected product/legacy
+file changed.

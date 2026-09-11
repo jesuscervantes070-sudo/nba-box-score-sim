@@ -107,12 +107,12 @@ class TestTurnoverAccountingReconciliation(unittest.TestCase):
                                                     tuple(str(i) for i in range(11, 16)))
             team_total += home.turnovers + away.turnovers
             player_total += home.player_turnovers + away.player_turnovers
-        # Clock-expiration semantics can legitimately expose additional later
-        # possessions by no longer consuming nonexistent post-horn time.
-        self.assertEqual(team_total, 6032)
-        self.assertEqual(player_total, 4847)
+        # The late-clock feasibility gate changes only which already-generated
+        # opportunities reach the existing selector.
+        self.assertEqual(team_total, 4978)
+        self.assertEqual(player_total, 4752)
 
-    def test_basketball_output_digest_matches_clock_semantics_baseline(self):
+    def test_basketball_output_digest_matches_late_clock_feasibility_baseline(self):
         payload = []
         for game in self.games:
             result = game.result
@@ -143,7 +143,7 @@ class TestTurnoverAccountingReconciliation(unittest.TestCase):
                             "ot": result.overtime_periods, "rows": rows})
         digest = hashlib.sha256(json.dumps(payload, sort_keys=True,
                                            separators=(",", ":")).encode()).hexdigest()
-        self.assertEqual(digest, "bfab00a6496f8217aabc3e83ec329938bfced9d61651202d61cde280c90b186e")
+        self.assertEqual(digest, "9a72d5bcd305ffd87bbaa3b199002625ccc10e90abecb76e5a25016c9e64d44b")
 
 
 if __name__ == "__main__":

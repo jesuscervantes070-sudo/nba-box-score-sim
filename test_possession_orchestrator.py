@@ -1121,16 +1121,11 @@ class TestInterActionTimingStructure(unittest.TestCase):
         _charge_inter_action_time(engine, world, cfg, step=0)
         self.assertAlmostEqual(before - engine.state.shot_clock_remaining, cfg.inter_action_seconds, places=6)
 
-    def test_shot_clock_expiration_during_inter_action_prevents_next_action(self):
-        """A shot clock too short to survive entry + one dispatched action
-        must terminate via SHOT_CLOCK_VIOLATION, with no second action
-        ever dispatched -- the inter-action charge that follows the first
-        (non-terminal) action clamps at the SAME `max(0, ...)` floor
-        `_charge_time` has always used, and the loop's own top-of-loop
-        check on the NEXT iteration catches it. Computed RELATIVE to
-        `PossessionConfig()`'s own current `ordinary_entry_seconds` --
-        never a hardcoded literal -- so this stays correct across a
-        future timing-calibration change to that default."""
+    def test_late_clock_filter_prevents_avoidable_inter_action_expiration(self):
+        """With a terminal pull-up available, a continuation that cannot
+        survive its required inter-action time is removed before selection.
+        The normal selector therefore ends the possession with its remaining
+        terminal option rather than dispatching a second action after a horn."""
         base_cfg = PossessionConfig()
         short_shot_clock = EraRules(era_name="test_short_shot_clock_ia", shot_clock_seconds=base_cfg.ordinary_entry_seconds + 0.1,
                                      oreb_shot_clock_reset_seconds=None, bonus_foul_threshold=5,
@@ -1138,10 +1133,13 @@ class TestInterActionTimingStructure(unittest.TestCase):
         cfg = PossessionConfig(era_rules=short_shot_clock)
         for seed in range(100):
             result = _run(config=cfg, seed=seed, possession_id=f"scia{seed}")
-            if result.reason == PossessionTerminalReason.SHOT_CLOCK_VIOLATION and len(result.world.action_log) <= 1:
-                self.assertEqual(result.engine_state.shot_clock_remaining, 0.0)
+            activated = [d for d in result.world.decision_log if d.get("late_clock_filter_activated")]
+            if activated:
+                self.assertNotEqual(result.reason, PossessionTerminalReason.SHOT_CLOCK_VIOLATION)
+                self.assertLessEqual(len(result.world.action_log), 1)
+                self.assertIn(activated[0]["selected_action_type"], {"PULL_UP", "CATCH_AND_SHOOT"})
                 return
-        self.fail("expected a SHOT_CLOCK_VIOLATION with at most one dispatched action within 100 seeds")
+        self.fail("expected the late-clock continuation filter to activate within 100 seeds")
 
     def test_period_expiration_during_inter_action_prevents_next_action(self):
         """A period clock too short to survive entry + one dispatched

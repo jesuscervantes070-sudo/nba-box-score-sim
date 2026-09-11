@@ -112,7 +112,10 @@ from typing import Dict, List, Optional, Tuple
 from action_intent import ActionIntent, ActionType, PASS_ACTIONS
 from action_opportunity import INTERIOR_ZONES, PERIMETER_ZONES, StructuralContext, generate_opportunities
 from action_perception import perceive
-from action_selection import ClockContext, RoleContext, SelectionPolicy, TendencyContext, _clock_feasible
+from action_selection import (
+    ClockContext, RoleContext, SelectionPolicy, TendencyContext,
+    evaluate_clock_feasibility,
+)
 from clock_semantics import ClockTerminalCause, LiveClockAdvance, advance_live_clocks
 from drive_resolution import DriveResolutionContext, DriveOutcome, resolve_drive
 from floor_foul_administration import (
@@ -143,7 +146,10 @@ from on_ball_pressure_resolution import (
     OnBallPressureContext,
     apply_on_ball_pressure_to_engine,
 )
-from pass_resolution import DefenderCandidate, PassOutcome, PassResolutionContext, resolve_pass
+from pass_resolution import (
+    FLIGHT_DURATION_SECONDS, DefenderCandidate, PassOutcome, PassResolutionContext,
+    classify_pass_family, resolve_pass,
+)
 from possession_engine import PossessionEngine
 from possession_rules import EraRules
 from possession_events import Event, EventType
@@ -1049,6 +1055,28 @@ def _charge_inter_action_time(engine: PossessionEngine, world: PossessionWorld, 
     world.inter_action_log.append({"step": step, "stage": ContinuationStage.INTER_ACTION, "elapsed_game_clock_seconds": elapsed})
 
 
+def _continuation_minimum_seconds_by_opportunity(perceived, ball_zone: SpatialZone,
+                                                  config: PossessionConfig) -> Dict[str, float]:
+    """Minimum time for a selected continuation to reach the next decision.
+
+    Current pass control flow always resolves flight, then charges the generic
+    inter-action stage before generating the receiver's next menu. There is no
+    direct pass-to-catch-and-shoot bypass. Values come only from the existing
+    pass-family duration table and existing inter-action configuration.
+    """
+    requirements: Dict[str, float] = {}
+    for perceived_opportunity in perceived:
+        opportunity = perceived_opportunity.opportunity
+        if opportunity.action_type not in PASS_ACTIONS:
+            continue
+        destination = opportunity.target_zone or ball_zone
+        family = classify_pass_family(ball_zone, destination)
+        requirements[opportunity.opportunity_id] = (
+            FLIGHT_DURATION_SECONDS[family] + config.inter_action_seconds
+        )
+    return requirements
+
+
 def _possession_stage_origin(world: PossessionWorld, step: int) -> str:
     """DIAGNOSTIC ONLY -- the most recent `PossessionStage` charged at or
     before `step`, i.e. which possession-stage context an action
@@ -1163,6 +1191,11 @@ def _terminal(reason: str, engine: PossessionEngine, world: PossessionWorld, ste
             # on live state; deriving from `engine.state` here was the Phase
             # 23A chaining bug this reconciliation closes.
             offense_team_id, defense_team_id = world.team_b_id, world.team_a_id
+    for decision in world.decision_log:
+        if decision.get("late_clock_filter_activated"):
+            decision["late_clock_possession_still_violated"] = (
+                reason == PossessionTerminalReason.SHOT_CLOCK_VIOLATION
+            )
     return PossessionTerminalResult(
         reason=reason,
         resulting_offense_team_id=offense_team_id if offense_team_id is not None else engine.state.offense_team_id,
@@ -1972,13 +2005,32 @@ def simulate_possession(
         perceived = perceive(opportunities, None, rng)
         perceived = [p for p in perceived if p.opportunity.action_type in SUPPORTED_ACTION_TYPES]
 
-        clock_ctx = ClockContext(shot_clock_remaining=engine.state.shot_clock_remaining)
+        clock_ctx = ClockContext(
+            shot_clock_remaining=engine.state.shot_clock_remaining,
+            continuation_minimum_seconds_by_opportunity_id=(
+                _continuation_minimum_seconds_by_opportunity(
+                    perceived, engine.state.ball_zone, config,
+                )
+            ),
+        )
+        clock_feasibility = evaluate_clock_feasibility(perceived, clock_ctx)
         policy = SelectionPolicy(rng)
         intent = policy.select(perceived, _role_context(carrier_profile), _tendency_context(carrier_profile),
                                 clock_ctx, engine.state.possession_id)
         feasible_action_types = [
-            p.opportunity.action_type.value for p in perceived
-            if _clock_feasible(p.opportunity.action_type, clock_ctx)
+            p.opportunity.action_type.value for p in clock_feasibility.feasible
+        ]
+        removed_late_clock = [
+            {
+                "opportunity_id": p.opportunity.opportunity_id,
+                "action_type": p.opportunity.action_type.value,
+                "minimum_required_seconds": (
+                    clock_ctx.continuation_minimum_seconds_by_opportunity_id[
+                        p.opportunity.opportunity_id
+                    ]
+                ),
+            }
+            for p in clock_feasibility.removed_for_late_clock
         ]
         world.decision_log.append({
             "step": step,
@@ -1986,6 +2038,17 @@ def simulate_possession(
             "perceived_action_types": [p.opportunity.action_type.value for p in perceived],
             "feasible_action_types": feasible_action_types,
             "selected_action_type": intent.action_type.value if intent is not None else None,
+            "late_clock_filter_activated": clock_feasibility.late_clock_filter_activated,
+            "late_clock_removed_actions": removed_late_clock,
+            "late_clock_terminal_shots_available": [
+                p.opportunity.action_type.value
+                for p in clock_feasibility.terminal_shots_available
+            ],
+            "late_clock_selected_replacement_action": (
+                intent.action_type.value
+                if clock_feasibility.late_clock_filter_activated and intent is not None else None
+            ),
+            "late_clock_possession_still_violated": None,
         })
         if intent is None:
             # genuinely no feasible supported action (e.g. clock too low for anything but an
