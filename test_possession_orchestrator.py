@@ -728,7 +728,7 @@ class TestStructuralTimingHook(unittest.TestCase):
     def test_period_expiration_during_setup_prevents_action_dispatch(self):
         short_game = EraRules(era_name="test_short_game", shot_clock_seconds=24.0, oreb_shot_clock_reset_seconds=None,
                                bonus_foul_threshold=5, period_length_seconds=1.0, periods_per_game=4)
-        cfg = PossessionConfig(era_rules=short_game)  # 1.0s period clock < ordinary_entry_seconds (3.0s)
+        cfg = PossessionConfig(era_rules=short_game)  # 1.0s period clock < ordinary_entry_seconds (default, currently 9.0s)
         result = _run(config=cfg, seed=1, possession_id="period_setup")
         self.assertEqual(result.reason, PossessionTerminalReason.PERIOD_END)
         self.assertEqual(len(result.world.action_log), 0)  # no SelectionPolicy dispatch ever reached
@@ -738,7 +738,7 @@ class TestStructuralTimingHook(unittest.TestCase):
         short_shot_clock = EraRules(era_name="test_short_shot_clock", shot_clock_seconds=1.0,
                                      oreb_shot_clock_reset_seconds=None, bonus_foul_threshold=5,
                                      period_length_seconds=720.0, periods_per_game=4)
-        cfg = PossessionConfig(era_rules=short_shot_clock)  # 1.0s shot clock < ordinary_entry_seconds (3.0s)
+        cfg = PossessionConfig(era_rules=short_shot_clock)  # 1.0s shot clock < ordinary_entry_seconds (default, currently 9.0s)
         result = _run(config=cfg, seed=1, possession_id="shotclock_setup")
         self.assertEqual(result.reason, PossessionTerminalReason.SHOT_CLOCK_VIOLATION)
         self.assertEqual(len(result.world.action_log), 0)
@@ -899,8 +899,16 @@ class TestShotClockAtAttemptTelemetry(unittest.TestCase):
 
     def test_shot_near_shot_clock_expiration_still_resolves_and_bins_correctly(self):
         from detailed_engine_diagnostics import _shot_clock_bin
-        short_shot_clock = EraRules(era_name="test_tight_shot_clock", shot_clock_seconds=4.5,
-                                     oreb_shot_clock_reset_seconds=None, bonus_foul_threshold=5,
+        # relative to the current `ordinary_entry_seconds` default (never a hardcoded literal), leaving
+        # a tight ~1.5s post-entry margin -- same margin this test used when the default was 3.0s (4.5s
+        # total) -- so this stays correct across a future timing-calibration change to that default. An
+        # explicit, small `oreb_shot_clock_reset_seconds` (rather than `None`, a FULL reset to
+        # `shot_clock_seconds` -- see `oreb_reset_value`'s own docstring) keeps a second-chance possession
+        # tight too, so EVERY shot attempt in this era -- ordinary or post-OREB -- stays within the tail
+        # bins this test asserts.
+        base_cfg = PossessionConfig()
+        short_shot_clock = EraRules(era_name="test_tight_shot_clock", shot_clock_seconds=base_cfg.ordinary_entry_seconds + 1.5,
+                                     oreb_shot_clock_reset_seconds=3.0, bonus_foul_threshold=5,
                                      period_length_seconds=720.0, periods_per_game=4)
         cfg = PossessionConfig(era_rules=short_shot_clock)
         found = False
@@ -1112,15 +1120,19 @@ class TestInterActionTimingStructure(unittest.TestCase):
         self.assertAlmostEqual(before - engine.state.shot_clock_remaining, cfg.inter_action_seconds, places=6)
 
     def test_shot_clock_expiration_during_inter_action_prevents_next_action(self):
-        """A shot clock too short to survive one inter-action charge past
-        the first action must terminate via SHOT_CLOCK_VIOLATION, with no
-        second action ever dispatched."""
-        short_shot_clock = EraRules(era_name="test_short_shot_clock_ia", shot_clock_seconds=3.4,
+        """A shot clock too short to survive entry + one dispatched action
+        must terminate via SHOT_CLOCK_VIOLATION, with no second action
+        ever dispatched -- the inter-action charge that follows the first
+        (non-terminal) action clamps at the SAME `max(0, ...)` floor
+        `_charge_time` has always used, and the loop's own top-of-loop
+        check on the NEXT iteration catches it. Computed RELATIVE to
+        `PossessionConfig()`'s own current `ordinary_entry_seconds` --
+        never a hardcoded literal -- so this stays correct across a
+        future timing-calibration change to that default."""
+        base_cfg = PossessionConfig()
+        short_shot_clock = EraRules(era_name="test_short_shot_clock_ia", shot_clock_seconds=base_cfg.ordinary_entry_seconds + 0.1,
                                      oreb_shot_clock_reset_seconds=None, bonus_foul_threshold=5,
                                      period_length_seconds=720.0, periods_per_game=4)
-        # ordinary_entry (3.0) leaves 0.4s; the first dispatched action consumes the rest of what's left
-        # via max(0, ...); if that first action's own continuation reaches the inter-action charge, the
-        # shot clock is already at/near 0 and the NEXT loop iteration's top-of-loop check must catch it.
         cfg = PossessionConfig(era_rules=short_shot_clock)
         for seed in range(100):
             result = _run(config=cfg, seed=seed, possession_id=f"scia{seed}")
@@ -1130,11 +1142,14 @@ class TestInterActionTimingStructure(unittest.TestCase):
         self.fail("expected a SHOT_CLOCK_VIOLATION with at most one dispatched action within 100 seeds")
 
     def test_period_expiration_during_inter_action_prevents_next_action(self):
-        """A period clock too short to survive one inter-action charge
-        past the first action must terminate via PERIOD_END, with no
-        second action ever dispatched."""
+        """A period clock too short to survive entry + one dispatched
+        action must terminate via PERIOD_END, with no second action ever
+        dispatched -- same reasoning as the shot-clock version above,
+        computed RELATIVE to the current `ordinary_entry_seconds`."""
+        base_cfg = PossessionConfig()
         short_game = EraRules(era_name="test_short_game_ia", shot_clock_seconds=24.0, oreb_shot_clock_reset_seconds=None,
-                               bonus_foul_threshold=5, period_length_seconds=3.4, periods_per_game=4)
+                               bonus_foul_threshold=5, period_length_seconds=base_cfg.ordinary_entry_seconds + 0.1,
+                               periods_per_game=4)
         cfg = PossessionConfig(era_rules=short_game)
         for seed in range(100):
             result = _run(config=cfg, seed=seed, possession_id=f"pdia{seed}")
@@ -1190,12 +1205,17 @@ class TestInterActionTimingStructure(unittest.TestCase):
         self.assertEqual(world.inter_action_log, [])  # _dispatch_shot never charges inter-action itself
 
     def test_timing_entry_placeholders_unchanged_by_the_inter_action_hook(self):
-        """Regression guard: the three PRE-EXISTING Structural Timing
-        Hook placeholders must remain exactly what they were before this
-        section -- only a NEW, additive field (`inter_action_seconds`)
-        was introduced."""
+        """Regression guard for the ADDITIVE-ONLY claim made when the
+        Inter-Action Timing Structure section was first introduced: at
+        THAT point, only a NEW field (`inter_action_seconds`) was
+        introduced and all three pre-existing entry/reset placeholders
+        were untouched. (The First-Pass Timing Calibration section,
+        added later, deliberately DOES move `ordinary_entry_seconds` and
+        `inter_action_seconds` -- see
+        `test_first_pass_calibration_values_are_the_documented_v0_choice`
+        below for THAT invariant.) This test only re-confirms the two
+        placeholders calibration deliberately left untouched."""
         cfg = PossessionConfig()
-        self.assertEqual(cfg.ordinary_entry_seconds, 3.0)
         self.assertEqual(cfg.transition_entry_seconds, 1.5)
         self.assertEqual(cfg.second_chance_reset_seconds, 1.0)
 
@@ -1248,6 +1268,89 @@ class TestInterActionTimingStructure(unittest.TestCase):
         # entry-stage origin attribution (Shot-Clock-at-Attempt Diagnosis) must remain UNAFFECTED --
         # inter_action_log is a SEPARATE log, never interleaved into stage_timing_log/stage_origin.
         self.assertIn("HALFCOURT_ENTRY", diag.stage_timing)
+
+
+class TestFirstPassTimingCalibration(unittest.TestCase):
+    """Focused tests for the First-Pass Timing Calibration -- see
+    docs/DETAILED_ENGINE_FIRST_DIAGNOSTIC_REPORT.md's own "First-Pass
+    Timing Calibration" section. FIRST-PASS MACRO CALIBRATION, NOT A
+    FINAL EMPIRICAL TIMING MODEL. Per that section's own scope: tests
+    here cover config values, deterministic timing behavior, and
+    reproducibility of the chosen calibration config -- NEVER an
+    NBA-statistical-output assertion (score/shooting%/OREB%/TOV%/fouls/
+    FTA), which belongs in a benchmark, not a unit test."""
+
+    def test_first_pass_calibration_values_are_the_documented_v0_choice(self):
+        """The two DELIBERATELY MOVED parameters must equal the chosen
+        V0 candidate; the two DELIBERATELY UNCHANGED parameters must
+        still equal their original structural placeholders."""
+        cfg = PossessionConfig()
+        self.assertEqual(cfg.ordinary_entry_seconds, 9.0)
+        self.assertEqual(cfg.inter_action_seconds, 3.0)
+        self.assertEqual(cfg.transition_entry_seconds, 1.5)
+        self.assertEqual(cfg.second_chance_reset_seconds, 1.0)
+
+    def test_calibrated_defaults_produce_zero_faults_across_many_seeds(self):
+        """No non-termination (`PossessionSimulationFault`) at the
+        calibrated defaults across a broad seed sweep -- a real
+        regression guardrail, not a pace assertion."""
+        cfg = PossessionConfig()
+        for seed in range(150):
+            result = _run(config=cfg, seed=seed, possession_id=f"calfault{seed}")
+            self.assertIsNotNone(result)  # would have raised PossessionSimulationFault instead
+
+    def test_calibrated_defaults_never_produce_negative_clocks(self):
+        cfg = PossessionConfig()
+        for seed in range(150):
+            result = _run(config=cfg, seed=seed, possession_id=f"calneg{seed}")
+            self.assertGreaterEqual(result.engine_state.game_clock_remaining, 0.0)
+            if result.engine_state.shot_clock_remaining is not None:
+                self.assertGreaterEqual(result.engine_state.shot_clock_remaining, 0.0)
+
+    def test_calibrated_defaults_preserve_deterministic_replay(self):
+        def run():
+            return simulate_possession("A", "B", OFF_FIVE, DEF_FIVE, _profiles(), inbound_receiver_id="1",
+                                        config=PossessionConfig(), rng_seed=2024, possession_id="det_cal")
+        first, second = run(), run()
+        self.assertEqual(first.reason, second.reason)
+        self.assertEqual(first.stats.points, second.stats.points)
+        self.assertEqual(first.world.action_log, second.world.action_log)
+        self.assertEqual(first.world.stage_timing_log, second.world.stage_timing_log)
+        self.assertEqual(first.world.inter_action_log, second.world.inter_action_log)
+
+    def test_calibration_sample_aggregate_is_reproducible(self):
+        """Same seed set + same (default, calibrated) config must
+        reproduce the EXACT same aggregate possession count run to run
+        -- the calibration sample itself, not merely one possession, is
+        deterministic."""
+        from detailed_engine_diagnostics import diagnose_games
+        from detailed_game import simulate_detailed_game
+        home = tuple(str(i) for i in range(1, 6))
+        away = tuple(str(i) for i in range(11, 16))
+        profiles = {}
+        for p in home:
+            profiles[p] = PlayerSimulationProfile.synthetic(p, "HOME")
+        for p in away:
+            profiles[p] = PlayerSimulationProfile.synthetic(p, "AWAY")
+
+        def sample():
+            results = [simulate_detailed_game("HOME", "AWAY", home, away, profiles, rng_seed=s)
+                       for s in range(23024, 23034)]
+            return diagnose_games(results).mean_total_possessions
+
+        self.assertEqual(sample(), sample())
+
+    def test_only_ordinary_entry_and_inter_action_moved_from_prior_checkpoint(self):
+        """Regression guard for the "smallest number of changed
+        parameters" calibration constraint: `transition_entry_seconds`
+        and `second_chance_reset_seconds` must remain EXACTLY their
+        pre-calibration structural-placeholder values."""
+        cfg = PossessionConfig()
+        self.assertEqual(cfg.transition_entry_seconds, 1.5)
+        self.assertEqual(cfg.second_chance_reset_seconds, 1.0)
+        # sanity: the two calibrated fields are NOT accidentally left at their old values either
+        self.assertNotEqual(cfg.ordinary_entry_seconds, 3.0)
+        self.assertNotEqual(cfg.inter_action_seconds, 1.5)
 
 
 if __name__ == "__main__":

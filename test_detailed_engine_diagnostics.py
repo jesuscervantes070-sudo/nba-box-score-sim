@@ -167,15 +167,16 @@ class TestMultiGameDiagnostics(unittest.TestCase):
         multi = diagnose_games(results)
         self.assertEqual(multi.game_count, 10)
         # Loose bounds -- not a calibration assertion, just confirming the telemetry reconstructs the same
-        # order of magnitude every run. Widened three times: once after the defender-zone staleness fix
-        # (see "Defender-Zone Staleness Correction"), again after the Structural Timing Hook (see
-        # "Structural Timing Hook"), and again after the Inter-Action Timing Structure (see that section)
-        # -- possessions per game legitimately DROPPED further once real, nonzero live inter-action time
-        # started consuming game clock between decisions within a possession (fewer, longer possessions
-        # fit in 48 minutes), which is that hook's own intended, demonstrated structural effect, not a bug.
-        self.assertGreater(multi.mean_total_possessions, 250)
-        self.assertLess(multi.mean_total_possessions, 900)
-        self.assertGreater(multi.mean_oreb, 80)
+        # order of magnitude every run. Adjusted four times: once after the defender-zone staleness fix
+        # (see "Defender-Zone Staleness Correction"), again after the Structural Timing Hook, again after
+        # the Inter-Action Timing Structure, and again after the First-Pass Timing Calibration (see that
+        # section) -- possessions per game legitimately DROPPED FURTHER (and moved into the broad modern-
+        # NBA macro scale) once `ordinary_entry_seconds`/`inter_action_seconds` were calibrated away from
+        # their original placeholder values, which is that section's own intended, demonstrated structural
+        # effect, not a bug.
+        self.assertGreater(multi.mean_total_possessions, 150)
+        self.assertLess(multi.mean_total_possessions, 400)
+        self.assertGreater(multi.mean_oreb, 50)
 
 
 class TestTelemetryIsObservationalOnly(unittest.TestCase):

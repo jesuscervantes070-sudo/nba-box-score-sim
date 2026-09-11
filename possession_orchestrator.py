@@ -819,14 +819,16 @@ class PossessionConfig:
     # SAME existing `_charge_time` mechanism every other duration in this class already
     # uses -- not a new clock owner, only a new REASON to call the existing one.
     #
-    # UNCALIBRATED PLACEHOLDER VALUES. NOT NBA EMPIRICAL TRUTH. Chosen only to be
-    # conservative, nonzero, and directionally sensible (a live transition possession
-    # should structurally need less entry time than a dead-ball halfcourt inbound; a
-    # second-chance reset after an offensive rebound should need less than either) --
-    # NOT fit to any target possession-duration distribution. See `PossessionStage`.
-    ordinary_entry_seconds: float = 3.0      # UNCALIBRATED PLACEHOLDER -- a new halfcourt possession's advance/organize time
-    transition_entry_seconds: float = 1.5    # UNCALIBRATED PLACEHOLDER -- a new live-transition possession's advance time
-    second_chance_reset_seconds: float = 1.0  # UNCALIBRATED PLACEHOLDER -- post-OREB re-organization, SAME possession
+    # FIRST-PASS MACRO CALIBRATION (see docs/DETAILED_ENGINE_FIRST_DIAGNOSTIC_REPORT.md's own
+    # "First-Pass Timing Calibration" section) -- NOT A FINAL EMPIRICAL TIMING MODEL. A one-at-a-time
+    # sensitivity study over seeds 23024-23043 found `ordinary_entry_seconds` and `inter_action_seconds`
+    # (below) carry by far the most leverage on overall pace; `transition_entry_seconds` and
+    # `second_chance_reset_seconds` were evaluated and left at their ORIGINAL structural placeholder
+    # values (lower leverage, and the second-chance value is additionally constrained by the real 14s
+    # OREB shot-clock-reset rule -- not used as a global pace knob).
+    ordinary_entry_seconds: float = 9.0      # FIRST-PASS CALIBRATED (was 3.0 UNCALIBRATED) -- a new halfcourt possession's advance/organize time
+    transition_entry_seconds: float = 1.5    # UNCALIBRATED PLACEHOLDER (unchanged this pass) -- a new live-transition possession's advance time
+    second_chance_reset_seconds: float = 1.0  # UNCALIBRATED PLACEHOLDER (unchanged this pass) -- post-OREB re-organization, SAME possession
     # ------------------------------------------------------------------
     # Inter-Action Timing Structure -- see docs/DETAILED_ENGINE_FIRST_DIAGNOSTIC_REPORT.md's own
     # "Inter-Action Timing Structure" section. This is a SEPARATE concept from the three ENTRY/RESET
@@ -836,10 +838,15 @@ class PossessionConfig:
     # `ContinuationStage`/`_charge_inter_action_time`. Same `_charge_time` primitive, same single
     # clock owner, NOT a new one.
     #
-    # UNCALIBRATED PLACEHOLDER VALUE. NOT NBA EMPIRICAL TRUTH. A small, conservative, nonzero value
-    # chosen only to prove the mechanism -- NOT fit to any target possession-duration/shot-clock
-    # distribution (explicitly NOT solved for a specific mean-shot-clock-at-attempt target).
-    inter_action_seconds: float = 1.5  # UNCALIBRATED PLACEHOLDER -- live time between two decisions in the SAME possession
+    # FIRST-PASS MACRO CALIBRATION (see docs/DETAILED_ENGINE_FIRST_DIAGNOSTIC_REPORT.md's own
+    # "First-Pass Timing Calibration" section) -- NOT A FINAL EMPIRICAL TIMING MODEL. This value and
+    # `ordinary_entry_seconds` (above) were the two parameters actually moved this pass -- chosen from a
+    # small grid (seeds 23024-23043) as the smallest joint change that brought synthetic possessions/game
+    # into the broad modern-NBA macro scale (DERIVED MACRO TARGET ~197.6 alternating possessions/game,
+    # from 2024-25 league pace ~98.8 possessions/team/48min) without a pathological shot-clock-violation
+    # rate or a material first-action-FGA-share shift. Independently validated on seeds 24000-24049.
+    # STILL NOT NBA EMPIRICAL TRUTH -- a first-pass MACRO fit, not a measured per-action duration.
+    inter_action_seconds: float = 3.0  # FIRST-PASS CALIBRATED (was 1.5 UNCALIBRATED) -- live time between two decisions in the SAME possession
 
 
 class PossessionStage:

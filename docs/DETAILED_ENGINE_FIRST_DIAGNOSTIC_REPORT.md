@@ -1637,7 +1637,289 @@ section — not a bug.
   `ACCURACY.md`, `CLAUDE.md` remain untouched.
 - No public engine routing was added or changed.
 - This inter-action-timing work (and the two updated pre-existing
-  assertions) remains **UNCOMMITTED and UNPUSHED**, on top of the
-  pushed `ba29753` baseline, for HQ review.
-- No empirical timing calibration was performed. No new numbered phase
-  was begun.
+  assertions) was subsequently committed/pushed as `ea5a30b` ("Add
+  inter-action possession timing"), on top of the pushed `ba29753`
+  baseline -- see the "First-Pass Timing Calibration" section below for
+  everything built on top of that clean baseline.
+- No empirical timing calibration was performed in the section above.
+  No new numbered phase was begun.
+
+## First-Pass Timing Calibration
+
+**FIRST-PASS MACRO CALIBRATION. NOT A FINAL EMPIRICAL TIMING MODEL.**
+
+Built on top of the clean, verified `ea5a30b` baseline (inter-action
+possession timing, HEAD `ba29753` + that commit). Scope: TIMING ONLY --
+no shooting/rebound/turnover/foul probability, no action-selection
+weight, no player attribute/tendency, no resolver semantic, and no
+real-player ingestion was touched. Only the DEFAULT VALUES of two
+existing `PossessionConfig` fields (`ordinary_entry_seconds`,
+`inter_action_seconds`) were changed; no fifth timing stage was added,
+and no timing architecture was redesigned.
+
+### Derived macro target
+
+2024-25 NBA pace: ~98.8 possessions per team per 48 minutes ⇒ ~197.6
+alternating team possessions per regulation game ⇒ 2880s / 197.6 ≈
+**14.57s per alternating possession**. **DERIVED MACRO TARGET** -- NOT a
+directly measured possession-duration statistic; a back-of-envelope
+figure from a real, sourced pace number, used only to give the
+possessions/game target (197.6) a rough duration-scale sanity check.
+
+### Sensitivity study (seeds 23024-23043, 20 games, one-at-a-time)
+
+Baseline (prior checkpoint `ea5a30b` defaults: entry=3.0/transition=1.5/
+second-chance=1.0/inter-action=1.5): **338.9 possessions/game**, pace
+error **+71.5%**, mean shot clock at FGA 16.47, first-action FGA share
+0.376, shot-clock-violation rate 0.6%.
+
+| `inter_action_seconds` | poss/game | pace error | mean SC@FGA | first-action share | SC-violation rate |
+|---|---|---|---|---|---|
+| 0.5 | 413.2 | +109.1% | 17.60 | 0.371 | 0.0% |
+| 1.0 | 373.6 | +89.1% | 17.00 | 0.373 | 0.1% |
+| 1.5 (prior default) | 338.9 | +71.5% | 16.47 | 0.376 | 0.6% |
+| 2.5 | 294.4 | +49.0% | 15.71 | 0.383 | 2.9% |
+| 4.0 | 252.6 | +27.8% | 15.17 | 0.406 | 8.1% |
+| 6.0 | 225.3 | +14.0% | 15.14 | 0.449 | 17.3% |
+
+| `ordinary_entry_seconds` | poss/game | pace error | mean SC@FGA | first-action share | SC-violation rate |
+|---|---|---|---|---|---|
+| 1.5 | 364.6 | +84.5% | 16.94 | 0.375 | 0.6% |
+| 3.0 (prior default) | 338.9 | +71.5% | 16.47 | 0.376 | 0.6% |
+| 5.0 | 309.9 | +56.8% | 15.87 | 0.375 | 0.6% |
+| 7.0 | 286.1 | +44.8% | 15.27 | 0.377 | 0.7% |
+| 9.0 | 264.2 | +33.7% | 14.65 | 0.376 | 0.8% |
+
+| `transition_entry_seconds` | poss/game | pace error | mean SC@FGA | first-action share | SC-violation rate |
+|---|---|---|---|---|---|
+| 0.5 | 363.6 | +84.0% | 16.92 | 0.375 | 0.6% |
+| 1.5 (prior default) | 338.9 | +71.5% | 16.47 | 0.376 | 0.6% |
+| 3.0 | 306.8 | +55.3% | 15.79 | 0.374 | 0.6% |
+| 5.0 | 273.2 | +38.3% | 14.93 | 0.374 | 0.7% |
+
+| `second_chance_reset_seconds` | poss/game | pace error | mean SC@FGA | first-action share | SC-violation rate |
+|---|---|---|---|---|---|
+| 0.5 | 345.8 | +75.0% | 16.59 | 0.376 | 0.6% |
+| 1.0 (prior default) | 338.9 | +71.5% | 16.47 | 0.376 | 0.6% |
+| 2.0 | 328.8 | +66.4% | 16.25 | 0.376 | 0.4% |
+| 3.0 | 317.1 | +60.5% | 16.04 | 0.376 | 0.7% |
+
+**A. What drives overall pace:** `inter_action_seconds` has, by far, the
+largest per-unit leverage (a 4x change, 1.5→6.0, more than halves
+possessions/game), followed by `ordinary_entry_seconds` (a 3x change,
+3.0→9.0, cuts possessions/game by ~22%) and `transition_entry_seconds`
+(similar per-unit leverage to entry, but only over the TRANSITION-origin
+subset of possessions, so smaller aggregate effect). `second_chance_reset_seconds`
+has the LEAST leverage by a wide margin (a 3x change, 1.0→3.0, moves
+possessions/game only ~6%) -- confirms the instruction's expectation
+empirically, not by assumption.
+
+**B. Ordinary-possession shot timing:** driven by `inter_action_seconds`
+and `ordinary_entry_seconds` together -- both move mean shot clock at
+FGA down materially (16.47→15.14 and 16.47→14.65 respectively at their
+largest tested values).
+
+**C. Transition shot timing:** `transition_entry_seconds` has real but
+narrower leverage (affects only TRANSITION-origin possessions); left
+unchanged this pass per the instruction to avoid using it as the main
+global pace control and to avoid over-calibrating a coarse subsystem.
+
+**D. Second-chance timing:** `second_chance_reset_seconds` has the
+lowest leverage of the four and is additionally constrained by the real
+14s OREB shot-clock-reset rule; left unchanged this pass, exactly as
+instructed for a low-leverage parameter.
+
+A clear warning sign at the high end of `inter_action_seconds` alone
+(6.0): first-action FGA share drifts from 0.376 to 0.449 (+19% relative)
+and the shot-clock-violation rate explodes to 17.3% -- an extreme,
+undesirable side effect (clock pressure squeezes out later-decision
+options via `SelectionPolicy`'s existing clock-feasibility gating, NOT a
+changed probability/weight, but still an unwanted structural symptom).
+This directly motivated NOT using `inter_action_seconds` alone as the
+single global pace knob.
+
+### Candidate configurations tested (joint grid, `inter_action_seconds` × `ordinary_entry_seconds`, `transition_entry_seconds`/`second_chance_reset_seconds` held at prior defaults)
+
+| inter_action | ordinary_entry | poss/game | pace error | mean SC@FGA | first-action share | SC-violation rate |
+|---|---|---|---|---|---|---|
+| 3.0 | 5.0 | 257.1 | +30.1% | 14.80 | 0.388 | 4.4% |
+| 3.0 | 7.0 | 241.8 | +22.4% | 14.24 | 0.392 | 5.0% |
+| 3.0 | 8.0 | 232.4 | +17.6% | 13.89 | 0.390 | 5.2% |
+| **3.0** | **9.0** | **225.8** | **+14.3%** | **13.61** | **0.389** | **5.4%** |
+| 4.0 | 6.0 | 226.8 | +14.7% | 14.13 | 0.403 | 8.8% |
+| 4.0 | 8.0 | 213.5 | +8.1% | 13.51 | 0.406 | 9.2% |
+| 5.0 | 7.0 | 207.5 | +5.0% | 13.61 | 0.427 | 12.9% |
+| 6.0 | 7.0 | 197.9 | +0.2% | 13.48 | 0.443 | 16.9% |
+| 6.0 | 8.0 | 192.2 | −2.7% | 13.05 | 0.442 | 16.4% |
+
+Several candidates land numerically closer to 197.6 (`ia=6.0/oe=7.0` is
+essentially exact), but all of those push the shot-clock-violation rate
+into the 13-17% range and first-action share up ~18-19% relative --
+exactly the "numerically closest pace with bad shot-clock distribution"
+case the instructions said to reject. `ia=3.0/oe=9.0` was chosen instead:
+substantially closer to target than the prior checkpoint (+71.5%→+14.3%
+pace error, a 5x improvement) while keeping the shot-clock-violation
+rate in the single digits (5.4%, vs. the real NBA's own low-single-digit
+rate -- elevated but not extreme) and first-action share essentially
+flat (0.376→0.389, +3.5% relative -- confirms selection weights were not
+touched; the small residual movement is the same clock-feasibility-
+gating effect described above, at a much smaller scale).
+
+### Chosen V0 values
+
+| Parameter | Prior checkpoint (`ea5a30b`) | **V0 calibrated** | Changed? |
+|---|---|---|---|
+| `ordinary_entry_seconds` | 3.0 | **9.0** | Yes -- second-highest leverage; needed alongside inter-action to reach the target scale without over-loading one knob |
+| `inter_action_seconds` | 1.5 | **3.0** | Yes -- highest leverage parameter; the primary pace control |
+| `transition_entry_seconds` | 1.5 | 1.5 (unchanged) | No -- real but narrower leverage; not used as the main global pace control, per instruction |
+| `second_chance_reset_seconds` | 1.0 | 1.0 (unchanged) | No -- lowest leverage by far, and constrained by the real 14s OREB rule; not used as a pace knob |
+
+Only TWO parameters moved -- the smallest joint change the sensitivity
+study supported. Both chosen values are simple, round numbers (9.0,
+3.0), not manufactured decimal precision.
+
+### 20-game calibration results (seeds 23024-23043)
+
+- Possessions/game: mean **225.8** (prior checkpoint: 338.9) -- pace
+  error **+14.3%** (prior: +71.5%).
+- Mean shot clock at FGA: **13.61s** (prior: 16.47s) -- attempts moved
+  LATER, not earlier, as required.
+- Shot-clock bins: `24-18` 29.0%, `18-15` 21.3%, `15-7` 29.9%, `7-4`
+  9.9%, `4-0` 9.9% (prior: 54.0% / 8.8% / 28.2% / 4.5% / 4.5%) -- mass
+  shifted out of the earliest bin into the middle bins; the `4-0` bin
+  (most pathological "everyone shoots with the clock almost off") grew
+  from 4.5% to 9.9% but remains a MINORITY of attempts, not dominant --
+  no pathological collapse into the final seconds.
+  Shot-clock-violation rate: 5.4% of possessions (prior: 0.6%).
+- First-action FGA share: 0.389 (prior: 0.376) -- broadly stable, +3.5%
+  relative.
+- Faults: 0/20 games.
+
+### Independent 50-game validation (seeds 24000-24049, NOT used during candidate selection)
+
+- Games completed: **50/50**, faults: **0**.
+- Possessions/game: mean **223.56**, median **223.5**, stdev **10.08**,
+  min **197**, max **250**.
+- Pace error vs. 197.6: **+13.1%** (consistent with the calibration
+  sample's +14.3% -- no material drift between calibration and
+  validation).
+- Mean possession duration: **12.96s**; mean of per-game median
+  possession durations: **11.24s**.
+- Mean shot clock at FGA: **13.50s** (consistent with the calibration
+  sample's 13.61s).
+- Shot-clock bins: `24-18` 28.6%, `18-15` 20.8%, `15-7` 30.2%, `7-4`
+  10.4%, `4-0` 10.0% (consistent with the calibration sample; `4-0`
+  remains a minority share).
+- Mean shot-clock violations/game: **10.96** (≈4.9% of possessions --
+  consistent with the calibration sample's 5.4%).
+- First-action FGA share: **0.381** (consistent with the calibration
+  sample's 0.389 and the prior checkpoint's 0.376 -- stable).
+
+No material difference between the calibration sample and the
+independent validation sample on any primary/secondary/guardrail
+metric. Validation results were NOT used to re-tune anything.
+
+### Non-timing stats, before vs. after (transparency only -- NOT interpreted as calibration success/failure)
+
+10-game sample (seeds 23024-23033), prior checkpoint (`ea5a30b`
+defaults) → V0 calibrated defaults:
+
+| Metric | Before | After |
+|---|---|---|
+| Mean turnovers/game | 78.3 | 47.9 |
+| Mean OREB/game | 111.0 | 71.85 |
+| Mean DREB/game | 126.6 | 81.0 |
+| Mean personal fouls/game | 6.3 | 4.15 |
+| Mean FTA/game | 14.8 | 9.95 |
+
+These all moved because FEWER possessions now fit in 48 minutes (the
+timing hook's own intended effect), not because any turnover/rebound/
+foul probability changed -- confirmed unchanged by direct diff review
+(see Confirmations below). These stats remain uncalibrated and will be
+addressed in a future, separate phase.
+
+### Guardrail results
+
+- Zero faults across the calibration set (20 games) and the validation
+  set (50 games).
+- No negative clocks observed (regression-tested:
+  `test_calibrated_defaults_never_produce_negative_clocks`).
+- No non-termination.
+- Shot-clock-violation rate elevated (0.6%→~5%) but NOT an "extreme
+  explosion" (contrast the 13-17% seen in the rejected higher-pace
+  candidates above).
+- Shot-clock distribution did not collapse pathologically into the
+  final seconds -- the `4-0` bin stayed a minority share (~10%) in both
+  the calibration and validation samples.
+
+### What remains empirically uncalibrated
+
+- The EXACT values of `ordinary_entry_seconds` (9.0) and
+  `inter_action_seconds` (3.0) themselves -- a first-pass MACRO fit
+  against a derived possession-count target, not a measured per-action
+  duration.
+- `transition_entry_seconds` and `second_chance_reset_seconds` --
+  unchanged this pass.
+- All five action-execution durations (`drive_action_seconds`,
+  `pull_up_action_seconds`, `catch_and_shoot_action_seconds`,
+  `loose_ball_action_seconds`, and pass-family flight durations).
+- The residual ~13-14% pace gap vs. the 197.6 derived macro target.
+- The elevated (~5%) shot-clock-violation rate relative to real NBA
+  rates.
+- Every non-timing mechanic (shooting/rebound/turnover/foul
+  probabilities, selection weights, tendencies, real-player ingestion)
+  -- none were touched, and none were calibrated.
+
+### Tests / full suite
+
+6 new focused tests in `test_possession_orchestrator.py`
+(`TestFirstPassTimingCalibration`): calibrated config values match the
+documented V0 choice, zero faults across a seed sweep, no negative
+clocks, deterministic single-possession replay, deterministic
+calibration-sample aggregate reproducibility, and a regression guard
+that only the two intended parameters moved. Additionally, 3
+pre-existing tests were updated because they encoded the OLD default
+`ordinary_entry_seconds=3.0` (two `EraRules`-based timing-expiration
+tests, now computed RELATIVE to `PossessionConfig().ordinary_entry_seconds`
+instead of a hardcoded literal, plus a second-chance reset era tightened
+from an implicit full-reset to an explicit small
+`oreb_shot_clock_reset_seconds` so an OREB doesn't bypass the test's own
+tight-shot-clock assumption), 1 test's obsolete "unchanged by the
+inter-action hook" assertion on `ordinary_entry_seconds` was narrowed to
+the two placeholders THAT pass genuinely left unchanged, and 1
+possession-count loose-bound assertion was tightened to the new,
+calibrated order of magnitude.
+
+Full suite: `python3 -m unittest discover -p "test_*.py"` → **958/958
+OK** (952 baseline + 6 new). Zero unexpected regressions; every updated
+assertion encoded either the OLD (pre-calibration) default value or the
+OLD (pre-calibration) pace expectation, for the same documented,
+intended reason described throughout this section.
+
+## Confirmations (First-Pass Timing Calibration)
+
+- No shooting/rebound/turnover/foul probability, action-selection
+  weight, player attribute, tendency, resolver semantic, transition-
+  scoring behavior, or real-player-ingestion code was changed --
+  verified by direct diff review (`git diff ea5a30b --
+  possession_orchestrator.py` touches only the default VALUES of
+  `ordinary_entry_seconds`/`inter_action_seconds` and their
+  explanatory comments; no other line in the file changed).
+- No fifth timing stage was added; no timing architecture was
+  redesigned -- `PossessionStage`/`ContinuationStage` are unchanged,
+  and only existing `PossessionConfig` field defaults moved.
+- No legacy/product file was touched: `game_engine.py`, `main.py`,
+  `season.py`, `playoffs.py`, `db.py`, `models.py`, `README.md`,
+  `ACCURACY.md`, `CLAUDE.md` remain untouched.
+- This first-pass timing calibration remains **UNCOMMITTED and
+  UNPUSHED**, on top of the pushed `ea5a30b` baseline, for HQ review.
+- No turnover/rebound/shooting calibration was begun. No new numbered
+  phase was begun.
+- **READY FOR FIRST 100-GAME LEAGUE-LEVEL BENCHMARK** -- the
+  independent 50-game validation completed with zero faults, produced
+  possession volume in the broad modern-NBA macro scale (~223.6/game vs.
+  a 197.6 derived target), and no longer exhibits the catastrophic
+  early-clock collapse the pre-calibration checkpoint showed (mean shot
+  clock at FGA 13.50s vs. 16.5s, `4-0` bin a stable ~10% minority share
+  in both calibration and validation samples). This does NOT mean
+  accurate -- it means benchmarkable.
