@@ -30,13 +30,17 @@ class TestTurnoverDiagnosis(unittest.TestCase):
 
     def test_engine_accounting_is_exactly_once_and_shot_clock_is_explicitly_separate(self):
         assert_turnover_reconciliation(self.diagnosis)
-        self.assertEqual(self.diagnosis.engine_accounted_turnovers, 4846)
-        self.assertEqual(self.diagnosis.categories[TurnoverCategory.SHOT_CLOCK_VIOLATION].engine_accounted_turnovers, 0)
+        self.assertEqual(self.diagnosis.engine_accounted_turnovers, 5967)
+        self.assertEqual(self.diagnosis.player_charged_turnovers, 4846)
+        self.assertEqual(self.diagnosis.categories[TurnoverCategory.SHOT_CLOCK_VIOLATION].engine_accounted_turnovers, 1121)
 
     def test_steals_are_consistent_with_current_clean_interception_semantics(self):
         steals = sum(o.steal_credited for o in self.diagnosis.observations)
         clean = self.diagnosis.categories[TurnoverCategory.PASS_CLEAN_INTERCEPTION]
-        self.assertEqual(steals, clean.count)
+        direct_bad_passes = sum(o.raw_outcome == "BAD_PASS_TO_DEFENDER"
+                                for o in self.diagnosis.observations
+                                if o.category == TurnoverCategory.PASS_BAD_PASS)
+        self.assertEqual(steals, clean.count + direct_bad_passes)
         self.assertEqual(clean.steals, clean.count)
 
     def test_no_loose_ball_sequence_double_counts_turnovers(self):
@@ -88,6 +92,7 @@ class TestTurnoverDiagnosis(unittest.TestCase):
         self.assertEqual(found.category, TurnoverCategory.OFFENSIVE_FOUL)
         self.assertEqual(found.steal_credited, 0)
         self.assertEqual(found.engine_accounted_turnover, 1)
+        self.assertEqual(found.player_charged_turnover, 1)
 
     def test_diagnosis_is_deterministic_and_non_mutating(self):
         before = tuple((g.result.final_home_score, g.result.final_away_score,

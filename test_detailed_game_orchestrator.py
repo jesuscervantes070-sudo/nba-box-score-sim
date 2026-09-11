@@ -78,15 +78,21 @@ def fake_terminal(kwargs, reason, duration=5.0, points=0, oreb=0,
         events.append(Event(EventType.DEFENSIVE_REBOUND, possession_id, 0.0, primary_player_id=carrier))
     elif reason == PossessionTerminalReason.TURNOVER:
         stats.turnovers = 1
+        stats.team_turnovers = 1
+        stats.player_turnovers[kwargs["offensive_five"][0]] = 1
         if live_carrier:
             carrier, phase, ball_state = live_carrier, PossessionPhase.TRANSITION, BallState.HELD
-            events.append(Event(EventType.LIVE_BALL_TURNOVER, possession_id, 0.0, primary_player_id=carrier))
+            events.append(Event(EventType.LIVE_BALL_TURNOVER, possession_id, 0.0,
+                                primary_player_id=carrier,
+                                metadata={"committed_by_player_id": kwargs["offensive_five"][0]}))
         else:
             events.append(Event(EventType.DEAD_BALL_TURNOVER, possession_id, 0.0,
                                 primary_player_id=kwargs["offensive_five"][0]))
     elif reason == PossessionTerminalReason.OFFENSIVE_FOUL_TURNOVER:
         offender = foul_player or kwargs["offensive_five"][0]
         stats.turnovers = 1
+        stats.team_turnovers = 1
+        stats.player_turnovers[offender] = 1
         stats.personal_fouls[offender] = 1
         foul_state = replace(foul_state, personal_fouls=foul_state.personal_fouls.increment(offender))
         events.extend([
@@ -107,6 +113,7 @@ def fake_terminal(kwargs, reason, duration=5.0, points=0, oreb=0,
         stats.fta = max(points, 1)
         stats.ftm = points
     elif reason == PossessionTerminalReason.SHOT_CLOCK_VIOLATION:
+        stats.team_turnovers = 1
         events.append(Event(EventType.SHOT_CLOCK_VIOLATION, possession_id, 0.0))
     elif reason == PossessionTerminalReason.PERIOD_END:
         terminal_offense, terminal_defense = offense, defense

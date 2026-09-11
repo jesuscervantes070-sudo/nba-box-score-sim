@@ -26,7 +26,7 @@ from a prior phase's report.
 `possession_orchestrator.py`'s dispatch code under a fixed, real convention
 this module reuses (verified by direct source read, same methodology
 `derive_stat_deltas_from_events` already established):
-  - points/fga/fgm/fg3a/fg3m/fta/ftm/oreb/turnovers -> the POSSESSION'S OWN
+  - points/fga/fgm/fg3a/fg3m/fta/ftm/oreb/team turnovers -> the POSSESSION'S OWN
     OFFENSE team (`PossessionRecord.offense_team_id`) -- these are all
     either the offense's own shot/FT attempts or their own second-chance
     rebound/giveaway.
@@ -61,7 +61,9 @@ PARTIALLY_EVENT_DERIVED = "PARTIALLY EVENT-DERIVED"
 ACCOUNTING_AUTHORITY: Dict[str, str] = {
     "oreb": EVENT_AUTHORITATIVE,
     "dreb": EVENT_AUTHORITATIVE,
-    "turnovers": EVENT_AUTHORITATIVE,
+    "turnovers": EVENT_AUTHORITATIVE,  # backward-compatible player-charged total
+    "team_turnovers": EVENT_AUTHORITATIVE,
+    "player_turnovers": EVENT_AUTHORITATIVE,
     "steals": EVENT_AUTHORITATIVE,
     "blocks": EVENT_AUTHORITATIVE,
     "personal_fouls": EVENT_AUTHORITATIVE,
@@ -115,6 +117,7 @@ class TeamGameStats:
     oreb: int = 0
     dreb: int = 0
     turnovers: int = 0
+    player_turnovers: int = 0
     steals: int = 0
     blocks: int = 0
     personal_fouls: int = 0
@@ -153,7 +156,11 @@ def aggregate_team_game_stats(result: DetailedGameResult, home_five: Tuple[str, 
         off.fta += d.fta
         off.ftm += d.ftm
         off.oreb += d.oreb
-        off.turnovers += d.turnovers
+        # Public/NBA team TOV comparison uses the event-derivable TEAM total,
+        # including team-only shot-clock violations. Player-charged TOV remain
+        # separately visible and are never inferred by subtraction.
+        off.turnovers += d.team_turnovers
+        off.player_turnovers += sum(d.player_turnovers.values())
         off.true_possessions += 1
 
         deff.dreb += d.dreb

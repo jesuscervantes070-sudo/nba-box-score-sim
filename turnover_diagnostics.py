@@ -5,12 +5,10 @@ imports randomness, mutates simulation state, or participates in selection,
 resolution, clocks, accounting, or possession flow.  Raw resolver outcomes
 remain available beside the normalized diagnostic categories below.
 
-``SHOT_CLOCK_VIOLATION`` is intentionally distinguished from an
-``engine_accounted_turnover``.  The current engine ends the possession but
-does not increment ``StatDeltas.turnovers`` for that terminal.  Reports can
-therefore show both the benchmark's existing turnover numerator and the
-broader set of turnover-like possession losses without silently changing the
-meaning of either.
+``StatDeltas.turnovers`` remains the backward-compatible player-charged total.
+``team_turnovers`` includes team-only violations, and ``player_turnovers``
+preserves exact attribution. Reports expose both rather than silently changing
+the meaning of the legacy field.
 """
 from dataclasses import dataclass, field
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
@@ -49,6 +47,7 @@ class TurnoverObservation:
     live_ball: bool
     steal_credited: int
     engine_accounted_turnover: int
+    player_charged_turnover: int
     player_attribution_id: Optional[str]
     shot_clock_source: Optional[str] = None
     shot_clock_remaining: Optional[float] = None
@@ -112,6 +111,7 @@ class TurnoverDiagnosis:
     team_games: int
     true_possessions: int
     engine_accounted_turnovers: int
+    player_charged_turnovers: int
     possession_losses_including_shot_clock: int
     observations: Tuple[TurnoverObservation, ...]
     categories: Dict[str, CategoryStats]
@@ -232,7 +232,8 @@ def classify_turnover(record: PossessionRecord) -> Optional[TurnoverObservation]
                 player_id = pass_events[-1].primary_player_id
 
     steal = deltas.steals
-    accounted = deltas.turnovers
+    accounted = deltas.team_turnovers
+    player_charged = sum(deltas.player_turnovers.values())
     action_log = record.terminal_result.world.action_log
     prior_action_shot_clock_after = action_log[-1].get("shot_clock_after") if action_log else None
     return TurnoverObservation(
@@ -240,6 +241,7 @@ def classify_turnover(record: PossessionRecord) -> Optional[TurnoverObservation]
         raw_outcome=raw_outcome, originating_action=action, cause_step=cause_step,
         context=_context(record, cause_step), action_stage=_action_stage(record, cause_step),
         live_ball=live, steal_credited=steal, engine_accounted_turnover=accounted,
+        player_charged_turnover=player_charged,
         player_attribution_id=player_id, shot_clock_source=shot_source,
         shot_clock_remaining=shot_remaining,
         prior_action_shot_clock_after=prior_action_shot_clock_after,
@@ -320,13 +322,14 @@ def diagnose_turnovers(items: Sequence[object]) -> TurnoverDiagnosis:
                 handling.steals += obs.steal_credited
 
     accounted = sum(obs.engine_accounted_turnover for obs in observations)
+    player_charged = sum(obs.player_charged_turnover for obs in observations)
     # Every CLEAN_STRIP_LOOSE is synchronously resolved on the next loose-ball
     # iteration in the current engine.  Subtracting terminal defensive wins is
     # safer than associating unrelated pass/rebound loose-ball trace entries.
     handling.offense_recoveries = handling.loose_balls_created - handling.defense_recoveries
     return TurnoverDiagnosis(
         games=len(results), team_games=2 * len(results), true_possessions=true_possessions,
-        engine_accounted_turnovers=accounted,
+        engine_accounted_turnovers=accounted, player_charged_turnovers=player_charged,
         possession_losses_including_shot_clock=len(observations), observations=tuple(observations),
         categories=categories, pass_families=pass_families, handling=handling,
         contexts=contexts, action_stages=action_stages,
@@ -336,13 +339,21 @@ def diagnose_turnovers(items: Sequence[object]) -> TurnoverDiagnosis:
 def assert_turnover_reconciliation(diagnosis: TurnoverDiagnosis) -> None:
     """Fail loudly if observational classification detects duplicate accounting."""
     for obs in diagnosis.observations:
-        expected = 0 if obs.category == TurnoverCategory.SHOT_CLOCK_VIOLATION else 1
-        if obs.engine_accounted_turnover != expected:
+        if obs.engine_accounted_turnover != 1:
             raise AssertionError(
                 f"{obs.possession_id}: {obs.category} has {obs.engine_accounted_turnover} "
-                f"engine-accounted turnovers; expected {expected}"
+                "team turnovers; expected 1"
+            )
+        expected_player = 0 if obs.category == TurnoverCategory.SHOT_CLOCK_VIOLATION else 1
+        if obs.player_charged_turnover != expected_player:
+            raise AssertionError(
+                f"{obs.possession_id}: {obs.category} has {obs.player_charged_turnover} "
+                f"player turnovers; expected {expected_player}"
             )
         if obs.steal_credited not in (0, 1):
             raise AssertionError(f"{obs.possession_id}: duplicate steal accounting ({obs.steal_credited})")
-        if obs.steal_credited and obs.category != TurnoverCategory.PASS_CLEAN_INTERCEPTION:
+        direct_bad_pass_steal = (obs.category == TurnoverCategory.PASS_BAD_PASS
+                                 and obs.raw_outcome == "BAD_PASS_TO_DEFENDER")
+        if obs.steal_credited and obs.category != TurnoverCategory.PASS_CLEAN_INTERCEPTION \
+                and not direct_bad_pass_steal:
             raise AssertionError(f"{obs.possession_id}: steal credited to unsupported category {obs.category}")

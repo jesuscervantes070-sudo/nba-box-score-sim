@@ -99,7 +99,9 @@ class ProvisionalDetailedGameSummary:
     ftm: int = 0
     oreb: int = 0
     dreb: int = 0
-    turnovers: int = 0
+    turnovers: int = 0  # backward-compatible player-charged total
+    team_turnovers: int = 0
+    player_turnovers: int = 0
     steals: int = 0
     blocks: int = 0
     personal_fouls: int = 0
@@ -226,8 +228,9 @@ def _provisional_summary(records: Tuple[PossessionRecord, ...]) -> ProvisionalDe
     for record in records:
         deltas = record.provisional_deltas
         for name in ("points", "fga", "fgm", "fg3a", "fg3m", "fta", "ftm",
-                     "oreb", "dreb", "turnovers", "steals", "blocks"):
+                     "oreb", "dreb", "turnovers", "team_turnovers", "steals", "blocks"):
             values[name] += getattr(deltas, name)
+        values["player_turnovers"] += sum(deltas.player_turnovers.values())
         values["personal_fouls"] += sum(deltas.personal_fouls.values())
     return ProvisionalDetailedGameSummary(**values)
 

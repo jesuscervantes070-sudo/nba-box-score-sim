@@ -375,7 +375,7 @@ class TestEventStatConsistency(unittest.TestCase):
     prove, for every field currently claimed DERIVABLE. This is the
     concrete test the reconciliation review asked for."""
 
-    DERIVABLE_FIELDS = ("oreb", "dreb", "turnovers", "steals", "blocks")
+    DERIVABLE_FIELDS = ("oreb", "dreb", "turnovers", "team_turnovers", "steals", "blocks")
 
     def test_generic_loose_ball_uses_original_offense_when_live_ownership_is_unresolved(self):
         """A deflection clears engine offense to None; an original-offense
@@ -415,6 +415,8 @@ class TestEventStatConsistency(unittest.TestCase):
                                       f"{field} diverged at seed={seed} config={cfg} reason={result.reason}")
                 self.assertEqual(result.stats.personal_fouls, derived.personal_fouls,
                                   f"personal_fouls diverged at seed={seed} config={cfg} reason={result.reason}")
+                self.assertEqual(result.stats.player_turnovers, derived.player_turnovers,
+                                  f"player_turnovers diverged at seed={seed} config={cfg} reason={result.reason}")
                 checked += 1
         self.assertGreater(checked, 0)
 

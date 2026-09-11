@@ -234,9 +234,11 @@ def initialize_next_possession(state: DetailedGameState,
 def _assert_event_accounting_parity(result: PossessionTerminalResult) -> EventDerivedStats:
     derived = derive_stat_deltas_from_events(result.events)
     direct = result.stats
-    for name in ("oreb", "dreb", "turnovers", "steals", "blocks"):
+    for name in ("oreb", "dreb", "turnovers", "team_turnovers", "steals", "blocks"):
         if getattr(derived, name) != getattr(direct, name):
             raise DetailedGameInvariantError(f"event/provisional {name} mismatch")
+    if derived.player_turnovers != direct.player_turnovers:
+        raise DetailedGameInvariantError("event/provisional player_turnovers mismatch")
     if derived.personal_fouls != direct.personal_fouls:
         raise DetailedGameInvariantError("event/provisional personal_fouls mismatch")
     return derived

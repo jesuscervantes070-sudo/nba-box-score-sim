@@ -638,3 +638,109 @@ turnovers, while active pass families show no family-specific failure anomaly.
 Verification after the diagnostic additions: **10/10** new turnover-focused
 tests, **222/222** combined detailed-engine diagnostic/orchestrator tests, and
 **1002/1002** repository tests pass.
+
+---
+
+## Turnover Accounting Reconciliation
+
+This is an accounting-semantics correction only. Seeds, profiles, resolver
+probabilities, selection, clocks, and basketball state transitions are
+unchanged.
+
+### Prior ambiguity and representation
+
+Before this reconciliation, `StatDeltas.turnovers` was the only turnover
+field. It counted every represented player-chargeable loss but had neither an
+individual-player map nor a way to express a team-only turnover. Callers then
+aggregated it as team TOV. It therefore represented both concepts only while
+their totals happened to coincide, and silently excluded shot-clock team
+turnovers.
+
+The minimum compatible extension is:
+
+- `StatDeltas.turnovers`: preserved, unchanged, as the backward-compatible
+  player-charged turnover total;
+- `StatDeltas.player_turnovers`: exact `player_id -> count` attribution;
+- `StatDeltas.team_turnovers`: every team turnover, including team-only
+  violations.
+
+All are provisional projections cross-checked against the event stream.
+`EventDerivedStats` exposes the same three views. The game summary preserves
+its existing `turnovers` field and adds explicit team/player totals. Benchmark
+`TeamGameStats.turnovers` now correctly means public-comparable team TOV, with
+`player_turnovers` separate.
+
+No new `EventType` was necessary. Existing events already carry the required
+semantics: `SHOT_CLOCK_VIOLATION` identifies a team-only loss without a player;
+pass events identify the passer and any direct interceptor; on-ball-pressure
+and loose-ball checkpoints identify the handler/passer and later recovery;
+dead-ball turnover identifies the offensive-foul committer. Event-first
+derivation now maps those structured facts into team and player totals.
+
+### Category accounting
+
+| Category | Before | Team TOV after | Player TOV after | Steal after |
+|---|---|---:|---:|---:|
+| `CLEAN_INTERCEPTION` | 1 undifferentiated TOV + steal | 1 | 1, passer | 1 |
+| `BAD_PASS_OUT_OF_BOUNDS` | 1 undifferentiated TOV | 1 | 1, passer | 0 |
+| Identified `BAD_PASS_TO_DEFENDER` | 1 undifferentiated TOV, no steal | 1 | 1, passer | **1** |
+| Pass-created loose ball, defense recovery | 1 undifferentiated TOV | 1 | 1, originating passer | 0 |
+| Handle strip, defense recovery | 1 undifferentiated TOV | 1 | 1, handler | 0 |
+| Offensive foul | 1 undifferentiated TOV + personal foul | 1 | 1, offender | 0 |
+| Shot-clock violation | possession ended, 0 TOV | **1** | **0** | 0 |
+
+Shot-clock detection, frequency, possession transfer, and clock behavior are
+unchanged. Only its already-existing event now derives one team turnover and
+zero player turnovers/steals; no random player is selected.
+
+### `BAD_PASS_TO_DEFENDER` and loose-ball steal audit
+
+`BAD_PASS_TO_DEFENDER` has two actual control paths. With a non-null
+`disrupting_defender_id`, `_apply_outcome` assigns that exact defender `HELD`
+control and immediately flips team possession. This is a direct interception,
+so the identified defender now receives a steal, consistently with
+`CLEAN_INTERCEPTION`, while the raw category remains distinct. In the
+100-game sample this corrects **138** steals.
+
+With a null defender id, the resolver produces `LOOSE` state and generic
+recovery. No steal is awarded merely because the defense later wins. The same
+rule holds for pass deflections and handle strips: disruption/strip does not by
+itself identify a completed steal, so `STRIP != STEAL` remains intact.
+
+### Before/after 100-game accounting
+
+Same seeds `25000–25099`, same 22,398 basketball possessions:
+
+| Metric | Before | After |
+|---|---:|---:|
+| Player-charged turnovers | not separately representable (legacy total 4,846) | **4,846** |
+| Player TOV/team-game | 24.23 implicit | **24.23** explicit |
+| Team turnovers | 4,846, missing team-only violations | **5,967** |
+| Team TOV/team-game | 24.23 | **29.835** |
+| Team TOV vs. 14.3 target | +69.4% | **+108.64%** |
+| Shot-clock team-only turnovers | 0 | **1,121** = 5.605/team-game |
+| Steals | 2,334 | **2,472** |
+| STL/team-game | 11.67 | **12.36** |
+| STL/team-TOV ratio | 48.16% using incomplete TOV | **41.43%** |
+
+The corrected simulator looks worse against NBA team turnovers, as expected.
+No probability was tuned to conceal that result.
+
+### Deterministic non-interference
+
+A canonical digest over all 100 games includes final scores, possession IDs
+and ownership, start/end game clocks, action selection logs, complete trace,
+shots, rebounds, fouls, period/shot-clock timing, terminal reasons, event
+streams, and every non-turnover stat. Before and after reconciliation it is
+identically:
+
+`e8ff98da97cad7612fe28c0dabeeb8a5a255afc9004833b1576d43a766d8df05`
+
+Only accounting projections changed: shot-clock team TOV and the 138 logically
+identified direct-interception steals.
+
+**Classification: TURNOVER ACCOUNTING RECONCILED.** Probability calibration
+has not begun.
+
+Verification: **12/12** new accounting-focused tests, **234/234** combined
+detailed-engine focused tests, and **1014/1014** repository tests pass.

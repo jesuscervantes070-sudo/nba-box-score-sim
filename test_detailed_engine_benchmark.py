@@ -194,7 +194,8 @@ class TestCorrelation(unittest.TestCase):
 
 class TestAccountingAuthorityLabeling(unittest.TestCase):
     def test_event_derivable_fields_are_labeled_event_authoritative(self):
-        for field in ("oreb", "dreb", "turnovers", "steals", "blocks", "personal_fouls"):
+        for field in ("oreb", "dreb", "turnovers", "team_turnovers", "player_turnovers",
+                      "steals", "blocks", "personal_fouls"):
             self.assertEqual(ACCOUNTING_AUTHORITY[field], EVENT_AUTHORITATIVE)
 
     def test_known_accounting_debt_fields_are_labeled_provisional(self):

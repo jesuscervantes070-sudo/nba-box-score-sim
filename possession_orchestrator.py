@@ -148,7 +148,7 @@ from possession_rules import EraRules
 from possession_events import Event, EventType
 from possession_state import (
     BallState, DefensivePosture, DribbleState, PossessionPhase, PossessionState, SpatialZone,
-    ball_side,
+    _assert_player_id, ball_side,
 )
 from rebound_resolution import ReboundCandidate, ReboundOpportunity, ReboundOutcome, ReboundSource, apply_rebound_to_engine
 from shot_resolution import ContestBucket, ReleaseMode, ShotFamily, ShotOutcome, ShotResolutionContext, apply_shot_resolution_to_engine, shot_make_probability
@@ -438,7 +438,10 @@ class StatDeltas:
     against `derive_stat_deltas_from_events` in this phase's own test
     suite (`test_possession_orchestrator.py`'s `TestEventStatConsistency`)
     -- `oreb`, `dreb`, `turnovers`, `steals`, `blocks`, and
-    `personal_fouls` all currently have full event-stream parity.
+    `team_turnovers`, `player_turnovers`, and `personal_fouls` all currently
+    have full event-stream parity. The legacy `turnovers` scalar is preserved
+    as the player-charged total; team-only shot-clock violations appear only
+    in `team_turnovers` and never receive fabricated player attribution.
     `points`/`fga`/`fgm`/`fg3a`/`fg3m`/`fta`/`ftm` do NOT yet have
     event-stream parity (see `derive_stat_deltas_from_events`'s own
     docstring for the exact missing event-schema fields) -- this class
@@ -456,13 +459,32 @@ class StatDeltas:
     ftm: int = 0
     oreb: int = 0
     dreb: int = 0
+    # Backward-compatible PLAYER-CHARGED turnover total. Before the
+    # accounting reconciliation this field was the only turnover counter and
+    # therefore happened to equal team turnovers for every represented path.
+    # It is intentionally NOT redefined: team-only violations now live in
+    # `team_turnovers`, while exact player attribution lives in
+    # `player_turnovers`.
     turnovers: int = 0
+    team_turnovers: int = 0
+    player_turnovers: Dict[str, int] = field(default_factory=dict)
     steals: int = 0
     blocks: int = 0
     personal_fouls: Dict[str, int] = field(default_factory=dict)  # player_id -> count, this possession only
 
     def add_personal_foul(self, player_id: str) -> None:
         self.personal_fouls[player_id] = self.personal_fouls.get(player_id, 0) + 1
+
+    def add_player_turnover(self, player_id: str) -> None:
+        """Record one player-charged turnover and its one team turnover."""
+        _assert_player_id(player_id)
+        self.turnovers += 1
+        self.team_turnovers += 1
+        self.player_turnovers[player_id] = self.player_turnovers.get(player_id, 0) + 1
+
+    def add_team_only_turnover(self) -> None:
+        """Record a team turnover with no fabricated player attribution."""
+        self.team_turnovers += 1
 
 
 @dataclass
@@ -478,7 +500,9 @@ class EventDerivedStats:
     fields a future phase would need to add them."""
     oreb: int = 0
     dreb: int = 0
-    turnovers: int = 0
+    turnovers: int = 0  # backward-compatible player-charged total
+    team_turnovers: int = 0
+    player_turnovers: Dict[str, int] = field(default_factory=dict)
     steals: int = 0
     blocks: int = 0
     personal_fouls: Dict[str, int] = field(default_factory=dict)
@@ -493,9 +517,15 @@ def derive_stat_deltas_from_events(events: Tuple[Event, ...]) -> EventDerivedSta
     DERIVABLE NOW:
       - OREB: count of `EventType.OFFENSIVE_REBOUND` events.
       - DREB: count of `EventType.DEFENSIVE_REBOUND` events.
-      - turnovers: `EventType.DEAD_BALL_TURNOVER` + `EventType.LIVE_BALL_TURNOVER`
-        events, PLUS `PASS_RESOLVED` events whose `metadata["outcome"]`
-        is `pass_resolution.py`'s own `PassOutcome.BAD_PASS_OUT_OF_BOUNDS`
+      - player-charged turnovers (`turnovers` scalar plus exact
+        `player_turnovers` mapping): structured turnover/pass/loose-ball
+        events that identify the responsible offensive player.
+      - team turnovers: every player-charged turnover plus
+        `EventType.SHOT_CLOCK_VIOLATION`, whose absent player attribution is
+        intentional. The underlying turnover signals are
+        `EventType.DEAD_BALL_TURNOVER`, `EventType.LIVE_BALL_TURNOVER`,
+        `PASS_RESOLVED` events whose `metadata["outcome"]` is
+        `pass_resolution.py`'s own `PassOutcome.BAD_PASS_OUT_OF_BOUNDS`
         (always), `.CLEAN_INTERCEPTION` (always), or
         `.BAD_PASS_TO_DEFENDER` ONLY when `metadata["disrupting_defender_id"]`
         is not `None` (per `pass_resolution._apply_outcome`'s own real
@@ -506,8 +536,9 @@ def derive_stat_deltas_from_events(events: Tuple[Event, ...]) -> EventDerivedSta
         prose), PLUS this module's own supplementary `REACTION_CHECKPOINT`
         checkpoint `"generic_loose_ball_recovered"` when `recovery ==
         "DEFENSE_RECOVERED"` (Sec. `resolve_generic_loose_ball`).
-      - steals: `PASS_RESOLVED` events with `metadata["outcome"] ==
-        "CLEAN_INTERCEPTION"` and a real `metadata["disrupting_defender_id"]`.
+      - steals: `PASS_RESOLVED` events with a direct-control outcome
+        (`CLEAN_INTERCEPTION` or identified `BAD_PASS_TO_DEFENDER`) and a real
+        `metadata["disrupting_defender_id"]`.
       - blocks: count of `EventType.BLOCK_RETAINED_BY_OFFENSE` +
         `EventType.BLOCK_SECURED_BY_DEFENSE` events.
       - personal_fouls: `EventType.SHOOTING_FOUL` events
@@ -548,13 +579,28 @@ def derive_stat_deltas_from_events(events: Tuple[Event, ...]) -> EventDerivedSta
         an inconsistent half-fix was judged worse than an honest gap).
     """
     result = EventDerivedStats()
+    loose_ball_turnover_player_id: Optional[str] = None
+
+    def add_player_turnover(player_id: Optional[str]) -> None:
+        result.team_turnovers += 1
+        if player_id is not None:
+            result.turnovers += 1
+            result.player_turnovers[player_id] = result.player_turnovers.get(player_id, 0) + 1
+
     for event in events:
         if event.event_type == EventType.OFFENSIVE_REBOUND:
             result.oreb += 1
         elif event.event_type == EventType.DEFENSIVE_REBOUND:
             result.dreb += 1
-        elif event.event_type in (EventType.DEAD_BALL_TURNOVER, EventType.LIVE_BALL_TURNOVER):
-            result.turnovers += 1
+        elif event.event_type == EventType.DEAD_BALL_TURNOVER:
+            add_player_turnover(event.primary_player_id)
+        elif event.event_type == EventType.LIVE_BALL_TURNOVER:
+            # Phase 15's primary id is the RECOVERING defender, not the
+            # committing offensive player. Team TOV is certain; player TOV is
+            # derivable only when a caller supplies the explicit semantic id.
+            add_player_turnover(event.metadata.get("committed_by_player_id"))
+        elif event.event_type == EventType.SHOT_CLOCK_VIOLATION:
+            result.team_turnovers += 1
         elif event.event_type in (EventType.BLOCK_RETAINED_BY_OFFENSE, EventType.BLOCK_SECURED_BY_DEFENSE):
             result.blocks += 1
         elif event.event_type == EventType.SHOOTING_FOUL:
@@ -567,20 +613,30 @@ def derive_stat_deltas_from_events(events: Tuple[Event, ...]) -> EventDerivedSta
             outcome = event.metadata.get("outcome")
             disrupting_defender_id = event.metadata.get("disrupting_defender_id")
             if outcome == "BAD_PASS_OUT_OF_BOUNDS":
-                result.turnovers += 1  # always a real dead-ball turnover, regardless of a known defender id
+                add_player_turnover(event.primary_player_id)
             elif outcome == "BAD_PASS_TO_DEFENDER" and disrupting_defender_id is not None:
                 # per pass_resolution.py's own `_apply_outcome`: only a REAL turnover when a specific
                 # defender actually secured it -- a `None` target means the ball went LOOSE instead (the
                 # offense may recover it), which is NOT, by itself, a turnover.
-                result.turnovers += 1
+                add_player_turnover(event.primary_player_id)
+                result.steals += 1
             elif outcome == "CLEAN_INTERCEPTION":
-                result.turnovers += 1
+                add_player_turnover(event.primary_player_id)
                 if disrupting_defender_id is not None:
                     result.steals += 1
+            if outcome in ("DEFLECTED_LOOSE_BALL", "DEFLECTED_RETAINED_OFFENSE") \
+                    or (outcome == "BAD_PASS_TO_DEFENDER" and disrupting_defender_id is None):
+                loose_ball_turnover_player_id = event.primary_player_id
         elif event.event_type == EventType.REACTION_CHECKPOINT:
             checkpoint = event.metadata.get("checkpoint")
             if checkpoint == "generic_loose_ball_recovered" and event.metadata.get("recovery") == "DEFENSE_RECOVERED":
-                result.turnovers += 1
+                add_player_turnover(loose_ball_turnover_player_id)
+                loose_ball_turnover_player_id = None
+            elif checkpoint == "generic_loose_ball_recovered":
+                loose_ball_turnover_player_id = None
+            elif checkpoint == "on_ball_pressure_resolved" \
+                    and event.metadata.get("outcome") == "CLEAN_STRIP_LOOSE":
+                loose_ball_turnover_player_id = event.primary_player_id
             elif checkpoint == "floor_foul_administered" and event.metadata.get("foul_class") == OFFENSIVE_CHARGE \
                     and event.primary_player_id is not None:
                 # ONLY the OFFENSIVE_CHARGE case -- a DEFENSIVE_FLOOR_FOUL's personal foul is already counted
@@ -1230,7 +1286,7 @@ def _dispatch_floor_foul(engine: PossessionEngine, world: PossessionWorld, confi
                       "foul_event_id": foul_event_id})
 
     if on_ball_outcome == OFFENSIVE_CHARGE:
-        world.stats.turnovers += 1
+        world.stats.add_player_turnover(offender_id)
         return _terminal(PossessionTerminalReason.OFFENSIVE_FOUL_TURNOVER, engine, world, steps,
                           offense_team_id=fouled_team_id, defense_team_id=offender_team_id)
 
@@ -1524,6 +1580,7 @@ def _dispatch_pass(engine: PossessionEngine, world: PossessionWorld, intent: Act
         # engine.shot_clock_violation() was already called INSIDE resolve_pass -- not called again here.
         world.log_trace(step=steps, action="SHOT_CLOCK_VIOLATION_DIAGNOSTIC",
                         source="PASS_ARRIVAL", shot_clock_remaining=engine.state.shot_clock_remaining)
+        world.stats.add_team_only_turnover()
         return _terminal(PossessionTerminalReason.SHOT_CLOCK_VIOLATION, engine, world, steps)
 
     if outcome in (PassOutcome.COMPLETED_CLEAN, PassOutcome.COMPLETED_ADJUSTED):
@@ -1539,12 +1596,12 @@ def _dispatch_pass(engine: PossessionEngine, world: PossessionWorld, intent: Act
             world.stats.steals += 1
         new_offense = world.team_id_for(disrupting) if disrupting else engine.state.offense_team_id
         new_defense = world.team_b_id if new_offense == world.team_a_id else world.team_a_id
-        world.stats.turnovers += 1
+        world.stats.add_player_turnover(passer_id)
         return _terminal(PossessionTerminalReason.TURNOVER, engine, world, steps,
                           offense_team_id=new_offense, defense_team_id=new_defense)
 
     if outcome == PassOutcome.BAD_PASS_OUT_OF_BOUNDS:
-        world.stats.turnovers += 1
+        world.stats.add_player_turnover(passer_id)
         return _terminal(PossessionTerminalReason.TURNOVER, engine, world, steps,
                           offense_team_id=engine.state.offense_team_id, defense_team_id=engine.state.defense_team_id)
 
@@ -1552,7 +1609,8 @@ def _dispatch_pass(engine: PossessionEngine, world: PossessionWorld, intent: Act
         if engine.state.ball_state == BallState.LOOSE:
             recovery = resolve_generic_loose_ball(engine, world, rng, favored_team_id=None)
             return _loose_ball_continuation_or_terminal(engine, world, steps, recovery)
-        world.stats.turnovers += 1
+        world.stats.add_player_turnover(passer_id)
+        world.stats.steals += 1
         return _terminal(PossessionTerminalReason.TURNOVER, engine, world, steps,
                           offense_team_id=engine.state.offense_team_id, defense_team_id=engine.state.defense_team_id)
 
@@ -1570,7 +1628,17 @@ def _dispatch_pass(engine: PossessionEngine, world: PossessionWorld, intent: Act
 def _loose_ball_continuation_or_terminal(engine: PossessionEngine, world: PossessionWorld, steps: int,
                                           recovery: str) -> Optional[PossessionTerminalResult]:
     if recovery == "DEFENSE_RECOVERED":
-        world.stats.turnovers += 1
+        committed_by = None
+        for entry in reversed(world.trace):
+            if entry.get("action") in {action.value for action in PASS_ACTIONS}:
+                committed_by = entry.get("passer")
+                break
+            if entry.get("action") == "ON_BALL_PRESSURE" and entry.get("outcome") == "CLEAN_STRIP_LOOSE":
+                committed_by = entry.get("driver")
+                break
+        if committed_by is None:
+            raise PossessionSimulationFault("defense-recovered loose ball lacks player-turnover attribution")
+        world.stats.add_player_turnover(committed_by)
         return _terminal(PossessionTerminalReason.TURNOVER, engine, world, steps)
     return None
 
@@ -1662,6 +1730,7 @@ def simulate_possession(
             world.log_trace(step=step, action="SHOT_CLOCK_VIOLATION_DIAGNOSTIC",
                             source="TOP_OF_LOOP", shot_clock_remaining=engine.state.shot_clock_remaining)
             engine.shot_clock_violation()
+            world.stats.add_team_only_turnover()
             return _terminal(PossessionTerminalReason.SHOT_CLOCK_VIOLATION, engine, world, step)
         if engine.state.game_clock_remaining is not None and engine.state.game_clock_remaining <= 0.0:
             engine.period_expiration()
@@ -1699,6 +1768,7 @@ def simulate_possession(
             world.log_trace(step=step, action="SHOT_CLOCK_VIOLATION_DIAGNOSTIC",
                             source="NO_FEASIBLE_ACTION", shot_clock_remaining=engine.state.shot_clock_remaining)
             engine.shot_clock_violation()
+            world.stats.add_team_only_turnover()
             return _terminal(PossessionTerminalReason.SHOT_CLOCK_VIOLATION, engine, world, step)
 
         # Diagnostic-only hook (observational, never a simulation decision): records exactly one entry
