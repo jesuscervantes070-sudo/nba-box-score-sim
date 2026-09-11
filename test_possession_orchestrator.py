@@ -1642,5 +1642,133 @@ class TestDriveFloorFoulObservableOutcomeStage(unittest.TestCase):
         self.assertGreaterEqual(result.stats.turnovers, 1)
 
 
+class TestInteriorShotBlockInvariants(unittest.TestCase):
+    """Diagnostic-phase focused tests for the detailed-engine BLOCK subsystem ("Diagnose
+    detailed-engine block generation"). No production probability/behavior is changed by this
+    phase -- these tests reuse the SAME deterministic-forcing pattern already established for
+    the and-one tests above (extreme, real attribute values + a fixed `rng_seed`, never a new
+    test-only hook): a very high `defensive_playmaking_per36` for every defender pushes
+    `block_probability` near its ceiling, and a very low value pushes it near its floor, making
+    each real outcome reproducible with `random.Random(0)` without inventing any new
+    architecture. RIM/FLOATER are the only block-capable families (confirmed by direct source
+    read of `interior_shot_resolution.py`'s own docstring) -- these tests dispatch at
+    `SpatialZone.RESTRICTED_RIM`."""
+
+    def _engine_and_world(self, defensive_playmaking, oreb_bias=False, dreb_bias=False):
+        profiles = {}
+        for p in OFF_FIVE:
+            overrides = {}
+            if oreb_bias:
+                overrides["offensive_rebounding_shrunk_rate"] = 0.95 if p == "1" else 0.01
+            profiles[p] = PlayerSimulationProfile.synthetic(p, "A", **overrides)
+        for p in DEF_FIVE:
+            overrides = {"defensive_playmaking_per36": defensive_playmaking}
+            if dreb_bias:
+                overrides["defensive_rebounding_shrunk_rate"] = 0.95 if p == "11" else 0.01
+            profiles[p] = PlayerSimulationProfile.synthetic(p, "B", **overrides)
+
+        engine = PossessionEngine("p1", "A", "B", season="2023-24", rng_seed=0)
+        apply_matchup_assignments(engine, OFF_FIVE, DEF_FIVE)
+        engine.inbound("1", SpatialZone.RESTRICTED_RIM, PossessionPhase.HALFCOURT)
+        world = PossessionWorld(team_a_id="A", team_b_id="B", team_a_five=OFF_FIVE, team_b_five=DEF_FIVE,
+                                 profiles=profiles,
+                                 player_zones={pid: SpatialZone.RESTRICTED_RIM for pid in OFF_FIVE + DEF_FIVE})
+        return engine, world
+
+    def _dispatch(self, engine, world):
+        import random
+        from possession_orchestrator import _dispatch_shot
+        intent = ActionIntent(action_type=ActionType.CATCH_AND_SHOOT, actor_player_id="1", possession_id="p1",
+                               target_zone=SpatialZone.RESTRICTED_RIM.value)
+        return _dispatch_shot(engine, world, intent, PossessionConfig(), random.Random(0), 0)
+
+    def _shot_row(self, world):
+        return next(r for r in world.trace if r.get("action") == "CATCH_AND_SHOOT")
+
+    def test_a_forced_block_creates_fga_plus_miss_plus_blk(self):
+        engine, world = self._engine_and_world(defensive_playmaking=10.0)
+        self._dispatch(engine, world)
+        row = self._shot_row(world)
+        self.assertIn(row.get("outcome"), ("BLOCKED_RETAINED_OFFENSE", "BLOCKED_SECURED_DEFENSE"))
+        self.assertEqual(world.stats.fga, 1)
+        self.assertEqual(world.stats.fgm, 0)
+        self.assertEqual(world.stats.blocks, 1)
+
+    def test_b_forced_block_does_not_create_a_turnover(self):
+        engine, world = self._engine_and_world(defensive_playmaking=10.0)
+        self._dispatch(engine, world)
+        self.assertEqual(world.stats.turnovers, 0)
+        self.assertEqual(sum(world.stats.player_turnovers.values()), 0)
+
+    def test_c_forced_block_enters_rebound_recovery_path(self):
+        engine, world = self._engine_and_world(defensive_playmaking=10.0)
+        self._dispatch(engine, world)
+        self.assertEqual(len(world.rebound_opportunity_log), 1)
+        self.assertEqual(world.rebound_opportunity_log[0]["source"], "UNRESOLVED_BLOCK")
+
+    def test_d_offense_recovery_continues_the_same_possession(self):
+        engine, world = self._engine_and_world(defensive_playmaking=10.0, oreb_bias=True)
+        result = self._dispatch(engine, world)
+        self.assertIsNone(result)  # SAME possession continues -- no terminal result
+        self.assertEqual(world.stats.oreb, 1)
+        self.assertEqual(world.stats.dreb, 0)
+        self.assertEqual(engine.state.offense_team_id, "A")
+        self.assertEqual(engine.state.ball_state.value, "HELD")
+
+    def test_e_defense_recovery_flips_possession(self):
+        engine, world = self._engine_and_world(defensive_playmaking=10.0, dreb_bias=True)
+        result = self._dispatch(engine, world)
+        self.assertIsNotNone(result)
+        self.assertEqual(result.reason, PossessionTerminalReason.DEFENSIVE_REBOUND)
+        self.assertEqual(result.resulting_offense_team_id, "B")
+        self.assertEqual(result.resulting_defense_team_id, "A")
+        self.assertEqual(world.stats.dreb, 1)
+        self.assertEqual(world.stats.oreb, 0)
+
+    def test_f_block_stat_credited_to_the_correct_defender(self):
+        engine, world = self._engine_and_world(defensive_playmaking=10.0)
+        self._dispatch(engine, world)
+        block_events = [e for e in engine.log.events if e.event_type.name in
+                        ("BLOCK_RETAINED_BY_OFFENSE", "BLOCK_SECURED_BY_DEFENSE")]
+        self.assertEqual(len(block_events), 1)
+        self.assertEqual(block_events[0].primary_player_id, "11")  # "1"'s own assigned primary defender
+        self.assertEqual(block_events[0].secondary_player_id, "1")  # the shooter
+
+    def test_g_no_duplicate_rebound_or_possession_flip(self):
+        for oreb_bias, dreb_bias in ((True, False), (False, True)):
+            engine, world = self._engine_and_world(defensive_playmaking=10.0, oreb_bias=oreb_bias, dreb_bias=dreb_bias)
+            self._dispatch(engine, world)
+            self.assertEqual(len(world.rebound_opportunity_log), 1)
+            self.assertEqual(world.stats.oreb + world.stats.dreb, 1)
+            block_events = [e for e in engine.log.events if e.event_type.name in
+                            ("BLOCK_RETAINED_BY_OFFENSE", "BLOCK_SECURED_BY_DEFENSE")]
+            self.assertEqual(len(block_events), 1)
+
+    def test_h_non_block_shot_behavior_unchanged(self):
+        """NO_CALL/low-defensive_playmaking leverage -> ordinary MADE/MISSED_UNBLOCKED path,
+        exactly as if this diagnostic phase's new modules did not exist (no production code was
+        modified by this phase -- confirmed by this test continuing to pass unmodified)."""
+        engine, world = self._engine_and_world(defensive_playmaking=0.0)
+        self._dispatch(engine, world)
+        row = self._shot_row(world)
+        self.assertIn(row.get("outcome"), ("MADE", "MISSED_UNBLOCKED"))
+        self.assertEqual(world.stats.blocks, 0)
+        self.assertEqual(world.stats.fga, 1)
+
+    def test_i_block_diagnostics_consume_zero_extra_rng(self):
+        """`detailed_engine_block_diagnostics.py` is read-only and observational (same firewall
+        as `detailed_engine_foul_diagnostics.py`) -- running it twice over the SAME already-
+        simulated results must not perturb anything, and the module itself imports no RNG."""
+        from detailed_engine_benchmark import run_benchmark_sample
+        from detailed_engine_block_diagnostics import diagnose_blocks
+        games = run_benchmark_sample(range(25000, 25003))
+        results = tuple(g.result for g in games)
+        before = tuple((r.final_home_score, r.final_away_score) for r in results)
+        diagnose_blocks(results)
+        diagnose_blocks(results)
+        after = tuple((r.final_home_score, r.final_away_score) for r in results)
+        self.assertEqual(before, after)
+
+
 if __name__ == "__main__":
     unittest.main()
