@@ -60,6 +60,12 @@ class FoulDiagnostics:
     shooting_foul_fta_by_family: CounterType[str] = field(default_factory=Counter)
     shooting_foul_ftm_by_family: CounterType[str] = field(default_factory=Counter)
     drive_collision_foul_checks: int = 0
+    # "Model drive floor fouls as observable outcomes" -- keyed by drive_floor_foul_resolution.py's
+    # own DriveFloorFoulOutcome values (NO_FLOOR_FOUL / OFFENSIVE_CHARGE / DEFENSIVE_FLOOR_FOUL).
+    # Population is currently 100% NO_FLOOR_FOUL: both hazards are UNCALIBRATED (None/0.0) in
+    # production, so this stage never produces a foul yet -- this counter exists so a future
+    # calibration pass has an eligible-opportunity denominator ready before any rate is sourced.
+    drive_floor_foul_checks_by_outcome: CounterType[str] = field(default_factory=Counter)
     defensive_floor_fouls: int = 0
     offensive_fouls: int = 0
     personal_fouls_from_events: int = 0
@@ -95,6 +101,22 @@ class FoulDiagnostics:
     @property
     def total_ft_trips(self) -> int:
         return len(self.free_throw_trips)
+
+    @property
+    def eligible_drive_floor_foul_opportunities(self) -> int:
+        return sum(self.drive_floor_foul_checks_by_outcome.values())
+
+    @property
+    def drive_floor_foul_charge_outcomes(self) -> int:
+        return self.drive_floor_foul_checks_by_outcome.get("OFFENSIVE_CHARGE", 0)
+
+    @property
+    def drive_floor_foul_defensive_outcomes(self) -> int:
+        return self.drive_floor_foul_checks_by_outcome.get("DEFENSIVE_FLOOR_FOUL", 0)
+
+    @property
+    def drive_floor_foul_no_foul_continuations(self) -> int:
+        return self.drive_floor_foul_checks_by_outcome.get("NO_FLOOR_FOUL", 0)
 
 
 def _trace_rows_for_step(world, step: int) -> List[dict]:
@@ -160,6 +182,12 @@ def diagnose_fouls(results: Sequence["DetailedGameResult"]) -> FoulDiagnostics:
                     pressure = next((row for row in rows if row.get("action") == "ON_BALL_PRESSURE"), None)
                     if pressure is not None and pressure.get("outcome") in COLLISION_OUTCOMES:
                         diagnosis.drive_collision_foul_checks += 1
+                    # "Model drive floor fouls as observable outcomes" -- every ELIGIBLE drive (a
+                    # defender was assigned) logs exactly one DRIVE_FLOOR_FOUL_CHECK trace row,
+                    # regardless of outcome, at the same step as this action_log entry.
+                    floor_foul_check = next((row for row in rows if row.get("action") == "DRIVE_FLOOR_FOUL_CHECK"), None)
+                    if floor_foul_check is not None:
+                        diagnosis.drive_floor_foul_checks_by_outcome[floor_foul_check.get("outcome", "UNKNOWN")] += 1
 
             derived = derive_stat_deltas_from_events(record.events)
             event_pf = sum(derived.personal_fouls.values())

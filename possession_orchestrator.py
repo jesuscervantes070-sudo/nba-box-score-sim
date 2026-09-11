@@ -117,6 +117,7 @@ from action_selection import (
     evaluate_clock_feasibility,
 )
 from clock_semantics import ClockTerminalCause, LiveClockAdvance, advance_live_clocks
+from drive_floor_foul_resolution import DriveFloorFoulContext, DriveFloorFoulOutcome, resolve_drive_floor_foul_outcome
 from drive_resolution import DriveResolutionContext, DriveOutcome, resolve_drive
 from floor_foul_administration import (
     DEFENSIVE_FLOOR_FOUL,
@@ -921,10 +922,23 @@ class PossessionConfig:
     """Explicit, UNCALIBRATED V0 knobs -- every duration is a real,
     hand-set positive placeholder whose only job is loop correctness
     (every live action progresses time), not realism. No player-specific
-    speed/pace latent is read anywhere. `force_on_ball_contact_established`
-    is a TEST-ONLY override (see `_dispatch_drive`'s docstring) -- False
-    is the honest V0 default because no real per-drive contact-occurrence
-    rate has ever been derived in this project."""
+    speed/pace latent is read anywhere.
+
+    `force_on_ball_contact_established` is a LEGACY TEST-ONLY override (see `_dispatch_drive`'s
+    docstring) -- False is the honest V0 default because `P(contact | drive)` is itself a latent
+    quantity that cannot be calibrated from public NBA data (unwhistled contact is never
+    publicly labeled); it is no longer the intended PRODUCTION calibration path for drive floor
+    fouls (see `drive_floor_foul_resolution.py`), but is retained, UNCHANGED, purely so existing
+    tests that exercise `on_ball_pressure_resolution.py`'s own collision branch deterministically
+    keep working.
+
+    `drive_charge_hazard_per_drive`/`drive_defensive_floor_foul_hazard_per_drive` are the REAL,
+    OBSERVABLE per-drive hazards `drive_floor_foul_resolution.py`'s `resolve_drive_floor_foul_outcome`
+    is designed to be calibrated against -- both `None` (UNCALIBRATED, not zero) until a real
+    NBA-Tracking-derived rate is sourced; leaving both `None` makes that stage consume zero RNG
+    and produces byte-for-byte identical output to this stage not existing at all.
+    `force_drive_floor_foul_outcome` is a TEST-ONLY deterministic override for that same stage --
+    never set by production config construction."""
     season: str = "2023-24"
     initial_ball_zone: SpatialZone = SpatialZone.TOP_OF_KEY
     drive_action_seconds: float = 2.5
@@ -933,6 +947,9 @@ class PossessionConfig:
     loose_ball_action_seconds: float = 0.5
     max_steps_per_possession: int = 100
     force_on_ball_contact_established: bool = False
+    drive_charge_hazard_per_drive: Optional[float] = None                # UNCALIBRATED -- see class docstring
+    drive_defensive_floor_foul_hazard_per_drive: Optional[float] = None  # UNCALIBRATED -- see class docstring
+    force_drive_floor_foul_outcome: Optional[str] = None                 # TEST-ONLY -- see class docstring
     default_free_throw_rate_if_missing: Optional[float] = None  # None = fail explicitly (see _require_ft_rate); no silent placeholder unless a caller opts in
     era_rules: Optional["EraRules"] = None  # overrides `season`-derived era rules when set -- e.g. a test constructing a short game clock to reach PERIOD_END quickly
     # Phase 23B additive orchestration inputs. `None` preserves Phase 23A's
@@ -1596,14 +1613,52 @@ def _dispatch_drive(engine: PossessionEngine, world: PossessionWorld, intent: Ac
         _charge_time(engine, config.drive_action_seconds, world, "DRIVE_EXECUTION", steps)
         return None
 
+    # ---- PRODUCTION drive floor-foul stage (drive_floor_foul_resolution.py) -- checked FIRST,
+    # exactly once, per drive dispatch, BEFORE the legacy on-ball-pressure collision branch below.
+    # REPLACES `contact_established` as the intended PRODUCTION calibration target: see
+    # drive_floor_foul_resolution.py's own module docstring for why `P(contact | drive)` itself
+    # was rejected as uncalibratable, and why this module instead classifies the drive's
+    # OBSERVABLE outcome (NO_FLOOR_FOUL / OFFENSIVE_CHARGE / DEFENSIVE_FLOOR_FOUL) directly. Both
+    # hazards default to `None`/0.0 (UNCALIBRATED) in `PossessionConfig`, so
+    # `resolve_drive_floor_foul_outcome` returns `NO_FLOOR_FOUL` without consuming any `rng` draw
+    # -- this stage is a byte-for-byte no-op until real per-drive rates are sourced, and an
+    # eligible drive is always logged (`DRIVE_FLOOR_FOUL_CHECK`) regardless of outcome, so the
+    # permanent foul diagnostics can report eligible-opportunity/outcome counts even while every
+    # outcome is currently `NO_FLOOR_FOUL`. A terminal outcome here (charge/defensive floor foul)
+    # returns immediately -- the SAME drive can therefore never also reach `resolve_drive` or a
+    # later shot, so it is structurally impossible for this stage to generate a floor foul and
+    # then also generate a shot, or a charge and then continue.
+    if defender_id is not None:
+        floor_foul_ctx = DriveFloorFoulContext(
+            foul_drawing=None, foul_discipline=None,  # not yet consulted -- see module docstring
+            defender_posture=posture,                  # not yet consulted -- see module docstring
+            charge_hazard_per_drive=config.drive_charge_hazard_per_drive,
+            defensive_floor_foul_hazard_per_drive=config.drive_defensive_floor_foul_hazard_per_drive,
+            force_outcome=config.force_drive_floor_foul_outcome,
+        )
+        floor_foul_outcome = resolve_drive_floor_foul_outcome(floor_foul_ctx, rng)
+        world.log_trace(step=steps, action="DRIVE_FLOOR_FOUL_CHECK", outcome=floor_foul_outcome,
+                         driver=driver_id, defender=defender_id)
+        if floor_foul_outcome == DriveFloorFoulOutcome.OFFENSIVE_CHARGE:
+            _charge_time(engine, config.drive_action_seconds, world, "DRIVE_EXECUTION", steps)
+            return _dispatch_floor_foul(engine, world, config, rng, steps, OFFENSIVE_CHARGE, driver_id, defender_id)
+        if floor_foul_outcome == DriveFloorFoulOutcome.DEFENSIVE_FLOOR_FOUL:
+            _charge_time(engine, config.drive_action_seconds, world, "DRIVE_EXECUTION", steps)
+            return _dispatch_floor_foul(engine, world, config, rng, steps, DEFENSIVE_FLOOR_FOUL, defender_id, driver_id)
+        # NO_FLOOR_FOUL -> fall through to the legacy on-ball-pressure check below.
+
     # Phase 21A ordering decision (drives occur during LIVE_DRIBBLE, exactly Phase 21A's own owned
-    # precondition): checked FIRST, exactly once, per drive dispatch. `contact_established` defaults to
+    # precondition): checked next, exactly once, per drive dispatch. `contact_established` defaults to
     # False (module docstring's PossessionConfig) -- no real per-drive contact-occurrence rate exists in
-    # this project, so V0 does not fabricate one; this keeps ordinary drives on Phase 17A's own leverage
-    # model, while still making the real 21A->21B floor-foul pipeline reachable for a caller that opts in
-    # (`force_on_ball_contact_established=True`), satisfying "do not silently double-resolve the same
-    # contact" -- the SAME contact is never seen by both this pre-check and drive_resolution.py, because a
-    # collision outcome here (charge/D-foul/no-call) never falls through into `resolve_drive` at all.
+    # this project, so V0 does not fabricate one. This branch is now LEGACY/TEST-ONLY (superseded, for
+    # production purposes, by the drive floor-foul stage above) -- retained UNCHANGED, byte-for-byte, so
+    # existing tests that force `force_on_ball_contact_established=True` keep working deterministically.
+    # Because the stage above already returned on any non-`NO_FLOOR_FOUL` outcome, the SAME drive is
+    # never seen by both stages -- and because the stage above consumes ZERO rng when its own hazards are
+    # unconfigured (the production default), this legacy branch's own RNG trajectory is completely
+    # unperturbed by the new stage's presence, preserving "do not silently double-resolve the same
+    # contact": a collision outcome here (charge/D-foul/no-call) never falls through into
+    # `resolve_drive` at all, exactly as before.
     if defender_id is not None:
         pressure_ctx = OnBallPressureContext(
             ball_security=driver_profile.ball_security_error_rate,

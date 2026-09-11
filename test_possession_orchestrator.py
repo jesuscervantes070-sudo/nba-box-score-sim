@@ -1477,5 +1477,170 @@ class TestAndOneMissedBonusFreeThrowContinuation(unittest.TestCase):
         self.assertEqual(event_types.count("DEFENSIVE_REBOUND"), 1)
 
 
+class TestDriveFloorFoulObservableOutcomeStage(unittest.TestCase):
+    """Regression/design guard for "Model drive floor fouls as observable outcomes".
+
+    `drive_floor_foul_resolution.py`'s `resolve_drive_floor_foul_outcome` REPLACES
+    `contact_established` as the intended PRODUCTION calibration target for drive floor fouls:
+    `P(contact | drive)` is itself a latent, uncalibratable quantity, so the new stage classifies
+    the drive's OBSERVABLE outcome (NO_FLOOR_FOUL / OFFENSIVE_CHARGE / DEFENSIVE_FLOOR_FOUL)
+    directly, checked FIRST in `_dispatch_drive`, before the now-legacy on-ball-pressure collision
+    branch. These tests use `PossessionConfig.force_drive_floor_foul_outcome` (a TEST-ONLY
+    deterministic override on the new stage, never set by production config construction) so
+    every outcome is reproduced without relying on random sampling."""
+
+    def _engine_and_world(self):
+        engine = PossessionEngine("p1", "A", "B", season="2023-24", rng_seed=0)
+        apply_matchup_assignments(engine, OFF_FIVE, DEF_FIVE)
+        engine.inbound("1", SpatialZone.TOP_OF_KEY, PossessionPhase.HALFCOURT)
+        world = PossessionWorld(team_a_id="A", team_b_id="B", team_a_five=OFF_FIVE, team_b_five=DEF_FIVE,
+                                 profiles=_profiles(),
+                                 player_zones={pid: SpatialZone.TOP_OF_KEY for pid in OFF_FIVE + DEF_FIVE})
+        return engine, world
+
+    def _dispatch(self, engine, world, cfg):
+        import random
+        intent = ActionIntent(action_type=ActionType.DRIVE, actor_player_id="1", possession_id="p1")
+        return _dispatch_drive(engine, world, intent, cfg, random.Random(0), 0)
+
+    def test_a_offensive_charge_terminates_before_ordinary_drive_resolution(self):
+        """A. the charge outcome returns immediately -- `resolve_drive`/drive_resolution.py is
+        never reached, so this drive cannot also be resolved as an ordinary leverage drive."""
+        from drive_floor_foul_resolution import DriveFloorFoulOutcome
+        cfg = PossessionConfig(force_drive_floor_foul_outcome=DriveFloorFoulOutcome.OFFENSIVE_CHARGE)
+        engine, world = self._engine_and_world()
+        result = self._dispatch(engine, world, cfg)
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result.reason, PossessionTerminalReason.OFFENSIVE_FOUL_TURNOVER)
+        self.assertEqual(result.resulting_offense_team_id, "B")  # possession flips to the fouled team
+        self.assertEqual(result.resulting_defense_team_id, "A")
+        self.assertEqual(world.stats.turnovers, 1)
+        self.assertGreaterEqual(sum(world.stats.personal_fouls.values()), 1)
+        # no DRIVE trace row exists -- drive_resolution.py's own resolver never ran
+        self.assertNotIn("DRIVE", [row.get("action") for row in world.trace])
+        self.assertIn("DRIVE_FLOOR_FOUL_CHECK", [row.get("action") for row in world.trace])
+
+    def test_b_defensive_floor_foul_administers_correctly(self):
+        """B. a defensive floor foul charges a team foul, is excluded from the bonus below
+        threshold, and restarts via the existing non_shooting_foul continuation semantics --
+        exactly the already-audited Phase 21B administration, unchanged."""
+        from drive_floor_foul_resolution import DriveFloorFoulOutcome
+        cfg = PossessionConfig(force_drive_floor_foul_outcome=DriveFloorFoulOutcome.DEFENSIVE_FLOOR_FOUL)
+        engine, world = self._engine_and_world()
+        result = self._dispatch(engine, world, cfg)
+
+        # below the bonus threshold -> a real CONTINUATION, not a terminal result (same documented
+        # real rule test_G_floor_foul_administration already exercises for the legacy path).
+        self.assertIsNone(result)
+        self.assertEqual(world.foul_state.team_fouls.get("B"), 1)  # defender "11" is on team B
+        self.assertGreaterEqual(sum(world.stats.personal_fouls.values()), 1)
+        self.assertNotIn("DRIVE", [row.get("action") for row in world.trace])
+
+    def test_c_no_floor_foul_continues_to_ordinary_drive_resolution(self):
+        """C. NO_FLOOR_FOUL falls through to the unchanged drive/shot flow -- a real DRIVE trace
+        row is produced by drive_resolution.py, exactly as if the new stage did not exist."""
+        from drive_floor_foul_resolution import DriveFloorFoulOutcome
+        cfg = PossessionConfig(force_drive_floor_foul_outcome=DriveFloorFoulOutcome.NO_FLOOR_FOUL)
+        engine, world = self._engine_and_world()
+        self._dispatch(engine, world, cfg)
+
+        actions = [row.get("action") for row in world.trace]
+        self.assertIn("DRIVE_FLOOR_FOUL_CHECK", actions)
+        self.assertIn("DRIVE", actions)  # ordinary drive resolution ran
+        self.assertEqual(sum(world.stats.personal_fouls.values()), 0)
+        self.assertEqual(world.stats.turnovers, 0)
+
+    def test_d_shooting_foul_is_evaluated_only_downstream_on_a_later_shot(self):
+        """D. the drive floor-foul stage structurally cannot produce a shooting foul: it never
+        imports or calls `resolve_contact_and_whistle`/`_dispatch_shooting_foul`, and a
+        NO_FLOOR_FOUL drive's own trace contains no SHOOTING_FOUL/shot-family entry at all --
+        that evaluation only ever happens later, when/if a PULL_UP or CATCH_AND_SHOOT is
+        separately dispatched off the resulting structure."""
+        import inspect
+        import drive_floor_foul_resolution as mod
+        self.assertNotIn("resolve_contact_and_whistle", mod.__dict__)
+        self.assertNotIn("_dispatch_shooting_foul", mod.__dict__)
+        # scan the executable body only (skip the module's own docstring, which legitimately NAMES
+        # `resolve_contact_and_whistle`/`_dispatch_shooting_foul` in prose to explain the doctrine
+        # boundary -- same methodology this project already uses, see
+        # test_charge_inter_action_time_never_consumes_rng_or_calls_selection above).
+        src = inspect.getsource(mod)
+        body = src.split('"""', 2)[-1]
+        for forbidden in ("resolve_contact_and_whistle", "_dispatch_shooting_foul", "shot_family"):
+            self.assertNotIn(forbidden, body)
+
+        from drive_floor_foul_resolution import DriveFloorFoulOutcome
+        cfg = PossessionConfig(force_drive_floor_foul_outcome=DriveFloorFoulOutcome.NO_FLOOR_FOUL)
+        engine, world = self._engine_and_world()
+        self._dispatch(engine, world, cfg)
+        self.assertNotIn("SHOOTING_FOUL", [row.get("action") for row in world.trace])
+
+    def test_e_no_double_foul_or_double_terminal_for_any_outcome(self):
+        """E. for each of the three outcomes, `_dispatch_floor_foul`/`administer_floor_foul` (or
+        nothing, for NO_FLOOR_FOUL) runs exactly once -- never twice, and the legacy on-ball-
+        pressure branch never ALSO runs on the same drive when a floor foul already terminated it."""
+        from drive_floor_foul_resolution import DriveFloorFoulOutcome
+        for outcome in (DriveFloorFoulOutcome.OFFENSIVE_CHARGE, DriveFloorFoulOutcome.DEFENSIVE_FLOOR_FOUL,
+                        DriveFloorFoulOutcome.NO_FLOOR_FOUL):
+            cfg = PossessionConfig(force_drive_floor_foul_outcome=outcome)
+            engine, world = self._engine_and_world()
+            self._dispatch(engine, world, cfg)
+            checkpoints = [e for e in engine.log.events if e.event_type.name == "REACTION_CHECKPOINT"
+                           and e.metadata.get("checkpoint") == "floor_foul_administered"]
+            pressure_rows = [row for row in world.trace if row.get("action") == "ON_BALL_PRESSURE"]
+            if outcome == DriveFloorFoulOutcome.NO_FLOOR_FOUL:
+                self.assertEqual(len(checkpoints), 0, outcome)
+                # the legacy branch DOES still run for NO_FLOOR_FOUL (force_on_ball_contact_established
+                # defaults False, so it resolves ordinary pressure/leverage -- never a SECOND foul check).
+            else:
+                self.assertEqual(len(checkpoints), 1, outcome)  # exactly once, never twice
+                self.assertEqual(pressure_rows, [])  # legacy branch never ran at all for this drive
+
+    def test_f_team_foul_ledger_correct_for_defensive_floor_foul(self):
+        """F. the team-foul ledger increments exactly once, for the DEFENDING team only."""
+        from drive_floor_foul_resolution import DriveFloorFoulOutcome
+        cfg = PossessionConfig(force_drive_floor_foul_outcome=DriveFloorFoulOutcome.DEFENSIVE_FLOOR_FOUL)
+        engine, world = self._engine_and_world()
+        self._dispatch(engine, world, cfg)
+        self.assertEqual(world.foul_state.team_fouls.get("B"), 1)
+        self.assertEqual(world.foul_state.team_fouls.get("A", 0), 0)
+
+    def test_g_offensive_charge_excluded_from_team_penalty_ledger(self):
+        """G. an offensive charge records a personal foul but NEVER increments the team-foul/
+        bonus ledger -- real current-NBA Rule 12 Section VII, unchanged by this phase."""
+        from drive_floor_foul_resolution import DriveFloorFoulOutcome
+        cfg = PossessionConfig(force_drive_floor_foul_outcome=DriveFloorFoulOutcome.OFFENSIVE_CHARGE)
+        engine, world = self._engine_and_world()
+        self._dispatch(engine, world, cfg)
+        self.assertEqual(world.foul_state.team_fouls.get("A", 0), 0)
+        self.assertEqual(world.foul_state.team_fouls.get("B", 0), 0)
+
+    def test_both_hazards_unconfigured_consumes_zero_rng(self):
+        """Production default: with both hazards left at their honest `None` default, the new
+        stage must be byte-for-byte indistinguishable from not existing -- verified directly by
+        confirming it never calls `rng.random()` (an `rng` that raises on any draw would fail this
+        test if the stage consumed even one)."""
+        import random
+        from drive_floor_foul_resolution import DriveFloorFoulContext, resolve_drive_floor_foul_outcome
+
+        class _ExplodingRandom(random.Random):
+            def random(self):
+                raise AssertionError("resolve_drive_floor_foul_outcome consumed RNG with both hazards unconfigured")
+
+        outcome = resolve_drive_floor_foul_outcome(DriveFloorFoulContext(), _ExplodingRandom())
+        from drive_floor_foul_resolution import DriveFloorFoulOutcome
+        self.assertEqual(outcome, DriveFloorFoulOutcome.NO_FLOOR_FOUL)
+
+    def test_legacy_force_on_ball_contact_established_still_works_unchanged(self):
+        """Backward-compatibility guard: the pre-existing `force_on_ball_contact_established`
+        TEST-ONLY override (legacy path, `on_ball_pressure_resolution.py`, unchanged by this
+        phase) must still be reachable exactly as before -- it is retained for existing test
+        determinism, not removed."""
+        cfg = PossessionConfig(force_on_ball_contact_established=True)
+        seed, result = _find_seed(PossessionTerminalReason.OFFENSIVE_FOUL_TURNOVER, config=cfg)
+        self.assertGreaterEqual(result.stats.turnovers, 1)
+
+
 if __name__ == "__main__":
     unittest.main()

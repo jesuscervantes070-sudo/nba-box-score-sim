@@ -150,10 +150,15 @@ class TestTurnoverAccountingReconciliation(unittest.TestCase):
                             "ot": result.overtime_periods, "rows": rows})
         digest = hashlib.sha256(json.dumps(payload, sort_keys=True,
                                            separators=(",", ":")).encode()).hexdigest()
-        # Re-pinned for "Fix missed and-one rebound continuation" -- see
-        # test_benchmark_uses_team_turnovers_and_preserves_player_total's own comment above for why
-        # this baseline moved (same 28-possession cause, same benchmark sample).
-        self.assertEqual(digest, "39151eda813786eb26c3e058273cbcf680480c6ddda30221129c7628b44759d3")
+        # Re-pinned for "Model drive floor fouls as observable outcomes": `_dispatch_drive` now logs
+        # one additional "DRIVE_FLOOR_FOUL_CHECK" diagnostic trace row per eligible drive (included in
+        # this payload's own "trace" field), which is the ENTIRE cause of this digest moving -- no RNG
+        # is consumed by the new stage while its hazards are unconfigured (the production default), and
+        # test_benchmark_uses_team_turnovers_and_preserves_player_total's team/player turnover totals
+        # (still 4893/4682) are confirmed byte-for-byte unchanged by this same run, proving zero real
+        # behavioral/RNG drift -- only new diagnostic logging. (Previously re-pinned for "Fix missed
+        # and-one rebound continuation".)
+        self.assertEqual(digest, "f86f9738878f7b5f09635ee414ae76c0f0f98cc0f3c036af98a76dbabcdb5a44")
 
 
 if __name__ == "__main__":
