@@ -173,10 +173,13 @@ class TestMultiGameDiagnostics(unittest.TestCase):
         # section) -- possessions per game legitimately DROPPED FURTHER (and moved into the broad modern-
         # NBA macro scale) once `ordinary_entry_seconds`/`inter_action_seconds` were calibrated away from
         # their original placeholder values, which is that section's own intended, demonstrated structural
-        # effect, not a bug.
+        # effect, not a bug. The first rebound-acquisition mapping later
+        # removed the raw-rate near-coin-flip and reduced this aggregate
+        # again without changing the diagnostic reconstruction itself.
         self.assertGreater(multi.mean_total_possessions, 150)
         self.assertLess(multi.mean_total_possessions, 400)
-        self.assertGreater(multi.mean_oreb, 50)
+        self.assertGreater(multi.mean_oreb, 20)
+        self.assertLess(multi.mean_oreb, 60)
 
 
 class TestTelemetryIsObservationalOnly(unittest.TestCase):

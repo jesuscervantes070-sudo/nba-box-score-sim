@@ -1554,3 +1554,208 @@ from this diagnostic-only run.
 
 Verification: **8/8** focused rebound-diagnostic tests and **1068/1068**
 repository tests pass. The diagnostic work remains uncommitted and unpushed.
+
+## First Rebound Acquisition Mapping Calibration
+
+The preceding diagnostic was checkpointed as `38b7ae5` before this work.
+This narrow change alters only the conversion from existing rebound-rate
+evidence to an eligible candidate's acquisition log-weight. Carom location,
+eligibility, boxout generation, player-profile source values, timing, action
+selection, shooting, fouls, turnovers, and pass disruption are unchanged.
+
+### Attribute provenance and denominator semantics
+
+`offensive_rebounding` and `defensive_rebounding` originate in
+`player_ability_estimation.py`. The preferred season input is the NBA Advanced
+endpoint's literal `OREB_PCT` or `DREB_PCT`, cached by
+`build_and_cache_player_rebound_splits`; the historical fallback explicitly
+splits combined `REB_PCT` by the player's observed offensive/total or
+defensive/total rebound mix. The values are fractions, so `.08` and `.15`
+literally mean 8% and 15%.
+
+Each season's rate is exposure-weighted by total minutes, pooled with recency
+decay, and shrunk toward that attribute's leak-free reference-population mean.
+The fitted estimator parameters are lambda `.40`, prior `M=50` minutes for
+OREB_PCT and lambda `.55`, `M=75` minutes for DREB_PCT. The resulting
+`shrunk_rate` remains in the native fraction unit. It is not a display rating
+and is not a direct latent probability of winning one modeled eligible-player
+contest. The synthetic benchmark bypasses ingestion and assigns literal `.08`
+and `.15` placeholders to every player.
+
+Both statistics are opportunity-normalized production evidence, but their
+denominators are not interchangeable. OREB_PCT is a player's share of
+available offensive rebounds while on court; DREB_PCT is the corresponding
+share of a different, defensive-rebound opportunity pool. They share units and
+are each useful monotonically, but raw magnitudes do not share a common
+contest-strength origin. `ABILITY != PRODUCTION`: eligibility, team context,
+positioning, and acquisition ability all contribute to these observed rates.
+
+The 2024-25 cached player population has mean OREB_PCT `.0482039` and mean
+DREB_PCT `.1312531` across 569 rows. The mapping uses rounded `.0482` and
+`.1313` side-specific references. Those constants normalize each kind of
+evidence within its own denominator before the values enter one softmax.
+
+### Candidate mappings
+
+Four small mapping families were evaluated with unchanged synthetic profiles
+and seeds `27000–27019`:
+
+| Candidate | Candidate log-weight before leverage | Analytical synthetic 1v1 OREB probability |
+|---|---|---:|
+| A: old raw rate | `rate` | 48.2507% |
+| B: direct logit | `logit(rate)` | 33.0097% |
+| C: side-centered logit | `logit(rate) - logit(side_reference)` | 59.5256% |
+| D: centered logit plus explicit V0 side baseline | `logit(rate) - logit(side_reference) + side_baseline` | 24.7077% |
+
+Candidate A was the diagnosed semantic error. Candidate B is monotonic and
+materially better, but still compares OREB and DREB source distributions
+without normalizing their different baselines. Candidate C performs that
+normalization correctly for player differentiation, but deliberately removes
+the population side advantage; because `.08` is farther above the offensive
+reference than `.15` is above the defensive reference, it correctly identifies
+the synthetic offensive evidence as relatively stronger and produces 59.5%
+without a separate structural baseline.
+
+Candidate D was selected. Its side references remain `.0482` offense and
+`.1313` defense; the defensive baseline is `0.0` and the offensive baseline is
+a deliberately round `-1.5` log-weight. The baseline is a separately named,
+temporary home for the population defensive advantage while the known carom
+and boxout structure is incomplete. It is not encoded into the player evidence,
+not a fixed `P(OREB)`, not a post-draw multiplier, and not claimed as final
+physics. A single softmax still selects among individual eligible candidates.
+
+Architecturally, the eventual defensive advantage should principally emerge
+from carom access, inside position, and boxouts. The skill-evidence conversion
+should express relative player differentiation only. V0 nevertheless needs an
+explicit acquisition intercept because those structural inputs are frozen and
+inactive here; omitting it makes identical player profiles imply an unjustified
+side-neutral contest. The intercept should be revisited as those physical
+structures become real.
+
+Real source data contains exact zero and one values. A `1e-6` conversion-only
+clip keeps logits finite without altering stored attributes. Values outside
+`[0,1]` fail explicitly. Missing evidence also fails explicitly in the low-level
+conversion rather than becoming `0` or `0.5`; the production orchestrator
+continues its existing doctrine of excluding a player missing the relevant
+side estimate before acquisition.
+
+### Calibration sensitivity: seeds 27000–27019
+
+The aggregate 25.2% reference is used only as a first-pass side-balance
+constraint because the frozen acquisition mechanism has no shot-location term.
+It is not treated as the correct target for every shot family.
+
+| Mapping | Sim OREB% | OREB/team-game | DREB/team-game | Repeat-chain possessions | FGA/team-game | Possessions/game | PTS/team-game | ORtg | Faults |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| A: raw rate | 47.4434% | 36.650 | 40.600 | 277 (13.85/game) | 122.100 | 214.55 | 134.175 | 125.076 | 0 |
+| B: direct logit | 33.3870% | 25.925 | 51.725 | 146 (7.30/game) | 122.575 | 237.25 | 134.975 | 113.783 | 0 |
+| C: side-centered logit | 60.1031% | 46.625 | 30.950 | 405 (20.25/game) | 122.050 | 195.05 | 132.725 | 136.093 | 0 |
+| **D: centered plus baseline** | **25.0403%** | **19.400** | **58.075** | **98 (4.90/game)** | **121.700** | **248.05** | **132.900** | **107.156** | **0** |
+
+The round `-1.5` intercept was retained without chasing exact 25.200% sample
+fit. Mapping D is monotonic, finite, preserves player differentiation, and
+isolates player evidence from the temporary side-balance term.
+
+### Independent validation: seeds 27100–27149
+
+No parameter was changed after the 20-game selection.
+
+| Measure | Validation result |
+|---|---:|
+| OREB% | 25.8538% |
+| OREB/team-game | 20.590 |
+| DREB/team-game | 59.050 |
+| Repeat-chain possessions | 250 (5.00/game) |
+| Maximum OREB chain | 4 |
+| FGA/team-game | 122.170 |
+| True possessions/game | 246.84 |
+| PTS/team-game | 127.520 |
+| Combined score/game | 255.040 |
+| ORtg | 103.322 |
+| Simulation faults | 0 |
+
+The held-out OREB share is close enough to validate a broad first-pass side
+balance without implying precise calibration. Raw rebound counts remain far
+too high because FGA and misses remain far too high.
+
+### Canonical 100-game before/after
+
+Seeds `25000–25099`; “before” is checkpoint `38b7ae5`, and the only behavioral
+change is candidate acquisition log-weight conversion.
+
+| Rebound measure | Before | After | Change |
+|---|---:|---:|---:|
+| Rebound opportunities | 15,919 | 15,748 | -171 |
+| OREB | 7,534 | 3,806 | -3,728 |
+| DREB | 8,385 | 11,942 | +3,557 |
+| OREB% | 47.3271% | 24.1681% | -23.1590 pp |
+| OREB/team-game | 37.670 | 19.030 | -18.640 |
+| DREB/team-game | 41.925 | 59.710 | +17.785 |
+| Repeat-chain possessions | 1,487 | 429 | -1,058 |
+| Repeat chains/game | 14.87 | 4.29 | -10.58 |
+| Maximum chain | 7 | 5 | -2 |
+
+The opportunity count changes because different rebound winners alter later
+possession state and RNG trajectories. It is not an accounting loss: current
+diagnostics continue to show exactly one opportunity per reboundable miss.
+
+| Flow / other vector | Before | After | Change |
+|---|---:|---:|---:|
+| FGA/team-game | 122.855 | 121.850 | -1.005 |
+| True possessions/game | 213.15 | 247.86 | +34.71 |
+| PTS/team-game | 128.835 | 128.975 | +0.140 |
+| Combined score/game | 257.670 | 257.950 | +0.280 |
+| ORtg | 120.887 | 104.071 | -16.816 |
+| TOV/team-game | 18.170 | 17.935 | -0.235 |
+| STL/team-game | 8.230 | 8.135 | -0.095 |
+| 3PAr | 91.5225% | 92.2528% | +0.7303 pp |
+| FTA/FGA | 3.8338% | 3.8695% | +0.0357 pp |
+| PF/team-game | 2.245 | 2.205 | -0.040 |
+| Simulation faults | 0 | 0 | 0 |
+
+None of the non-rebound outputs was tuned. Fewer same-possession OREB
+continuations allow substantially more alternating possession records within
+the fixed game clock, explaining the pace and ORtg movement. Despite the
+corrected share, 19.03 OREB/team-game and 59.71 DREB/team-game remain inflated
+because the engine still produces roughly 122 FGA/team-game and many misses.
+
+### Monotonicity and future boxout compatibility
+
+For fixed defense, increasing offensive rebound evidence strictly increases
+offensive acquisition probability except at the numerical endpoint clip; it
+never lowers it. For fixed offense, increasing defensive evidence never raises
+offensive probability. Poor, average, and strong native values retain
+meaningful separation without introducing a 0-99 rating.
+
+Boxout generation remains completely inactive. Its existing `+0.6` established
+boxout and `-0.6` boxed-out terms are still additive after evidence conversion,
+so each one changes relative odds by `exp(.6)=1.822`; a paired matchup changes
+relative odds by `exp(1.2)=3.320`. For the synthetic 24.7077% neutral 1v1,
+one `+0.6` offensive advantage produces 37.4195%, one defensive advantage
+produces 15.2612%, paired offensive leverage produces 52.1421%, and paired
+defensive leverage produces 8.9949%. This is numerically stable but large,
+confirming boxout magnitude must be validated when generation is activated;
+it was not silently absorbed into this calibration.
+
+### Remaining rebound debt
+
+This validates **acquisition mapping**, not the rebound model as a whole. The
+following remain unchanged and materially incomplete:
+
+- release-zone caroms, including every three-point miss at `TOP_OF_KEY`;
+- no sampled long-rebound or carom-direction model;
+- exact-zone eligibility with mirrored defender positions;
+- neutral boxout/leverage on every benchmark opportunity;
+- identical synthetic player profiles;
+- approximately 92% 3PAr and excessive attempts/misses;
+- no stochastic team-rebound or post-contest loose-ball result.
+
+**Classification: REBOUND ACQUISITION MAPPING VALIDATED WITH FLAGS.** The
+side-centered evidence mapping and explicit V0 baseline remove the near-coin-
+flip semantic failure and validate independently. The side intercept is
+temporary aggregate calibration while carom and boxout structure remains
+absent, and no aggregate rebound statistic should yet be called accurate.
+
+Verification: **10/10** new acquisition-mapping tests, **97/97** focused and
+related regression tests, and **1078/1078** repository tests pass. Calibration
+work remains uncommitted and unpushed for review.

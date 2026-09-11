@@ -36,6 +36,7 @@ value, rather than letting the skill value stand in for opportunity.
 **not revived here**, and no such concept (a persistent player
 "crash propensity" trait) exists anywhere in this module.
 """
+import math
 import random
 from dataclasses import dataclass, field
 from typing import Callable, List, Optional, Tuple
@@ -130,7 +131,57 @@ def eligible_rebound_candidates(opportunity: ReboundOpportunity) -> List[Rebound
 _BOXOUT_LEVERAGE_BONUS = 0.6
 _BOXED_OUT_LEVERAGE_PENALTY = -0.6
 
-REBOUNDING_SKILL_WEIGHT = 1.0  # additive log-weight scale on the real OREB_PCT/DREB_PCT input
+# FIRST-PASS AGGREGATE ACQUISITION CALIBRATION. OREB_PCT and DREB_PCT
+# are side-specific production shares with different opportunity
+# denominators, not already-comparable acquisition log strengths. The
+# two reference rates anchor each source statistic within its OWN
+# population before the centered evidence enters a common contest.
+# They are rounded 2024-25 player-population means from this project's
+# cached leaguedashplayerstats(Advanced) OREB_PCT/DREB_PCT data.
+OFFENSIVE_REBOUND_RATE_REFERENCE = 0.0482
+DEFENSIVE_REBOUND_RATE_REFERENCE = 0.1313
+
+# Temporary, explicit V0 home for the population-level defensive-side
+# advantage while carom and boxout structure remain incomplete. This
+# is an acquisition INTERCEPT, separate from player evidence and from
+# the dormant event-level boxout terms. -1.5 is a deliberately round
+# first-pass value selected against the aggregate 25.2% side-balance
+# constraint, not a final rebound-physics claim or a post-draw OREB
+# probability override.
+OFFENSIVE_ACQUISITION_BASELINE_LOG_WEIGHT = -1.5
+DEFENSIVE_ACQUISITION_BASELINE_LOG_WEIGHT = 0.0
+
+# Numerical guard only. Real source data includes exact 0 and 1 values;
+# clipping at the conversion boundary keeps logit finite without
+# changing the stored player evidence.
+REBOUND_RATE_LOGIT_EPSILON = 1e-6
+
+
+def _bounded_logit(rate: float) -> float:
+    if not 0.0 <= rate <= 1.0:
+        raise ValueError(f"rebound rate evidence must be in [0, 1], got {rate!r}")
+    bounded = min(1.0 - REBOUND_RATE_LOGIT_EPSILON, max(REBOUND_RATE_LOGIT_EPSILON, rate))
+    return math.log(bounded / (1.0 - bounded))
+
+
+def rebound_rate_to_acquisition_log_weight(rate: Optional[float], side: str) -> float:
+    """Convert native empirical rate evidence to a contest log-weight.
+
+    The centered logit carries only league-relative PLAYER evidence;
+    the separately named side intercept carries the provisional V0
+    population balance. Stored OREB_PCT/DREB_PCT values are unchanged.
+    """
+    if rate is None:
+        raise ValueError("missing rebound-rate evidence cannot enter acquisition competition")
+    if side == "OFFENSE":
+        reference = OFFENSIVE_REBOUND_RATE_REFERENCE
+        baseline = OFFENSIVE_ACQUISITION_BASELINE_LOG_WEIGHT
+    elif side == "DEFENSE":
+        reference = DEFENSIVE_REBOUND_RATE_REFERENCE
+        baseline = DEFENSIVE_ACQUISITION_BASELINE_LOG_WEIGHT
+    else:
+        raise ValueError(f"rebound candidate side must be 'OFFENSE' or 'DEFENSE', got {side!r}")
+    return baseline + _bounded_logit(rate) - _bounded_logit(reference)
 
 
 def _candidate_log_weight(candidate: ReboundCandidate) -> float:
@@ -138,7 +189,7 @@ def _candidate_log_weight(candidate: ReboundCandidate) -> float:
     ELIGIBLE candidates only (never a sum/product across sides, and
     never consulted for an ineligible candidate at all)."""
     skill = candidate.offensive_rebounding if candidate.side == "OFFENSE" else candidate.defensive_rebounding
-    weight = REBOUNDING_SKILL_WEIGHT * (skill if skill is not None else 0.5)  # missing != zero -- a neutral 0.5 (roughly a real, plausible OREB/DREB-pct-scale midpoint), not a fabricated zero-skill value
+    weight = rebound_rate_to_acquisition_log_weight(skill, candidate.side)
     if candidate.box_out_state == BoxOutState.ESTABLISHED_BOXOUT:
         weight += _BOXOUT_LEVERAGE_BONUS
     if candidate.boxed_out_by is not None:
@@ -161,7 +212,6 @@ class ReboundResult:
 
 
 def _softmax_choice(rng: random.Random, weighted_candidates: List[Tuple[ReboundCandidate, float]]) -> ReboundCandidate:
-    import math
     m = max(w for _, w in weighted_candidates)
     exps = [(c, math.exp(w - m)) for c, w in weighted_candidates]
     total = sum(e for _, e in exps)
@@ -179,14 +229,10 @@ def resolve_rebound(opportunity: ReboundOpportunity, rng: random.Random,
     """The single entry point. Direct multi-player competition among
     ELIGIBLE candidates only (Candidate: eligibility-weighted individual
     model) -- NOT a team-first branch (P(OREB) vs P(DREB) decided
-    first, then a player chosen within it), per this phase's explicit
-    double-counting study (report Sec. 18): `offensive_rebounding`/
-    `defensive_rebounding` are ALREADY real, team-context-normalized
-    rates (OREB_PCT/DREB_PCT are computed relative to the player's own
-    team's real rebound opportunities) -- adding a SEPARATE team-level
-    scalar on top would double-count team rebounding context already
-    baked into those two attributes. Direct player-level competition
-    among eligible candidates avoids that risk entirely.
+    first, then a player chosen within it). Side-specific OREB_PCT and
+    DREB_PCT evidence is normalized against its own reference before
+    this shared contest; the explicit V0 side intercept is part of each
+    candidate's acquisition weight, not a second team-level draw.
 
     If no candidate is eligible (nobody from the caller-supplied roster
     happens to be in the carom zone -- a real, possible state, not an

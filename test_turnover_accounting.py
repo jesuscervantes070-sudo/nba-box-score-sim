@@ -107,12 +107,13 @@ class TestTurnoverAccountingReconciliation(unittest.TestCase):
                                                     tuple(str(i) for i in range(11, 16)))
             team_total += home.turnovers + away.turnovers
             player_total += home.player_turnovers + away.player_turnovers
-        # The late-clock feasibility gate changes only which already-generated
-        # opportunities reach the existing selector.
-        self.assertEqual(team_total, 4978)
-        self.assertEqual(player_total, 4752)
+        # Rebound acquisition changes continuation/flip state and therefore
+        # the later deterministic RNG trajectory; these pin the new accepted
+        # acquisition baseline without changing turnover logic.
+        self.assertEqual(team_total, 4920)
+        self.assertEqual(player_total, 4718)
 
-    def test_basketball_output_digest_matches_late_clock_feasibility_baseline(self):
+    def test_basketball_output_digest_matches_rebound_acquisition_baseline(self):
         payload = []
         for game in self.games:
             result = game.result
@@ -143,7 +144,7 @@ class TestTurnoverAccountingReconciliation(unittest.TestCase):
                             "ot": result.overtime_periods, "rows": rows})
         digest = hashlib.sha256(json.dumps(payload, sort_keys=True,
                                            separators=(",", ":")).encode()).hexdigest()
-        self.assertEqual(digest, "9a72d5bcd305ffd87bbaa3b199002625ccc10e90abecb76e5a25016c9e64d44b")
+        self.assertEqual(digest, "bccf75ca7e98679edc3fdbcc91cde58eb80d5f939a5d024afdeb7b36002da06a")
 
 
 if __name__ == "__main__":

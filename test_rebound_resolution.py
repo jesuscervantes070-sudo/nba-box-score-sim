@@ -227,11 +227,11 @@ class TestPhysicalMissingHandling(unittest.TestCase):
         names = {f.name for f in dataclasses.fields(ReboundCandidate)}
         self.assertTrue(names.isdisjoint({"mass", "height", "standing_reach", "wingspan"}))
 
-    def test_missing_skill_treated_as_neutral_not_zero(self):
+    def test_missing_skill_is_rejected_not_mapped_to_zero_or_midpoint(self):
         from rebound_resolution import _candidate_log_weight
         cand_missing = ReboundCandidate("1", "OFFENSE", SpatialZone.RESTRICTED_RIM, offensive_rebounding=None)
-        cand_present_midpoint = ReboundCandidate("1", "OFFENSE", SpatialZone.RESTRICTED_RIM, offensive_rebounding=0.5)
-        self.assertAlmostEqual(_candidate_log_weight(cand_missing), _candidate_log_weight(cand_present_midpoint))
+        with self.assertRaisesRegex(ValueError, "missing rebound-rate evidence"):
+            _candidate_log_weight(cand_missing)
 
 
 class TestFinalVsNonFinalFT(unittest.TestCase):
