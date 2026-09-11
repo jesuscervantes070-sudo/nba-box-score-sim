@@ -431,17 +431,27 @@ def diagnose_games(results: Sequence[DetailedGameResult]) -> MultiGameDiagnostic
 # simulation decision.
 # ---------------------------------------------------------------------
 
-# INTERNAL, NEUTRAL bins -- NOT claimed as official NBA.com shot-clock-range categories, with ONE
-# exception: the "4-0" boundary IS a real, independently-verified NBA.com bucket edge already used
-# elsewhere in this repository (`shot_resolution.py`'s own `LATE_CLOCK_THRESHOLD_SECONDS = 4.0`,
-# grounded in a real NBA.com late-clock 3PT% finding). The remaining boundaries (18/15/7) are this
-# diagnostic's own internal, neutral choices, not verified public categories.
+# VERIFIED NBA.com shot-clock-range categories (First 100-Game Benchmark, see
+# docs/DETAILED_ENGINE_FIRST_100_GAME_BENCHMARK.md) -- replaces this diagnostic's own prior internal,
+# neutral 5-bin schema with NBA.com's real published 6-bin category boundaries/labels, so a future
+# direct comparison against real NBA.com per-bin shot-clock data has a stable, matching schema from day
+# one. The "4-0" boundary was already independently verified elsewhere in this repository
+# (`shot_resolution.py`'s own `LATE_CLOCK_THRESHOLD_SECONDS = 4.0`, grounded in a real NBA.com
+# late-clock 3PT% finding); the remaining boundaries (22/18/15/7) are NBA.com's own published category
+# edges. This is a DIAGNOSTIC-ONLY reclassification -- it changes how an already-computed
+# `shot_clock_at_attempt` value is LABELED, never simulation behavior (no probability, selection
+# weight, or resolver reads this table).
+#
+# We do NOT yet know the real NBA per-bin SHARE for any of these categories -- only the category
+# boundaries are verified. A benchmark report using this schema must report SIMULATOR shares only and
+# must not claim a real-league percentage for any bin (see the benchmark doc's own warning).
 SHOT_CLOCK_BINS: Tuple[Tuple[str, float, float], ...] = (
-    ("24-18", 18.0, 24.0),
-    ("18-15", 15.0, 18.0),
-    ("15-7", 7.0, 15.0),
-    ("7-4", 4.0, 7.0),
-    ("4-0", 0.0, 4.0),
+    ("24-22", 22.0, 24.0),
+    ("22-18_VERY_EARLY", 18.0, 22.0),
+    ("18-15_EARLY", 15.0, 18.0),
+    ("15-7_AVERAGE", 7.0, 15.0),
+    ("7-4_LATE", 4.0, 7.0),
+    ("4-0_VERY_LATE", 0.0, 4.0),
 )
 
 

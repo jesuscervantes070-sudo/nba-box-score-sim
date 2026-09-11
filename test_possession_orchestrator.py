@@ -916,7 +916,7 @@ class TestShotClockAtAttemptTelemetry(unittest.TestCase):
             result = _run(config=cfg, seed=seed, possession_id=f"tight{seed}")
             for e in result.world.shot_attempt_log:
                 self.assertGreaterEqual(e["shot_clock_at_attempt"], 0.0)  # never negative
-                self.assertIn(_shot_clock_bin(e["shot_clock_at_attempt"]), {"4-0", "7-4"})
+                self.assertIn(_shot_clock_bin(e["shot_clock_at_attempt"]), {"4-0_VERY_LATE", "7-4_LATE"})
                 found = True
         self.assertTrue(found, "expected at least one shot attempt within a tight shot clock across 200 seeds")
 
