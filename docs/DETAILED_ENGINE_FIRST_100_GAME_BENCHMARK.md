@@ -1345,3 +1345,212 @@ Verification: **15/15** focused late-clock tests and **1060/1060** repository
 tests pass. No probability, scoring weight, timing constant, pass-disruption
 rate, shot/rebound/foul model, player attribute, or protected product/legacy
 file changed.
+
+## Rebound Root-Cause Diagnosis
+
+This is a diagnostic-only analysis of the accepted late-clock baseline using
+canonical seeds `25000–25099`. It adds an audit trace after the resolver has
+made its decision; the trace is never read by simulation logic and consumes no
+random draw. No rebound probability, attribute, geometry rule, timing value,
+shot selection, turnover behavior, shooting rule, foul rule, or player profile
+was changed.
+
+### Pipeline map
+
+| Stage | Current implementation | Inputs and state | Randomness, attributes, and constants |
+|---|---|---|---|
+| Miss becomes live | Shot/foul paths in `possession_orchestrator.py` call the corresponding engine miss/block/final-FT method, then `_dispatch_rebound` | Shot result, shot family, teams at release; engine ball state becomes `LOOSE` | Shot outcome randomness occurred upstream; no rebound draw yet |
+| Carom/location | `_dispatch_rebound` constructs `ReboundOpportunity` | `rebound_zone=engine.state.ball_zone` | No draw and no carom probabilities. This explicit argument always bypasses `rebound_resolution._DEFAULT_CAROM_ZONE = RESTRICTED_RIM` |
+| Opportunity | `_dispatch_rebound` creates candidates from all ten profiles | Player id, offense/defense side, current player zone, side-specific rebound estimate | A player missing the estimate for their current side is excluded. No draw |
+| Eligibility | `eligible_rebound_candidates` in `rebound_resolution.py` | Candidate zone and effective rebound zone | Exact `SpatialZone` equality only; no distance band, reach, or movement. No clamp or draw |
+| Boxout/leverage | `_candidate_log_weight` | `box_out_state`, `boxed_out_by` | Established boxout `+0.6`; boxed out `-0.6`; contested/none `0`. These are explicitly unvalidated placeholders. The orchestrator currently supplies neither field, so every live candidate is neutral |
+| Acquisition | `_candidate_log_weight` then `_softmax_choice` | Offensive candidate uses `offensive_rebounding`; defensive candidate uses `defensive_rebounding` | `log_weight = 1.0 * side_rate + leverage`. Softmax across all eligible players, using exactly one `rng.random()` draw. Internal missing fallback is `0.5`, but the orchestrator excludes missing profiles before resolution. No floor/ceiling or team-first OREB branch |
+| Secure/team result | `resolve_rebound` and `apply_rebound_to_engine` | Winning candidate or empty eligible set | Eligible winner becomes direct `SECURED_OFFENSE`/`SECURED_DEFENSE`. Zero eligible defaults to a defensive team rebound. There is no stochastic loose outcome or team-rebound probability |
+| Continue/flip | `_dispatch_rebound` and `PossessionEngine` | Outcome and original team ids | OREB stays in the same possession, enters `SECOND_CHANCE`, applies the era-rule shot-clock reset, clears advantage, and continues. DREB flips team ids and terminates the possession record. No rebound draw here |
+
+`ReboundOpportunity.advantage` is carried as read-only context but is never
+consulted by the resolver. Matchup assignments matter only indirectly because
+the orchestrator mirrors assigned defenders into the offensive player's zone
+and keeps that mirror synchronized as the offense moves. Matchups do not
+currently create a boxout. Height, reach, mass, and a generic strength latent
+are absent from `PlayerSimulationProfile` and from rebound resolution. This
+preserves the `PHYSICAL != SKILL`, `MASS != STRENGTH`, and no-generic-strength
+doctrine, but also means none of those physical properties affects this model.
+
+### Opportunity and accounting reconciliation
+
+| Measure | Canonical result |
+|---|---:|
+| Missed field goals | 15,866 |
+| Final missed-FT rebound opportunities | 53 |
+| Total reboundable misses | 15,919 |
+| Rebound opportunities | 15,919 |
+| Opportunities per reboundable miss | 1.000000 |
+| Duplicate opportunities | 0 |
+| Misses without an opportunity | 0 |
+| Opportunities without a miss | 0 |
+
+Every miss reconciles to exactly one opportunity within its possession. All
+7,534 OREB and 8,385 DREB outcomes reconcile exactly to `StatDelta`; direct
+rebound outcomes also reconcile exactly to 7,534 offensive-rebound and 8,385
+defensive-rebound events. No miss produced multiple terminal rebounds, no OREB
+was counted twice, and an OREB continues the same possession id rather than
+starting a second possession record.
+
+### Conditional shot-location results
+
+The engine has no distinct midrange rebound family in this sample. Its
+`FLOATER` family is the supported floater/short-mid category.
+
+| Shot family / effective location | Misses | OREB | DREB | Team/loose outcomes after contest | OREB% | Mean eligible offense | Mean eligible defense |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `RIM` / `RESTRICTED_RIM` | 242 | 107 | 135 | 0 | 44.2149% | 1.6240 | 1.6240 |
+| `FLOATER` / `PAINT` | 754 | 357 | 397 | 0 | 47.3475% | 1.5942 | 1.5942 |
+| Midrange | 0 | 0 | 0 | 0 | n/a | n/a | n/a |
+| `THREE_POINT` / `TOP_OF_KEY` | 14,923 | 7,070 | 7,853 | 0 | 47.3765% | 1.5553 | 1.5553 |
+| **All** | **15,919** | **7,534** | **8,385** | **0** | **47.3271%** | **1.5582** | **1.5582** |
+
+Inflation is therefore **universal in the supported conditional groups**, not
+an interior-only or perimeter-only failure. The accepted run's 91.5225% 3PAr
+is still a serious aggregate exposure contaminant: three-point misses are
+93.7433% of all rebound opportunities, so the aggregate is essentially the
+three-point conditional result. It does not, however, explain away the rebound
+problem: three-point and floater misses both produce about 47.4% OREB, and the
+small rim sample is still 44.2%. Shot-mix repair remains necessary for a
+realistic aggregate distribution, but fixing mix alone cannot plausibly move
+these conditional win rates to the 25.2% external reference.
+
+### Eligibility, exposure, and acquisition
+
+Offense had at least one eligible player on all 15,919 opportunities; defense
+also had at least one on all 15,919. Every opportunity was contested by both
+sides. There were no zero-eligible cases and no all-five-eligible cases. Exact
+eligible-count pairs were 7,033 opportunities at `(1 offense, 1 defense)` and
+8,886 at `(2 offense, 2 defense)`. Counts were equal by side on every observed
+opportunity. The zone means are the family means in the table above.
+
+This rules out a current *count* asymmetry in which offensive players are
+eligible more frequently or defenders are absent. It instead exposes a coarse
+geometry: mirrored defender locations guarantee paired eligibility, while the
+shot/rebound zone selects only the shooter-and-matchup zone (and sometimes a
+second mirrored pair occupying it). It is symmetric by side but not a
+meaningful model of who can reach a carom.
+
+All 15,919 contests had neutral leverage. Offense received established-boxout
+leverage 0 times, defense 0 times, and `advantage` was non-null but ignored 0
+times. If populated, the `+0.6` boxout term multiplies one candidate's softmax
+weight by `exp(0.6) = 1.822`; the `-0.6` boxed-out penalty multiplies it by
+`exp(-0.6) = 0.549`. Applying both sides of a matchup would create a relative
+`exp(1.2) = 3.320` swing, but none of that leverage is active in this run.
+
+Every synthetic player has exactly `offensive_rebounding=0.08` and
+`defensive_rebounding=0.15`; there are no height, reach, mass, or strength
+values relevant to this resolver. With equal eligible counts, the exact
+current acquisition formula predicts:
+
+`P(offense) = exp(0.08) / (exp(0.08) + exp(0.15)) = 48.2507%`.
+
+The realized offense contested-win rate is 7,534/15,919 = **47.3271%**;
+defense wins **52.6729%**. The 0.9236 percentage-point sampling departure is
+small relative to the 22.1271-point gap above the external 25.2% benchmark.
+There is no structural offense bonus. The defensive estimate is larger, but
+treating raw percentage-point inputs as additive log weights compresses their
+0.07 difference to a nearly neutral softmax contest.
+
+External and internal denominators should not be conflated. The reported NBA
+25.2% is the supplied external OREB-share reference. In this closed sample,
+`OREB / (OREB + opponent DREB)`, `OREB / offensive rebound opportunities`, and
+offense contested-win rate are all 7,534/15,919 = 47.3271% because every
+opportunity has both sides present and every outcome is direct. Corresponding
+`DREB / defensive rebound opportunities` and defense contested-win rate are
+8,385/15,919 = 52.6729%.
+
+### Carom and loose-ball audit
+
+There are no sampled carom categories or carom probabilities. Shot family does
+not determine a physical carom. Instead, the caller always passes the current
+ball/shooter zone, producing exactly 14,923 `TOP_OF_KEY`, 754 `PAINT`, and 242
+`RESTRICTED_RIM` opportunities. Thus every modeled three-point miss is treated
+as a top-of-key carom, while interior families remain at their release zone.
+The resolver's documented restricted-rim default is unreachable from this
+caller. Offensive and defensive positioning matters only through exact zone
+equality; no miss direction, distance, long-rebound probability, trajectory,
+or player travel is modeled. Classification: **clearly wrong** as carom
+geometry, despite producing side-symmetric candidate counts.
+
+All 15,919 misses first put the engine ball in `LOOSE`, then the resolver
+immediately secured it directly for a player. There were 7,534 direct OREB,
+8,385 direct DREB, zero post-contest loose outcomes, zero offensive or
+defensive loose-recovery branches, zero team rebounds, and zero unresolved
+states. Therefore loose-ball recovery bias and team-rebound allocation
+contributed nothing to the observed OREB rate. “Direct OREB” is all 7,534;
+“loose-ball-recovered OREB” as a distinct modeled outcome is zero.
+
+### Second-chance chaining
+
+| OREB count in one possession record | Possessions |
+|---|---:|
+| 0 | 15,795 |
+| 1 | 4,033 |
+| 2 | 1,081 |
+| 3 | 312 |
+| 4 | 74 |
+| 5 | 15 |
+| 6 | 3 |
+| 7 | 2 |
+
+There were 7,534 OREB continuations, or 75.34 per game / 37.67 per team-game.
+Repeat chains occurred in 1,487 possessions (14.87 per game), containing 2,014
+OREBs beyond the first; the maximum chain was seven. The engine logged 6,365
+FGA with `SECOND_CHANCE_RESET` origin, **25.9045%** of all 24,571 FGA. Repeated
+second chances therefore materially contribute to FGA volume, but they are a
+downstream consequence of the excessive win rate, not evidence for an
+independent duplicate loop, and should not be capped.
+
+### Canonical 100-game decomposition
+
+| Measure | Result |
+|---|---:|
+| Reboundable misses / opportunities | 15,919 / 15,919 |
+| OREB / DREB | 7,534 / 8,385 |
+| OREB% / DREB% | 47.3271% / 52.6729% |
+| OREB / DREB per team-game | 37.670 / 41.925 |
+| Team rebounds | 0 |
+| Distinct loose-recovery outcomes | 0 |
+| Repeat-OREB possessions / extra OREB beyond first | 1,487 / 2,014 |
+| FGA after OREB / all FGA | 6,365 / 24,571 (25.9045%) |
+
+For context, the supplied 2024-25 references are 11.1 OREB/team-game, 33.0
+DREB/team-game, and 25.2% OREB. Those external values are comparison targets,
+not inputs to this diagnostic.
+
+### Ranked causes and next intervention
+
+| Cause | Evidence | Estimated contribution | Confidence | Classification |
+|---|---|---|---|---|
+| Raw OREB_PCT/DREB_PCT values used directly as additive log weights | Equal-count synthetic contests mathematically predict 48.2507%; observed is 47.3271% | Dominant immediate explanation of contest win rate; no defensible exact excess allocation | High | Calibration/semantic-scaling candidate |
+| Release zone substituted for carom zone, with exact-zone eligibility and mirrored defenders | Every 3P miss caroms to `TOP_OF_KEY`; only paired 1v1 or 2v2 contests occur | Likely large distortion of who is exposed, but direction/magnitude cannot be isolated without changing behavior | High | Structural bug |
+| Boxout/leverage path never populated | All 15,919 opportunities neutral despite a potentially large `+/-0.6` effect | Removes a major source of defensive inside-position advantage; magnitude unknown | High | Missing structural input / calibration candidate |
+| Uniform synthetic profiles | Every player is offense 0.08 / defense 0.15, with no physical differentiation | Makes the benchmark an almost identical repeated contest; real-player contribution unknown | High | Benchmark limitation, not resolver bug by itself |
+| Unrealistic shot mix | 91.5225% 3PAr and 93.7433% of rebound opportunities from threes | Dominates aggregate exposure, but conditional OREB remains 44.2–47.4% in every supported family | High | Separate shot-selection problem; not the primary conditional rebound cause |
+| Loose/team outcome handling | Zero loose-recovery, team, or unresolved outcomes | Zero observed contribution in this sample | High | Missing realism, not source of current offense bias |
+
+**Smallest next intervention:** calibrate the acquisition mapping first, while
+holding eligibility and shot selection fixed for a controlled before/after.
+Specifically, stop interpreting side-specific OREB_PCT/DREB_PCT values as raw
+additive log weights and fit an explicitly documented opportunity-level
+mapping against a real conditional rebound target. This is narrower and more
+diagnostically attributable than simultaneously redesigning caroms, boxouts,
+and shot mix. It must not be a blind global OREB reduction. The carom geometry
+is a confirmed structural defect and should be the next independent model
+change after acquisition semantics; shot-family selection should be corrected
+before treating any future aggregate OREB% as a final calibration result.
+
+**Classification: REBOUND ROOT CAUSE IDENTIFIED.** The immediate 47% contest
+rate is explained by the acquisition scale under perfectly symmetric exposure;
+carom geometry, absent boxouts, and synthetic profiles are additional confirmed
+structural limitations whose separate causal magnitudes are not identifiable
+from this diagnostic-only run.
+
+Verification: **8/8** focused rebound-diagnostic tests and **1068/1068**
+repository tests pass. The diagnostic work remains uncommitted and unpushed.

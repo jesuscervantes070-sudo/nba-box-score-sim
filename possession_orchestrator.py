@@ -157,7 +157,10 @@ from possession_state import (
     BallState, DefensivePosture, DribbleState, PossessionPhase, PossessionState, SpatialZone,
     _assert_player_id, ball_side,
 )
-from rebound_resolution import ReboundCandidate, ReboundOpportunity, ReboundOutcome, ReboundSource, apply_rebound_to_engine
+from rebound_resolution import (
+    ReboundCandidate, ReboundOpportunity, ReboundOutcome, ReboundSource,
+    _candidate_log_weight, apply_rebound_to_engine, eligible_rebound_candidates,
+)
 from shot_resolution import ContestBucket, ReleaseMode, ShotFamily, ShotOutcome, ShotResolutionContext, apply_shot_resolution_to_engine, shot_make_probability
 
 PerimeterShotFamily = ShotFamily  # alias: foul_resolution.ContactContext.shot_family is a plain string key,
@@ -702,6 +705,9 @@ class PossessionWorld:
     # DIAGNOSTIC ONLY -- exactly one causal summary for each terminal
     # SHOT_CLOCK_VIOLATION. Populated immediately before returning.
     shot_clock_violation_log: List[dict] = field(default_factory=list)
+    # DIAGNOSTIC ONLY -- one zero-RNG snapshot per rebound opportunity,
+    # including the exact eligibility and acquisition inputs already used.
+    rebound_opportunity_log: List[dict] = field(default_factory=list)
 
     def team_id_for(self, player_id: str) -> str:
         if player_id in self.team_a_five:
@@ -1407,11 +1413,48 @@ def _dispatch_rebound(engine: PossessionEngine, world: PossessionWorld, config: 
         ))
     opportunity = ReboundOpportunity(source=source, shot_family=shot_family, rebound_zone=engine.state.ball_zone,
                                       candidates=candidates, advantage=engine.advantage)
+    eligible = eligible_rebound_candidates(opportunity)
+    candidate_rows = [
+        {
+            "player_id": candidate.player_id,
+            "side": candidate.side,
+            "zone": candidate.zone.value,
+            "eligible": candidate in eligible,
+            "side_rebounding_rate": (
+                candidate.offensive_rebounding
+                if candidate.side == "OFFENSE" else candidate.defensive_rebounding
+            ),
+            "box_out_state": candidate.box_out_state,
+            "boxed_out_by": candidate.boxed_out_by,
+            "acquisition_log_weight": (
+                _candidate_log_weight(candidate) if candidate in eligible else None
+            ),
+        }
+        for candidate in candidates
+    ]
     result = apply_rebound_to_engine(
         engine, opportunity, rng,
         new_offense_team_id=defense_team_id, new_defense_team_id=offense_team_id,
         original_offense_team_id=offense_team_id,
     )
+    world.rebound_opportunity_log.append({
+        "step": steps,
+        "source": source,
+        "shot_family": shot_family,
+        "rebound_zone": opportunity.effective_zone.value,
+        "carom_model": "CALLER_SHOT_ZONE",
+        "resolved_from_loose_state": True,
+        "candidate_count": len(candidates),
+        "offensive_candidate_count": sum(c.side == "OFFENSE" for c in candidates),
+        "defensive_candidate_count": sum(c.side == "DEFENSE" for c in candidates),
+        "eligible_count": len(eligible),
+        "eligible_offensive_count": sum(c.side == "OFFENSE" for c in eligible),
+        "eligible_defensive_count": sum(c.side == "DEFENSE" for c in eligible),
+        "candidates": candidate_rows,
+        "advantage_present_but_not_consumed": opportunity.advantage is not None,
+        "outcome": result.outcome,
+        "rebounder_id": result.rebounder_id,
+    })
     # Diagnostic-only trace entry (no prior hook existed here at all) -- captures the rebound opportunity's
     # own real, structural inputs (source, eligible-candidate count, outcome, rebounder) for
     # docs/DETAILED_ENGINE_FIRST_DIAGNOSTIC_REPORT.md's rebound-opportunity diagnostics. Never read by any
