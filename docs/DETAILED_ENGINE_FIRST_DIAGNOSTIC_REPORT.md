@@ -1071,3 +1071,285 @@ reference and this is explicitly NOT a calibration claim.**
   **UNCOMMITTED**, on top of the pushed timing-diagnosis checkpoint
   (`996c5d8`).
 - No new gameplay phase was begun.
+
+**Checkpoint note:** the Structural Timing Hook above was subsequently
+committed (`3f4dc75` "Add structural possession timing stages") and
+pushed. All measurements above are preserved exactly as reported. The
+section below is a further diagnostic pass built on that pushed
+baseline; it adds observational telemetry only and remains uncommitted.
+
+---
+
+# Shot-Clock-at-Attempt Diagnosis
+
+Purely diagnostic. **No setup-stage placeholder, action duration,
+probability, selection weight, or player attribute was changed
+anywhere.** Built on the pushed Structural Timing Hook baseline
+(`3f4dc75`); all measurements below use the SAME seed 23024 and
+23024–23033 sample as every prior measurement in this report.
+
+## Telemetry added
+
+One new diagnostic-only list, `PossessionWorld.shot_attempt_log`,
+populated by a new `_log_shot_attempt` helper called from
+`_dispatch_shot` (ordinary made/missed/blocked interior and perimeter
+attempts) and `_dispatch_shooting_foul` (made and-ones only — see
+"source-of-truth statement" below for why missed-and-ones are
+excluded). Each entry:
+
+```
+{possession_id, offense_team_id, shot_family, game_clock_at_attempt,
+ shot_clock_at_attempt, stage_origin, stage_generation, step, made,
+ is_first_action, action_index}
+```
+
+`game_clock_at_attempt`/`shot_clock_at_attempt` are captured at the TOP
+of `_dispatch_shot` (and re-captured, identically, at the top of
+`_dispatch_shooting_foul`, since no clock mutation occurs between the
+two call sites) — i.e. the REAL clock state at the moment of the
+attempt, BEFORE that action's own execution duration is charged.
+`stage_origin` is derived by a new `_possession_stage_origin` helper:
+the most recent `PossessionStage` charged at or before this action's
+own step (the possession's own entry stage always applies until a later
+`SECOND_CHANCE_RESET` supersedes it). `stage_generation` is a new
+companion field — a count of how many stage charges (entry + every
+reset so far) preceded this attempt — added specifically so a consumer
+can distinguish two attempts that share the SAME `stage_origin` LABEL
+(e.g. two separate second-chance putbacks in one possession) from two
+attempts within the SAME uninterrupted segment. `action_index` is
+`len(world.action_log)` at the moment of the attempt (before the outer
+loop appends this action's own entry) — `is_first_action` is
+`action_index == 0`.
+
+Two new aggregation functions in `detailed_engine_diagnostics.py`:
+`diagnose_shot_clock_at_attempt(result) -> ShotClockAtAttemptDiagnostics`
+(one game) and `diagnose_shot_clock_at_attempt_multi(results) ->
+MultiGameShotClockDiagnostics` (a sample of games) — both read
+EXCLUSIVELY from `shot_attempt_log`.
+
+## Source-of-truth statement
+
+Every field is read from an already-computed, already-structured value
+— the engine's own real clock state, the caller's own real
+`shot_family` string constant, and `world.action_log`'s own real
+length — never inferred from a descriptive/log string. This module
+never mutates simulation state and is never imported by any simulation
+module (unchanged doctrine, re-verified: `TestTelemetryIsObservationalOnly`).
+One deliberate accounting-consistency choice: a MISSED shooting foul is
+NOT logged to `shot_attempt_log`, matching `world.stats.fga`'s own
+existing, real convention (Phase 18C's rule: a missed shooting foul
+contributes ZERO FGA) — so `len(shot_attempt_log) <= stats.fga` always,
+verified: `test_shot_attempt_log_fga_count_matches_provisional_fga_where_convention_matches`.
+
+## Shot-clock bin definitions
+
+```
+24-18, 18-15, 15-7, 7-4, 4-0
+```
+
+These are **INTERNAL, NEUTRAL bins**, NOT claimed as official NBA.com
+shot-clock-range categories, with ONE documented exception: the **"4-0"
+boundary IS a real, independently-verified NBA.com bucket edge**
+already used elsewhere in this repository (`shot_resolution.py`'s own
+`LATE_CLOCK_THRESHOLD_SECONDS = 4.0`, grounded in a real, previously-
+verified NBA.com late-clock 3PT% finding). The remaining boundaries
+(18, 15, 7) are this diagnostic's own internal choices — no broader
+public NBA.com shot-clock-range taxonomy was verified in-repo or
+researched this task, per instruction ("do not claim these are official
+categories unless verified").
+
+## Seed 23024 results
+
+| Metric | Value |
+|---|---|
+| Total FGA | 517 |
+| Mean / median shot clock remaining at attempt | 18.34 / 20.6 |
+| First-action FGA count / share | 192 / 37.1% |
+| Mean / median shot clock, first-action FGA only | 21.90 / 22.5 |
+| Shot family split | THREE_POINT 468, FLOATER 36, RIM 13 |
+
+Bin distribution:
+
+| Bin | Count | FG% |
+|---|---|---|
+| 24-18 | 345 (66.7%) | 32.5% |
+| 18-15 | 28 (5.4%) | 50.0% |
+| 15-7 | 138 (26.7%) | 37.7% |
+| 7-4 | 4 (0.8%) | 25.0% |
+| 4-0 | 2 (0.4%) | 0.0% |
+
+By possession-entry context:
+
+| Origin | FGA | FG% | Mean SC | Median SC | Mean elapsed since possession start | First-action share | Mean action index |
+|---|---|---|---|---|---|---|---|
+| HALFCOURT_ENTRY | 144 | 30.6% | 19.75 | 21.0 | 4.25s | 53.5% | 1.07 |
+| TRANSITION_ENTRY | 242 | 35.1% | 21.21 | 22.1 | 2.79s | 47.5% | 1.26 |
+| SECOND_CHANCE_RESET | 131 | 38.2% | 11.50 | 12.6 | 8.78s | 0.0%* | 4.83 |
+
+*A second-chance shot can never be the possession's action_index==0 by
+construction (at least one action already occurred before the OREB
+that created it) — 0.0% here is a structural certainty, not a finding.
+"Mean elapsed since possession start" for `SECOND_CHANCE_RESET` reflects
+the WHOLE possession (including time before the rebound), NOT elapsed
+since only the reset itself — a documented simplification (see
+`StageOriginShotSummary`'s own docstring); building the full "time since
+the current segment began" reconstruction was judged out of proportion
+for a diagnostic-only task.
+
+## 10-game sample results (seeds 23024–23033)
+
+| Metric | Value |
+|---|---|
+| Total FGA across 10 games | 5,053 (mean 505.3/game) |
+| Mean shot clock remaining at attempt (game-means averaged) | 18.26 |
+| Mean first-action FGA share | 37.0% |
+
+Bin distribution (summed across all 10 games): 24-18: 3,336 (66.0%),
+18-15: 346 (6.8%), 15-7: 1,281 (25.4%), 7-4: 80 (1.6%), 4-0: 10 (0.2%).
+
+By origin (summed across all 10 games):
+
+| Origin | FGA | FG% | Mean SC | Median SC |
+|---|---|---|---|---|
+| HALFCOURT_ENTRY | 1,562 | 35.5% | 19.61 | 20.6 |
+| TRANSITION_ENTRY | 2,271 | 35.8% | 21.12 | 22.1 |
+| SECOND_CHANCE_RESET | 1,220 | 34.8% | 11.22 | 12.6 |
+
+Consistent with seed 23024 in every respect — the finding is robust
+across the sample, not a seed artifact. Zero faults across all 10 games.
+
+## First-action shot analysis
+
+**37.0–37.1% of ALL field-goal attempts occur on the possession's very
+first dispatched action** — mean shot clock remaining for these
+specifically is 21.9–22.5 (only ~1.5–2.1 seconds elapsed on the shot
+clock before release). This is the single largest, cleanest piece of
+evidence that action-selection timing is currently very aggressive: a
+first-action shot happens before the entry stage's own real cost (3.0s
+ordinary / 1.5s transition) has meaningfully eaten into a 24-second shot
+clock at all.
+
+## Ordinary vs. transition vs. second-chance comparison
+
+**A/B: are shots occurring far too early, and is this driven by one
+context or all three?** All three contexts show early attempts, but
+NOT uniformly:
+
+- **HALFCOURT_ENTRY and TRANSITION_ENTRY are the two clearest early-shot
+  drivers in ABSOLUTE terms** (mean shot clock remaining 19.6–19.7 and
+  21.1–21.2 respectively — TRANSITION_ENTRY shots occur EVEN earlier
+  than halfcourt-entry shots, consistent with its smaller 1.5s entry
+  cost).
+- **SECOND_CHANCE_RESET shots occur later in ABSOLUTE shot-clock terms**
+  (mean ~11.2–11.5 remaining) simply because the reset base itself is
+  14s, not 24s — but PROPORTIONALLY, the pattern is similar: roughly
+  17–18% of the AVAILABLE shot clock has elapsed before the shot in
+  EVERY context (HALFCOURT_ENTRY ≈ 4.25/24 ≈ 17.7% elapsed;
+  SECOND_CHANCE_RESET's own reset-to-shot gap is proportionally
+  comparable once the smaller 14s base is accounted for). **This is a
+  genuine, all-three-contexts pattern, not one outlier context.**
+- **C: first-action shots are a major, not the sole, source of
+  early-clock attempts.** 37% of all FGA are first-action shots (mean
+  SC ~22), but the REMAINING 63% of attempts still average mean shot
+  clock in the high teens across every origin — meaning even
+  MULTI-action possessions are reaching a shot with a lot of clock left,
+  not just the immediate-shot subset.
+- **D: ordinary-entry timing still leaves a lot of shot clock at
+  attempts** — mean 19.6–19.75 remaining (only ~4.3–4.4s elapsed) even
+  though `ordinary_entry_seconds=3.0` is the largest of the three
+  placeholders. This is fully consistent with the earlier pace
+  diagnosis's own conclusion: the entry stage alone is not sufficient:
+  most possessions still only add 1–2 further actions (each 0.4–2.5s)
+  before a shot is taken.
+- **E: second-chance timing is structurally plausible relative to the
+  14s reset, without claiming calibration** — a mean of ~11.2–11.5
+  remaining (out of 14) after a 1.0s reset charge is directionally
+  sensible (a putback/quick second shot IS a real, common NBA pattern)
+  and does not show any obvious pathology (no negative values, no
+  values exceeding 14.0 minus the reset cost — verified directly:
+  `test_shot_attempt_after_oreb_reset_has_second_chance_origin_and_respects_14s_reset`).
+
+## Demonstrated causes
+
+1. **First-action shots are frequent and occur very early** (37% of
+   FGA, ~22s mean remaining) — directly measured, not inferred.
+2. **Even non-first-action shots occur with substantial shot clock
+   remaining across all three entry contexts** — the entry-stage timing
+   hook alone (validated in the prior section) measurably lengthened
+   possessions, but did NOT by itself push typical shot timing into a
+   realistic range; the gap is in the NUMBER and SPACING of actions
+   between entry and the eventual shot, not the entry cost itself.
+3. **No shot-clock consistency bug was found.** Every check requested —
+   monotonic non-increase within an uninterrupted segment
+   (`test_shot_clock_never_increases_within_one_stage_segment`), the
+   real 14s OREB reset respected, no shot ever attempted with a
+   negative or already-expired shot clock, no double-charge between
+   stage timing and action timing (already proven in the prior section
+   and unaffected by this purely-additive telemetry pass) — passed
+   cleanly on the first attempt. This diagnostic pass did NOT surface a
+   new literal bug.
+
+## Unproven / not investigated
+
+- Whether an inter-action "hold/dribble/probe" timing stage would, if
+  added, produce a MORE realistic shot-clock-at-attempt distribution —
+  plausible given the evidence, but not implemented or simulated this
+  task (explicitly out of scope).
+- Any real NBA shot-clock-at-attempt reference distribution to compare
+  against numerically — not researched this task (a real data
+  dependency for later, same posture as every other empirical
+  calibration question in this report).
+- Whether the proportional similarity across the three entry contexts
+  (≈17–18% of available shot clock elapsed before a shot) is a
+  coincidence of the current placeholder values or a more fundamental
+  property of the action-selection policy — not distinguished this
+  pass.
+
+## Does the evidence suggest an inter-action timing stage is needed?
+
+**Yes, as a genuine candidate for the NEXT investigation** — the
+evidence is consistent with (though does not, by itself, prove) the
+hypothesis that the missing piece is time BETWEEN modeled actions
+(hold/probe/reset dribbling), not merely time BEFORE the first one. The
+entry-stage hook already validated in the prior section measurably
+shifted pace (Sec. "Structural Timing Hook"); this diagnosis shows that
+shift was not sufficient to bring shot-clock-at-attempt into a
+plausible-looking range, and that the shortfall appears across ALL
+three entry contexts, not concentrated in one. This is offered as a
+recommended next diagnostic/design question for HQ review — **no
+inter-action timing mechanism was implemented, and no timing placeholder
+was changed, in this task.**
+
+## Tests / full suite
+
+New focused tests: 9 in `test_possession_orchestrator.py`
+(`TestShotClockAtAttemptTelemetry`) + 5 in
+`test_detailed_engine_diagnostics.py`
+(`TestShotClockAtAttemptAggregation`) = **14 new tests**. Covers: shot
+attempts after ordinary-entry/transition-entry/second-chance-reset with
+correct `stage_origin` and clock bounds, the real 14s OREB reset
+respected, no illegitimate shot-clock increase within an uninterrupted
+segment, a shot near shot-clock expiration still resolving and binning
+correctly with no negative clock, period expiration and shot-clock
+violation both correctly preventing any further shot attempt, same-seed
+determinism of the new log, the FGA-accounting-convention consistency
+check, and game/multi-game aggregation reconciliation (bin sums, origin
+sums, first-action-count bound).
+
+Full suite: `python3 -m unittest discover -p "test_*.py"` → **933/933
+OK** (919 baseline + 14 new). Zero regressions.
+
+## Confirmations
+
+- No setup-stage placeholder, action duration, probability, selection
+  weight, or player attribute was changed anywhere — verified by direct
+  diff review (`git diff 3f4dc75 -- possession_orchestrator.py`)
+  containing no touched numeric constant outside the new diagnostic
+  fields (`game_clock_at_attempt`, `shot_clock_at_attempt`,
+  `action_index`, `stage_generation`).
+- No legacy/product file was touched: `game_engine.py`, `main.py`,
+  `season.py`, `playoffs.py`, `db.py`, `models.py`, `README.md`,
+  `ACCURACY.md`, `CLAUDE.md` are all untouched.
+- This diagnostic work remains **UNCOMMITTED**, on top of the pushed
+  Structural Timing Hook checkpoint (`3f4dc75`).
+- No new gameplay phase was begun; no timing calibration was performed.

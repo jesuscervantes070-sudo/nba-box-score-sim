@@ -827,5 +827,121 @@ class TestStructuralTimingHook(unittest.TestCase):
         self.assertAlmostEqual(diag.stage_timing["HALFCOURT_ENTRY"].total_seconds, raw_total, places=6)
 
 
+class TestShotClockAtAttemptTelemetry(unittest.TestCase):
+    """Focused tests for the Shot-Clock-at-Attempt Diagnosis -- see
+    docs/DETAILED_ENGINE_FIRST_DIAGNOSTIC_REPORT.md's own section."""
+
+    def test_shot_attempt_after_ordinary_entry_has_correct_stage_origin_and_clock(self):
+        """The entry stage's own cost must be reflected in the shot clock at attempt -- an exact
+        reconstruction of every possible preceding action is unnecessary; an upper bound (the entry
+        stage alone already consumed at least `ordinary_entry_seconds`) is sufficient and robust."""
+        cfg = PossessionConfig()
+        for seed in range(200):
+            result = _run(config=cfg, seed=seed, possession_id=f"ord{seed}")
+            log = result.world.shot_attempt_log
+            if log and log[0]["stage_origin"] == "HALFCOURT_ENTRY":
+                self.assertLessEqual(log[0]["shot_clock_at_attempt"], 24.0 - cfg.ordinary_entry_seconds + 1e-9)
+                return
+        self.fail("expected a halfcourt-entry-origin shot attempt within 200 seeds")
+
+    def test_shot_attempt_after_transition_entry_has_correct_stage_origin(self):
+        cfg = PossessionConfig(initial_phase=PossessionPhase.TRANSITION)
+        for seed in range(200):
+            result = _run(config=cfg, seed=seed, possession_id=f"trans{seed}")
+            log = result.world.shot_attempt_log
+            if log and log[0]["stage_origin"] == "TRANSITION_ENTRY":
+                self.assertLessEqual(log[0]["shot_clock_at_attempt"], 24.0 - cfg.transition_entry_seconds + 1e-9)
+                return
+        self.fail("expected a transition-entry-origin shot attempt within 200 seeds")
+
+    def test_shot_attempt_after_oreb_reset_has_second_chance_origin_and_respects_14s_reset(self):
+        from dataclasses import replace
+        cfg = PossessionConfig()
+        profiles = _profiles()
+        for p in OFF_FIVE:
+            profiles[p] = replace(profiles[p], offensive_rebounding_shrunk_rate=0.7)
+        for seed in range(300):
+            result = _run(config=cfg, profiles=profiles, seed=seed, possession_id=f"sc{seed}")
+            sc_shots = [e for e in result.world.shot_attempt_log if e["stage_origin"] == "SECOND_CHANCE_RESET"]
+            if sc_shots:
+                first_sc_shot = sc_shots[0]
+                # the real OREB shot-clock reset is 14s (modern era); the reset stage consumes 1.0s from
+                # it BEFORE this shot, so shot_clock_at_attempt must never exceed 14.0 - second_chance_reset.
+                self.assertLessEqual(first_sc_shot["shot_clock_at_attempt"], 14.0 - cfg.second_chance_reset_seconds + 1e-6)
+                self.assertGreaterEqual(first_sc_shot["action_index"], 1)  # never the possession's first action
+                return
+        self.fail("expected a second-chance-origin shot within 300 boosted-OREB seeds")
+
+    def test_shot_clock_never_increases_within_one_stage_segment(self):
+        """Real, structural consistency check: shot_clock_at_attempt must
+        be monotonically non-increasing across consecutive FGAs UNLESS a
+        real SECOND_CHANCE_RESET occurred in between (a legitimate
+        reset) -- proving no illegitimate shot-clock increase exists."""
+        cfg = PossessionConfig()
+        checked_any_multi_shot = False
+        for seed in range(300):
+            result = _run(config=cfg, seed=seed, possession_id=f"mono{seed}")
+            log = result.world.shot_attempt_log
+            if len(log) < 2:
+                continue
+            checked_any_multi_shot = True
+            for prev, curr in zip(log, log[1:]):
+                # `stage_generation` (not just the `stage_origin` label) distinguishes two attempts in
+                # the SAME uninterrupted segment from two separated by a real, legitimate additional
+                # reset -- two consecutive second-chance putbacks share the LABEL but not the generation.
+                if curr["stage_generation"] != prev["stage_generation"]:
+                    continue  # a real reset legitimately occurred between these two shots -- skip
+                if prev["shot_clock_at_attempt"] is None or curr["shot_clock_at_attempt"] is None:
+                    continue
+                self.assertLessEqual(curr["shot_clock_at_attempt"], prev["shot_clock_at_attempt"] + 1e-9)
+        self.assertTrue(checked_any_multi_shot, "expected at least one possession with 2+ FGA within 300 seeds")
+
+    def test_shot_near_shot_clock_expiration_still_resolves_and_bins_correctly(self):
+        from detailed_engine_diagnostics import _shot_clock_bin
+        short_shot_clock = EraRules(era_name="test_tight_shot_clock", shot_clock_seconds=4.5,
+                                     oreb_shot_clock_reset_seconds=None, bonus_foul_threshold=5,
+                                     period_length_seconds=720.0, periods_per_game=4)
+        cfg = PossessionConfig(era_rules=short_shot_clock)
+        found = False
+        for seed in range(200):
+            result = _run(config=cfg, seed=seed, possession_id=f"tight{seed}")
+            for e in result.world.shot_attempt_log:
+                self.assertGreaterEqual(e["shot_clock_at_attempt"], 0.0)  # never negative
+                self.assertIn(_shot_clock_bin(e["shot_clock_at_attempt"]), {"4-0", "7-4"})
+                found = True
+        self.assertTrue(found, "expected at least one shot attempt within a tight shot clock across 200 seeds")
+
+    def test_period_expiration_before_a_shot_prevents_any_shot_attempt(self):
+        short_game = EraRules(era_name="test_short_period", shot_clock_seconds=24.0,
+                               oreb_shot_clock_reset_seconds=None, bonus_foul_threshold=5,
+                               period_length_seconds=1.0, periods_per_game=4)
+        cfg = PossessionConfig(era_rules=short_game)
+        result = _run(config=cfg, seed=1, possession_id="period_no_shot")
+        self.assertEqual(result.reason, PossessionTerminalReason.PERIOD_END)
+        self.assertEqual(result.world.shot_attempt_log, [])
+
+    def test_shot_clock_violation_means_no_shot_this_possession(self):
+        cfg = PossessionConfig(drive_action_seconds=30.0, pull_up_action_seconds=30.0, catch_and_shoot_action_seconds=30.0)
+        profiles = _profiles(**{p: {"drive_aggression": 5.0} for p in OFF_FIVE})
+        seed, result = _find_seed(PossessionTerminalReason.SHOT_CLOCK_VIOLATION, config=cfg, profiles=profiles)
+        self.assertEqual(result.world.shot_attempt_log, [])
+
+    def test_deterministic_replay_of_shot_attempt_log(self):
+        def run():
+            return simulate_possession("A", "B", OFF_FIVE, DEF_FIVE, _profiles(), inbound_receiver_id="1",
+                                        config=PossessionConfig(), rng_seed=23024, possession_id="det_shots")
+        first, second = run(), run()
+        self.assertEqual(first.world.shot_attempt_log, second.world.shot_attempt_log)
+
+    def test_shot_attempt_log_fga_count_matches_provisional_fga_where_convention_matches(self):
+        """A missed shooting foul is NOT logged (matches `world.stats.fga`'s
+        own real convention -- see `_dispatch_shooting_foul`'s docstring),
+        so `len(shot_attempt_log) <= stats.fga` always, with equality
+        whenever no missed-and-one occurred."""
+        for seed in range(100):
+            result = _run(seed=seed, possession_id=f"fgacheck{seed}")
+            self.assertLessEqual(len(result.world.shot_attempt_log), result.stats.fga)
+
+
 if __name__ == "__main__":
     unittest.main()

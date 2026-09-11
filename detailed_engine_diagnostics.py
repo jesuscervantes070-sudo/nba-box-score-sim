@@ -402,3 +402,182 @@ def diagnose_games(results: Sequence[DetailedGameResult]) -> MultiGameDiagnostic
         mean_turnover_ending_rate=statistics.fmean(g.turnover_ending_rate for g in per_game) if n else 0.0,
         per_game=per_game,
     )
+
+
+# ---------------------------------------------------------------------
+# 4. Shot-Clock-at-Attempt Diagnosis (see
+# docs/DETAILED_ENGINE_FIRST_DIAGNOSTIC_REPORT.md's own section). Reads
+# ONLY `PossessionWorld.shot_attempt_log` (a diagnostic-only list
+# `possession_orchestrator.py` populates from already-computed,
+# already-structured clock/shot-family/outcome values -- never inferred
+# from a descriptive string). Purely observational; never used by any
+# simulation decision.
+# ---------------------------------------------------------------------
+
+# INTERNAL, NEUTRAL bins -- NOT claimed as official NBA.com shot-clock-range categories, with ONE
+# exception: the "4-0" boundary IS a real, independently-verified NBA.com bucket edge already used
+# elsewhere in this repository (`shot_resolution.py`'s own `LATE_CLOCK_THRESHOLD_SECONDS = 4.0`,
+# grounded in a real NBA.com late-clock 3PT% finding). The remaining boundaries (18/15/7) are this
+# diagnostic's own internal, neutral choices, not verified public categories.
+SHOT_CLOCK_BINS: Tuple[Tuple[str, float, float], ...] = (
+    ("24-18", 18.0, 24.0),
+    ("18-15", 15.0, 18.0),
+    ("15-7", 7.0, 15.0),
+    ("7-4", 4.0, 7.0),
+    ("4-0", 0.0, 4.0),
+)
+
+
+def _shot_clock_bin(value: Optional[float]) -> str:
+    if value is None:
+        return "NO_SHOT_CLOCK"
+    for label, low, high in SHOT_CLOCK_BINS:
+        if low <= value <= high:
+            return label
+    return "OUT_OF_RANGE"  # >24 or negative -- should never occur; a real anomaly if it does
+
+
+@dataclass
+class ShotClockBinStats:
+    label: str
+    count: int = 0
+    makes: int = 0
+
+    @property
+    def fg_pct(self) -> Optional[float]:
+        return (self.makes / self.count) if self.count else None
+
+
+@dataclass
+class StageOriginShotSummary:
+    """Per-`PossessionStage`-origin shot-attempt summary. `elapsed_since_possession_start` is
+    `record.start_game_clock - game_clock_at_attempt` for EVERY origin, including SECOND_CHANCE --
+    for a second-chance shot this is elapsed since the WHOLE possession began (including time
+    before the offensive rebound), NOT elapsed since only the reset itself; a documented
+    simplification (see the report), not a fabricated "time since reset" reconstruction."""
+    stage_origin: str
+    fga: int = 0
+    makes: int = 0
+    first_action_fga: int = 0
+    shot_clock_values: List[float] = field(default_factory=list)
+    elapsed_since_possession_start_values: List[float] = field(default_factory=list)
+    action_index_values: List[int] = field(default_factory=list)
+
+    @property
+    def fg_pct(self) -> Optional[float]:
+        return (self.makes / self.fga) if self.fga else None
+
+    @property
+    def mean_shot_clock(self) -> Optional[float]:
+        return statistics.fmean(self.shot_clock_values) if self.shot_clock_values else None
+
+    @property
+    def median_shot_clock(self) -> Optional[float]:
+        return statistics.median(self.shot_clock_values) if self.shot_clock_values else None
+
+    @property
+    def mean_elapsed_since_possession_start(self) -> Optional[float]:
+        return statistics.fmean(self.elapsed_since_possession_start_values) if self.elapsed_since_possession_start_values else None
+
+    @property
+    def first_action_share(self) -> Optional[float]:
+        return (self.first_action_fga / self.fga) if self.fga else None
+
+    @property
+    def mean_action_index(self) -> Optional[float]:
+        return statistics.fmean(self.action_index_values) if self.action_index_values else None
+
+
+@dataclass
+class ShotClockAtAttemptDiagnostics:
+    total_fga: int
+    bin_stats: Dict[str, ShotClockBinStats]
+    mean_shot_clock_remaining: Optional[float]
+    median_shot_clock_remaining: Optional[float]
+    first_action_fga_count: int
+    first_action_fga_share: Optional[float]
+    mean_shot_clock_first_action: Optional[float]
+    median_shot_clock_first_action: Optional[float]
+    by_stage_origin: Dict[str, StageOriginShotSummary]
+    shot_family_counts: Dict[str, int]
+
+
+def diagnose_shot_clock_at_attempt(result: DetailedGameResult) -> ShotClockAtAttemptDiagnostics:
+    bin_stats: Dict[str, ShotClockBinStats] = {label: ShotClockBinStats(label=label) for label, _, _ in SHOT_CLOCK_BINS}
+    shot_clock_values: List[float] = []
+    first_action_shot_clock_values: List[float] = []
+    first_action_fga_count = 0
+    total_fga = 0
+    by_stage_origin: Dict[str, StageOriginShotSummary] = {}
+    shot_family_counts: Dict[str, int] = {}
+
+    for record in result.possessions:
+        for entry in record.terminal_result.world.shot_attempt_log:
+            total_fga += 1
+            shot_clock_at_attempt = entry.get("shot_clock_at_attempt")
+            made = bool(entry.get("made"))
+            family = entry.get("shot_family")
+            if family:
+                shot_family_counts[family] = shot_family_counts.get(family, 0) + 1
+
+            if shot_clock_at_attempt is not None:
+                shot_clock_values.append(shot_clock_at_attempt)
+                bucket = bin_stats.setdefault(_shot_clock_bin(shot_clock_at_attempt),
+                                               ShotClockBinStats(label=_shot_clock_bin(shot_clock_at_attempt)))
+                bucket.count += 1
+                if made:
+                    bucket.makes += 1
+
+            is_first_action = bool(entry.get("is_first_action"))
+            if is_first_action:
+                first_action_fga_count += 1
+                if shot_clock_at_attempt is not None:
+                    first_action_shot_clock_values.append(shot_clock_at_attempt)
+
+            origin = entry.get("stage_origin") or "UNKNOWN"
+            summary = by_stage_origin.setdefault(origin, StageOriginShotSummary(stage_origin=origin))
+            summary.fga += 1
+            if made:
+                summary.makes += 1
+            if is_first_action:
+                summary.first_action_fga += 1
+            if shot_clock_at_attempt is not None:
+                summary.shot_clock_values.append(shot_clock_at_attempt)
+            game_clock_at_attempt = entry.get("game_clock_at_attempt")
+            if game_clock_at_attempt is not None:
+                summary.elapsed_since_possession_start_values.append(record.start_game_clock - game_clock_at_attempt)
+            summary.action_index_values.append(entry.get("action_index", 0))
+
+    return ShotClockAtAttemptDiagnostics(
+        total_fga=total_fga, bin_stats=bin_stats,
+        mean_shot_clock_remaining=statistics.fmean(shot_clock_values) if shot_clock_values else None,
+        median_shot_clock_remaining=statistics.median(shot_clock_values) if shot_clock_values else None,
+        first_action_fga_count=first_action_fga_count,
+        first_action_fga_share=(first_action_fga_count / total_fga) if total_fga else None,
+        mean_shot_clock_first_action=statistics.fmean(first_action_shot_clock_values) if first_action_shot_clock_values else None,
+        median_shot_clock_first_action=statistics.median(first_action_shot_clock_values) if first_action_shot_clock_values else None,
+        by_stage_origin=by_stage_origin, shot_family_counts=shot_family_counts,
+    )
+
+
+@dataclass
+class MultiGameShotClockDiagnostics:
+    game_count: int
+    mean_total_fga: float
+    mean_shot_clock_remaining: Optional[float]
+    mean_first_action_fga_share: Optional[float]
+    per_game: Tuple[ShotClockAtAttemptDiagnostics, ...]
+
+
+def diagnose_shot_clock_at_attempt_multi(results: Sequence[DetailedGameResult]) -> MultiGameShotClockDiagnostics:
+    per_game = tuple(diagnose_shot_clock_at_attempt(r) for r in results)
+    n = len(per_game)
+    means = [g.mean_shot_clock_remaining for g in per_game if g.mean_shot_clock_remaining is not None]
+    shares = [g.first_action_fga_share for g in per_game if g.first_action_fga_share is not None]
+    return MultiGameShotClockDiagnostics(
+        game_count=n,
+        mean_total_fga=statistics.fmean(g.total_fga for g in per_game) if n else 0.0,
+        mean_shot_clock_remaining=(statistics.fmean(means) if means else None),
+        mean_first_action_fga_share=(statistics.fmean(shares) if shares else None),
+        per_game=per_game,
+    )

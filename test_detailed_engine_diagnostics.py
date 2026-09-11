@@ -259,5 +259,36 @@ class TestClockAccounting(unittest.TestCase):
         self.assertTrue(found_foul, "expected at least one floor foul with forced contact enabled")
 
 
+class TestShotClockAtAttemptAggregation(unittest.TestCase):
+    def setUp(self):
+        from detailed_engine_diagnostics import diagnose_shot_clock_at_attempt
+        self.result = _game()
+        self.diag = diagnose_shot_clock_at_attempt(self.result)
+
+    def test_total_fga_matches_raw_shot_attempt_log_count(self):
+        raw_count = sum(len(r.terminal_result.world.shot_attempt_log) for r in self.result.possessions)
+        self.assertEqual(self.diag.total_fga, raw_count)
+        self.assertGreater(raw_count, 0)
+
+    def test_bin_counts_sum_to_total_fga(self):
+        self.assertEqual(sum(b.count for b in self.diag.bin_stats.values()), self.diag.total_fga)
+
+    def test_stage_origin_fga_sums_to_total_fga(self):
+        self.assertEqual(sum(s.fga for s in self.diag.by_stage_origin.values()), self.diag.total_fga)
+
+    def test_first_action_fga_never_exceeds_total(self):
+        self.assertLessEqual(self.diag.first_action_fga_count, self.diag.total_fga)
+
+    def test_ten_game_shot_clock_aggregate_matches_known_order_of_magnitude(self):
+        from detailed_engine_diagnostics import diagnose_shot_clock_at_attempt_multi
+        results = [_game(seed=s) for s in range(23024, 23034)]
+        multi = diagnose_shot_clock_at_attempt_multi(results)
+        self.assertEqual(multi.game_count, 10)
+        self.assertGreater(multi.mean_total_fga, 0)
+        self.assertIsNotNone(multi.mean_shot_clock_remaining)
+        self.assertGreater(multi.mean_shot_clock_remaining, 0.0)
+        self.assertLessEqual(multi.mean_shot_clock_remaining, 24.0)
+
+
 if __name__ == "__main__":
     unittest.main()

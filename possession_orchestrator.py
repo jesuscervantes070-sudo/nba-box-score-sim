@@ -615,6 +615,11 @@ class PossessionWorld:
     # dispatch, and conflating the two would corrupt `action_count`'s own established meaning (steps and
     # actions are never conflated -- this hook preserves that same discipline for stage timing too).
     stage_timing_log: List[dict] = field(default_factory=list)
+    # DIAGNOSTIC ONLY (observability, see docs/DETAILED_ENGINE_FIRST_DIAGNOSTIC_REPORT.md's
+    # "Shot-Clock-at-Attempt Diagnosis" section) -- one entry per real field-goal attempt (blocked and
+    # whistled-and-one attempts included, matching this module's own existing FGA accounting convention).
+    # Never read by any simulation decision; purely an observation of state already computed elsewhere.
+    shot_attempt_log: List[dict] = field(default_factory=list)
 
     def team_id_for(self, player_id: str) -> str:
         if player_id in self.team_a_five:
@@ -853,6 +858,48 @@ def _charge_possession_stage_time(engine: PossessionEngine, world: PossessionWor
     clock_after = engine.state.game_clock_remaining
     elapsed = (clock_before - clock_after) if clock_before is not None and clock_after is not None else None
     world.stage_timing_log.append({"step": step, "stage": stage, "elapsed_game_clock_seconds": elapsed})
+
+
+def _possession_stage_origin(world: PossessionWorld, step: int) -> str:
+    """DIAGNOSTIC ONLY -- the most recent `PossessionStage` charged at or
+    before `step`, i.e. which possession-stage context an action
+    dispatched at `step` occurred under. The possession's own entry
+    stage is always logged at step 0 (`simulate_possession`'s own
+    pre-loop charge); a later `SECOND_CHANCE_RESET` supersedes it for
+    any action dispatched after that OREB, in the SAME possession.
+    Read-only; never consulted by any simulation decision."""
+    origin = None
+    for entry in world.stage_timing_log:
+        if entry["step"] <= step:
+            origin = entry["stage"]
+    return origin or "UNKNOWN"
+
+
+def _log_shot_attempt(world: PossessionWorld, step: int, possession_id: str, offense_team_id: str,
+                       shot_family: str, game_clock_at_attempt: Optional[float],
+                       shot_clock_at_attempt: Optional[float], made: bool) -> None:
+    """DIAGNOSTIC ONLY (observability, see
+    docs/DETAILED_ENGINE_FIRST_DIAGNOSTIC_REPORT.md's "Shot-Clock-at-
+    Attempt Diagnosis" section) -- one entry per real field-goal attempt.
+    Every field is read from an already-computed, already-structured
+    value (the caller's own `shot_family` string constant, the engine's
+    own clock state captured BEFORE this attempt's own duration was
+    charged, and `world.action_log`'s own real length) -- never inferred
+    from a descriptive/log string, and never fed back into any
+    simulation decision."""
+    action_index = len(world.action_log)
+    # `stage_generation` = how many possession-stage charges (entry + every SECOND_CHANCE_RESET so far)
+    # have occurred at or before this attempt -- lets a consumer distinguish two attempts that share the
+    # SAME `stage_origin` label (e.g. two separate second-chance putbacks) but are separated by a real,
+    # legitimate additional reset in between, from two attempts within the SAME uninterrupted segment.
+    stage_generation = sum(1 for e in world.stage_timing_log if e["step"] <= step)
+    world.shot_attempt_log.append({
+        "possession_id": possession_id, "offense_team_id": offense_team_id, "shot_family": shot_family,
+        "game_clock_at_attempt": game_clock_at_attempt, "shot_clock_at_attempt": shot_clock_at_attempt,
+        "stage_origin": _possession_stage_origin(world, step), "stage_generation": stage_generation,
+        "step": step, "made": made,
+        "is_first_action": action_index == 0, "action_index": action_index,
+    })
 
 
 def _require(value: Optional[float], what: str) -> float:
@@ -1217,6 +1264,10 @@ def _dispatch_shot(engine: PossessionEngine, world: PossessionWorld, intent: Act
     # captured BEFORE any resolver mutates engine.state -- a miss/final-missed-FT clears
     # engine.state.offense_team_id to None (Sec. `_dispatch_rebound`'s own docstring).
     offense_team_id, defense_team_id = engine.state.offense_team_id, engine.state.defense_team_id
+    # DIAGNOSTIC ONLY -- the real clock state AT THE MOMENT OF THIS ATTEMPT, captured before this
+    # action's own duration is ever charged (see `_log_shot_attempt`).
+    game_clock_at_attempt = engine.state.game_clock_remaining
+    shot_clock_at_attempt = engine.state.shot_clock_remaining
     defender_id = _primary_defender(engine, shooter_id)
     defender_profile = world.profiles.get(defender_id) if defender_id else None
     posture = engine.state.assignments[defender_id].posture if defender_id else DefensivePosture.SQUARE
@@ -1273,6 +1324,8 @@ def _dispatch_shot(engine: PossessionEngine, world: PossessionWorld, intent: Act
         world.stats.fga += 1
         world.log_trace(step=steps, action=intent.action_type.value, shot_family=shot_family, outcome=result.outcome,
                          shooter=shooter_id, zone=zone.value)
+        _log_shot_attempt(world, steps, engine.state.possession_id, offense_team_id, shot_family,
+                           game_clock_at_attempt, shot_clock_at_attempt, made=(result.outcome == InteriorShotOutcome.MADE))
         if result.outcome == InteriorShotOutcome.MADE:
             world.stats.fgm += 1
             world.stats.points += result.points
@@ -1289,6 +1342,8 @@ def _dispatch_shot(engine: PossessionEngine, world: PossessionWorld, intent: Act
         world.stats.fg3a += 1
         world.log_trace(step=steps, action=intent.action_type.value, shot_family=shot_family, outcome=result.outcome,
                          shooter=shooter_id, zone=zone.value)
+        _log_shot_attempt(world, steps, engine.state.possession_id, offense_team_id, shot_family,
+                           game_clock_at_attempt, shot_clock_at_attempt, made=(result.outcome == ShotOutcome.MADE))
         if result.outcome == ShotOutcome.MADE:
             world.stats.fgm += 1
             world.stats.fg3m += 1
@@ -1313,6 +1368,12 @@ def _dispatch_shooting_foul(engine: PossessionEngine, world: PossessionWorld, co
     `administer_floor_foul` (whose `foul_class` vocabulary is
     `OFFENSIVE_CHARGE`/`DEFENSIVE_FLOOR_FOUL` only and does not, and
     should not, grow a shooting-foul class just to reuse one increment)."""
+    # DIAGNOSTIC ONLY -- captured fresh here (no clock mutation occurs between the caller's own capture
+    # in `_dispatch_shot` and this call, so this is the identical real value; recomputed rather than
+    # threaded through as extra parameters, to keep this function's existing signature stable).
+    game_clock_at_attempt = engine.state.game_clock_remaining
+    shot_clock_at_attempt = engine.state.shot_clock_remaining
+
     engine.begin_shot(zone, dt=0.0)
     made, points, awarded_fts = resolve_shooting_foul_shot(shooter_id, shot_family, make_probability, rng)
     engine.shooting_foul(shooter_id, fouler_id, dt=0.0)
@@ -1331,6 +1392,11 @@ def _dispatch_shooting_foul(engine: PossessionEngine, world: PossessionWorld, co
             world.stats.fg3a += 1
             world.stats.fg3m += 1
         world.stats.points += points
+        # matches the SAME real convention `world.stats.fga` already follows: a MISSED shooting foul
+        # contributes ZERO FGA (Phase 18C's own rule, reused as-is) -- so no shot_attempt_log entry
+        # is logged for a miss either, keeping this diagnostic consistent with existing accounting.
+        _log_shot_attempt(world, steps, engine.state.possession_id, offense_team_id, shot_family,
+                           game_clock_at_attempt, shot_clock_at_attempt, made=True)
     # a MISSED shooting foul contributes ZERO FGA/FGM -- Phase 18C's own real accounting rule, reused as-is.
 
     ft_rate = _require_ft_rate(world.profiles[shooter_id], config)
