@@ -2060,6 +2060,14 @@ def simulate_possession(
         policy = SelectionPolicy(rng)
         intent = policy.select(perceived, _role_context(carrier_profile), _tendency_context(carrier_profile),
                                 clock_ctx, engine.state.possession_id)
+        def diagnostic_opportunity_row(opportunity) -> dict:
+            """Zero-RNG snapshot of an already-generated opportunity."""
+            return {
+                "opportunity_id": opportunity.opportunity_id,
+                "action_type": opportunity.action_type.value,
+                "target_zone": opportunity.target_zone.value if opportunity.target_zone is not None else None,
+                "source": opportunity.source,
+            }
         feasible_action_types = [
             p.opportunity.action_type.value for p in clock_feasibility.feasible
         ]
@@ -2078,9 +2086,16 @@ def simulate_possession(
         world.decision_log.append({
             "step": step,
             "shot_clock_remaining": engine.state.shot_clock_remaining,
+            "ball_zone": engine.state.ball_zone.value,
+            "objective_opportunities": [diagnostic_opportunity_row(opportunity)
+                                         for opportunity in opportunities],
+            "perceived_opportunities": [diagnostic_opportunity_row(p.opportunity) for p in perceived],
+            "feasible_opportunities": [diagnostic_opportunity_row(p.opportunity)
+                                       for p in clock_feasibility.feasible],
             "perceived_action_types": [p.opportunity.action_type.value for p in perceived],
             "feasible_action_types": feasible_action_types,
             "selected_action_type": intent.action_type.value if intent is not None else None,
+            "selected_target_zone": intent.target_zone if intent is not None else None,
             "late_clock_filter_activated": clock_feasibility.late_clock_filter_activated,
             "late_clock_removed_actions": removed_late_clock,
             "late_clock_terminal_shots_available": [
