@@ -33,8 +33,13 @@ class TestTurnoverDiagnosis(unittest.TestCase):
 
     def test_engine_accounting_is_exactly_once_and_shot_clock_is_explicitly_separate(self):
         assert_turnover_reconciliation(self.diagnosis)
-        self.assertEqual(self.diagnosis.engine_accounted_turnovers, 4891)
-        self.assertEqual(self.diagnosis.player_charged_turnovers, 4680)
+        # Re-pinned for "Fix missed and-one rebound continuation": the 28 previously-dead missed-
+        # and-one bonus free throws (seeds 25000-25099) now continue live instead of vanishing, so
+        # some of those continuations draw a real turnover (team- and player-charged) before the
+        # possession eventually ends -- sanctioned drift from the bug fix itself, not a
+        # turnover-logic change.
+        self.assertEqual(self.diagnosis.engine_accounted_turnovers, 4893)
+        self.assertEqual(self.diagnosis.player_charged_turnovers, 4682)
         self.assertEqual(self.diagnosis.categories[TurnoverCategory.SHOT_CLOCK_VIOLATION].engine_accounted_turnovers, 211)
 
     def test_steals_are_consistent_with_current_clean_interception_semantics(self):

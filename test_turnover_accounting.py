@@ -110,8 +110,14 @@ class TestTurnoverAccountingReconciliation(unittest.TestCase):
         # Top-level family choice changes continuation/flip state and therefore
         # the later deterministic RNG trajectory; these pin the first shot-mix
         # baseline without changing turnover logic.
-        self.assertEqual(team_total, 4891)
-        self.assertEqual(player_total, 4680)
+        # Re-pinned for "Fix missed and-one rebound continuation": the 28
+        # previously-dead missed-and-one bonus free throws (seeds 25000-25099)
+        # now continue live instead of vanishing, so some of those continuations
+        # draw a real turnover (team- and player-charged) before the possession
+        # eventually ends -- sanctioned drift from the bug fix itself, not a
+        # turnover-logic change.
+        self.assertEqual(team_total, 4893)
+        self.assertEqual(player_total, 4682)
 
     def test_basketball_output_digest_matches_first_shot_mix_baseline(self):
         payload = []
@@ -144,7 +150,10 @@ class TestTurnoverAccountingReconciliation(unittest.TestCase):
                             "ot": result.overtime_periods, "rows": rows})
         digest = hashlib.sha256(json.dumps(payload, sort_keys=True,
                                            separators=(",", ":")).encode()).hexdigest()
-        self.assertEqual(digest, "fc2f9f7a928bf28c97e8435d849c067fa5932376945a5c9ccf0334dcec685d47")
+        # Re-pinned for "Fix missed and-one rebound continuation" -- see
+        # test_benchmark_uses_team_turnovers_and_preserves_player_total's own comment above for why
+        # this baseline moved (same 28-possession cause, same benchmark sample).
+        self.assertEqual(digest, "39151eda813786eb26c3e058273cbcf680480c6ddda30221129c7628b44759d3")
 
 
 if __name__ == "__main__":

@@ -1834,11 +1834,20 @@ def _dispatch_shooting_foul(engine: PossessionEngine, world: PossessionWorld, co
     world.log_trace(step=steps, action="SHOOTING_FOUL", shot_family=shot_family, made=made, fouler=fouler_id,
                      shooter=shooter_id, awarded_fts=awarded_fts, ft_makes=sequence.makes)
 
-    if made:
-        return _terminal(PossessionTerminalReason.MADE_FG, engine, world, steps)
+    # Bug fix ("Fix missed and-one rebound continuation"): the FINAL free throw's own live-ball
+    # state -- already correctly set by `apply_free_throw_attempt_to_engine` above (`LOOSE` on a
+    # missed final attempt, `DEAD` on a made one) -- governs what happens next, NOT whether the
+    # underlying field goal itself was made. Checking `ball_state` FIRST (same real signal the
+    # ordinary MISSED_SHOOTING_FOUL path below already used) means a missed and-one bonus FT now
+    # reaches the same live rebound dispatch a missed bonus FT always did, instead of being
+    # short-circuited by an early `if made: return _terminal(MADE_FG, ...)` that never inspected
+    # the free-throw outcome at all. An and-one whose bonus FT is MADE is unaffected -- ball_state
+    # is `DEAD`, so it still falls through to the unchanged `MADE_FG` terminal below.
     if engine.state.ball_state == BallState.LOOSE:
         return _dispatch_rebound(engine, world, config, rng, ReboundSource.FINAL_MISSED_FT, shot_family, steps,
                                   offense_team_id=offense_team_id, defense_team_id=defense_team_id)
+    if made:
+        return _terminal(PossessionTerminalReason.MADE_FG, engine, world, steps)
     return _terminal(PossessionTerminalReason.FINAL_FT_MADE, engine, world, steps)
 
 

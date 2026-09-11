@@ -1353,5 +1353,129 @@ class TestFirstPassTimingCalibration(unittest.TestCase):
         self.assertNotEqual(cfg.inter_action_seconds, 1.5)
 
 
+class TestAndOneMissedBonusFreeThrowContinuation(unittest.TestCase):
+    """Regression guard for "Fix missed and-one rebound continuation".
+
+    Old bug: `_dispatch_shooting_foul` returned `_terminal(MADE_FG, ...)` based purely on
+    whether the UNDERLYING FIELD GOAL was made, before ever inspecting the FINAL free throw's
+    own live-ball state. `apply_free_throw_attempt_to_engine` already correctly sets
+    `ball_state=LOOSE` on a missed final attempt regardless of and-one status -- the bug was
+    that nothing downstream of the and-one branch ever looked at it. A missed and-one bonus FT
+    therefore silently discarded a real live rebound opportunity (canonical evidence:
+    and_one_trips=137, and_one_final_ft_misses=28, rebound_handoffs=0 on seeds 25000-25099).
+
+    Fix: check `engine.state.ball_state == BallState.LOOSE` FIRST, before branching on the field
+    goal's own `made` flag -- exactly the same real signal the ordinary MISSED_SHOOTING_FOUL
+    branch already used. These three tests call `_dispatch_shooting_foul` directly (not a full
+    possession) with `make_probability=1.0` (forces the and-one field goal to count) and an
+    extreme, deterministic `free_throw_shrunk_rate`/rebounding-rate profile to force each of the
+    three real outcomes without touching any shot/foul/free-throw/rebound PROBABILITY constant."""
+
+    def _engine_and_world(self, profiles):
+        cfg = PossessionConfig()
+        engine = PossessionEngine("p1", "A", "B", season="2023-24", rng_seed=0)
+        apply_matchup_assignments(engine, OFF_FIVE, DEF_FIVE)
+        engine.inbound("1", SpatialZone.TOP_OF_KEY, PossessionPhase.HALFCOURT)
+        world = PossessionWorld(team_a_id="A", team_b_id="B", team_a_five=OFF_FIVE, team_b_five=DEF_FIVE,
+                                 profiles=profiles,
+                                 player_zones={pid: SpatialZone.TOP_OF_KEY for pid in OFF_FIVE + DEF_FIVE})
+        return cfg, engine, world
+
+    def _dispatch(self, cfg, engine, world):
+        import random
+        from possession_orchestrator import PerimeterShotFamily, _dispatch_shooting_foul
+        return _dispatch_shooting_foul(
+            engine, world, cfg, random.Random(0), 0, shooter_id="1", fouler_id="11",
+            shot_family=PerimeterShotFamily.THREE_POINT, make_probability=1.0, zone=SpatialZone.TOP_OF_KEY,
+            action_seconds=cfg.catch_and_shoot_action_seconds, offense_team_id="A", defense_team_id="B",
+        )
+
+    def test_made_fg_plus_foul_plus_made_bonus_ft(self):
+        """1. made FG + foul + MADE bonus FT -> unchanged normal dead-ball continuation."""
+        profiles = _profiles(**{p: {"free_throw_shrunk_rate": 0.99} for p in OFF_FIVE})
+        cfg, engine, world = self._engine_and_world(profiles)
+        result = self._dispatch(cfg, engine, world)
+
+        self.assertEqual(world.stats.fga, 1)
+        self.assertEqual(world.stats.fgm, 1)
+        self.assertEqual(world.stats.fg3a, 1)
+        self.assertEqual(world.stats.fg3m, 1)
+        self.assertEqual(world.foul_state.personal_fouls.counts.get("11"), 1)
+        self.assertEqual(world.stats.fta, 1)
+        self.assertEqual(world.stats.ftm, 1)
+        self.assertEqual(world.stats.oreb, 0)
+        self.assertEqual(world.stats.dreb, 0)
+        self.assertEqual(len(world.rebound_opportunity_log), 0)  # no duplicate/spurious rebound
+
+        # possession consequence: a real terminal result, ball dead, no continuation.
+        self.assertIsNotNone(result)
+        self.assertEqual(result.reason, PossessionTerminalReason.MADE_FG)
+        self.assertEqual(engine.state.ball_state.value, "DEAD")
+
+        # event sequence: exactly one shooting foul, no rebound-related event, no duplicate terminal signal.
+        event_types = [e.event_type.name for e in engine.log.events]
+        self.assertEqual(event_types.count("SHOOTING_FOUL"), 1)
+        self.assertNotIn("DEFENSIVE_REBOUND", event_types)
+
+    def test_made_fg_plus_foul_plus_missed_bonus_ft_plus_offensive_rebound(self):
+        """2. made FG + foul + MISSED bonus FT + OFFENSIVE rebound -> ball stays live,
+        SAME possession continues (no terminal result), OREB credited exactly once."""
+        overrides = {p: {"free_throw_shrunk_rate": 0.01,
+                          "offensive_rebounding_shrunk_rate": 0.95 if p == "1" else 0.01}
+                     for p in OFF_FIVE}
+        overrides.update({p: {"defensive_rebounding_shrunk_rate": 0.01} for p in DEF_FIVE})
+        profiles = _profiles(**overrides)
+        cfg, engine, world = self._engine_and_world(profiles)
+        result = self._dispatch(cfg, engine, world)
+
+        self.assertEqual(world.stats.fga, 1)
+        self.assertEqual(world.stats.fgm, 1)
+        self.assertEqual(world.foul_state.personal_fouls.counts.get("11"), 1)
+        self.assertEqual(world.stats.fta, 1)
+        self.assertEqual(world.stats.ftm, 0)
+        self.assertEqual(world.stats.oreb, 1)
+        self.assertEqual(world.stats.dreb, 0)
+        self.assertEqual(len(world.rebound_opportunity_log), 1)  # exactly one rebound opportunity, no duplicate
+
+        # possession consequence: SAME possession continues (SECOND_CHANCE) -- no terminal result at all.
+        self.assertIsNone(result)
+        self.assertEqual(engine.state.offense_team_id, "A")
+        self.assertEqual(engine.state.ball_state.value, "HELD")
+
+        event_types = [e.event_type.name for e in engine.log.events]
+        self.assertEqual(event_types.count("SHOOTING_FOUL"), 1)
+        self.assertNotIn("DEFENSIVE_REBOUND", event_types)  # an offensive rebound never logs this event type
+
+    def test_made_fg_plus_foul_plus_missed_bonus_ft_plus_defensive_rebound(self):
+        """3. made FG + foul + MISSED bonus FT + DEFENSIVE rebound -> possession flips to the
+        defense, terminal reason DEFENSIVE_REBOUND, DREB credited exactly once."""
+        overrides = {p: {"free_throw_shrunk_rate": 0.01, "offensive_rebounding_shrunk_rate": 0.01}
+                     for p in OFF_FIVE}
+        overrides.update({p: {"defensive_rebounding_shrunk_rate": 0.95 if p == "11" else 0.01}
+                          for p in DEF_FIVE})
+        profiles = _profiles(**overrides)
+        cfg, engine, world = self._engine_and_world(profiles)
+        result = self._dispatch(cfg, engine, world)
+
+        self.assertEqual(world.stats.fga, 1)
+        self.assertEqual(world.stats.fgm, 1)
+        self.assertEqual(world.foul_state.personal_fouls.counts.get("11"), 1)
+        self.assertEqual(world.stats.fta, 1)
+        self.assertEqual(world.stats.ftm, 0)
+        self.assertEqual(world.stats.oreb, 0)
+        self.assertEqual(world.stats.dreb, 1)
+        self.assertEqual(len(world.rebound_opportunity_log), 1)  # exactly one rebound opportunity, no duplicate
+
+        # possession consequence: a real terminal result, possession flips to the defense.
+        self.assertIsNotNone(result)
+        self.assertEqual(result.reason, PossessionTerminalReason.DEFENSIVE_REBOUND)
+        self.assertEqual(result.resulting_offense_team_id, "B")
+        self.assertEqual(result.resulting_defense_team_id, "A")
+
+        event_types = [e.event_type.name for e in engine.log.events]
+        self.assertEqual(event_types.count("SHOOTING_FOUL"), 1)
+        self.assertEqual(event_types.count("DEFENSIVE_REBOUND"), 1)
+
+
 if __name__ == "__main__":
     unittest.main()
