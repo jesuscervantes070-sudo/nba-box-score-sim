@@ -49,7 +49,11 @@ class ActionType(Enum):
 # one grouping conceptually; these three are the only ones this phase's
 # policy actually consumes.
 SHOT_ACTIONS = frozenset({ActionType.PULL_UP, ActionType.CATCH_AND_SHOOT})
-PASS_ACTIONS = frozenset({ActionType.SWING_PASS, ActionType.KICKOUT, ActionType.POCKET_PASS, ActionType.RESET_PASS, ActionType.OUTLET_PASS})
+PASS_ACTIONS = frozenset({ActionType.SWING_PASS, ActionType.KICKOUT, ActionType.POCKET_PASS, ActionType.RESET_PASS,
+                           ActionType.OUTLET_PASS, ActionType.TRANSITION_PUSH})  # "Add interior shot-opportunity
+# generation" -- TRANSITION_PUSH is now dispatched as a real pass (see possession_orchestrator.dispatch_action),
+# so it belongs in this grouping too (pass_vs_shoot's existing tendency term now legitimately applies to it,
+# same reuse-not-reinvent posture as every other grouping extension in this file).
 TERMINAL_ACTIONS = frozenset({ActionType.DRIVE, ActionType.ISOLATION_ATTACK, ActionType.PULL_UP,
                                ActionType.CATCH_AND_SHOOT, ActionType.CLOSEOUT_ATTACK})
 CREATION_ACTIONS = frozenset({ActionType.DRIVE, ActionType.ISOLATION_ATTACK, ActionType.PULL_UP, ActionType.POCKET_PASS,

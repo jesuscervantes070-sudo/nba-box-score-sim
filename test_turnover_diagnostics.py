@@ -33,17 +33,13 @@ class TestTurnoverDiagnosis(unittest.TestCase):
 
     def test_engine_accounting_is_exactly_once_and_shot_clock_is_explicitly_separate(self):
         assert_turnover_reconciliation(self.diagnosis)
-        # Re-pinned for "Calibrate source-conditioned transition routing": activating
-        # CONTROLLED_ADVANCE routing materially reduces total possessions (~123 -> ~98.5/team),
-        # and therefore total turnover opportunities, proportionally -- not a turnover-logic
-        # change. (Previously re-pinned for "Fix missed and-one rebound continuation".)
-        self.assertEqual(self.diagnosis.engine_accounted_turnovers, 3764)
-        self.assertEqual(self.diagnosis.player_charged_turnovers, 3322)
-        # CONTROLLED_ADVANCE's real entry-stage burn (15.73s) exceeds both the old transition
-        # entry (1.5s) and the ordinary dead-ball entry (9.0s), leaving genuinely less shot-clock
-        # time for possessions routed there -- a real, expected mechanical consequence of the
-        # timing itself, not a turnover-logic change.
-        self.assertEqual(self.diagnosis.categories[TurnoverCategory.SHOT_CLOCK_VIOLATION].engine_accounted_turnovers, 442)
+        # Re-pinned for "Add interior shot-opportunity generation": TRANSITION_PUSH now dispatches
+        # as a real pass (new live turnover opportunities), on top of the prior "Calibrate
+        # source-conditioned transition routing" re-pin (CONTROLLED_ADVANCE reduced total
+        # possessions/turnover opportunities). Not a turnover-logic change either time.
+        self.assertEqual(self.diagnosis.engine_accounted_turnovers, 4075)
+        self.assertEqual(self.diagnosis.player_charged_turnovers, 3690)
+        self.assertEqual(self.diagnosis.categories[TurnoverCategory.SHOT_CLOCK_VIOLATION].engine_accounted_turnovers, 385)
 
     def test_steals_are_consistent_with_current_clean_interception_semantics(self):
         steals = sum(o.steal_credited for o in self.diagnosis.observations)

@@ -22,10 +22,23 @@ def _engine_with_transition(zones=None, ball_zone=SpatialZone.BACKCOURT):
 
 
 class TestPushOpportunity(unittest.TestCase):
-    def test_transition_push_generated_in_transition_phase(self):
+    def test_transition_push_generated_in_transition_phase_with_a_real_receiver(self):
+        """"Add interior shot-opportunity generation": TRANSITION_PUSH is now a real, dispatchable
+        PASS targeting RESTRICTED_RIM -- it requires a real receiver (`nearest_teammate_id`), the
+        same structural precondition SWING_PASS/RESET_PASS already use."""
+        e, ts = _engine_with_transition()
+        opps = generate_transition_opportunities(
+            e.state, StructuralContext(nearest_teammate_id="2", nearest_teammate_zone=SpatialZone.TOP_OF_KEY), ts)
+        push = next((o for o in opps if o.action_type == ActionType.TRANSITION_PUSH), None)
+        self.assertIsNotNone(push)
+        self.assertEqual(push.target_player_id, "2")
+        self.assertEqual(push.target_zone, SpatialZone.RESTRICTED_RIM)
+
+    def test_transition_push_not_generated_without_a_real_receiver(self):
+        """No teammate -> no opportunity at all -- never a phantom/targetless action."""
         e, ts = _engine_with_transition()
         opps = generate_transition_opportunities(e.state, StructuralContext(), ts)
-        self.assertTrue(any(o.action_type == ActionType.TRANSITION_PUSH for o in opps))
+        self.assertFalse(any(o.action_type == ActionType.TRANSITION_PUSH for o in opps))
 
 
 class TestOutletOpportunity(unittest.TestCase):

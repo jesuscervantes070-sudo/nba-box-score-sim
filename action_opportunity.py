@@ -154,9 +154,25 @@ def generate_opportunities(state: PossessionState, context: StructuralContext,
                                                     carrier, target_player_id=context.roller_id,
                                                     target_zone=SpatialZone.PAINT, source="live_roller"))
 
-    # Transition push: only in the TRANSITION phase
-    if state.phase == PossessionPhase.TRANSITION:
-        opportunities.append(ObjectiveOpportunity(_next_id(ActionType.TRANSITION_PUSH), ActionType.TRANSITION_PUSH,
-                                                    carrier, source="transition_phase"))
+    # Transition push ("Add interior shot-opportunity generation"): only in the TRANSITION phase,
+    # and only when a real teammate exists to receive it -- a genuine PASS (dispatched via the
+    # EXISTING, unmodified `_dispatch_pass`/`resolve_pass`, not a new resolver), landing that
+    # teammate at RESTRICTED_RIM. This is the one basketball-causal path this project's own
+    # audit found for a NON-drive possession to ever place an off-ball player at an interior
+    # zone: a live, fast-break-or-controlled-advance possession (`state.phase == TRANSITION`,
+    # covering both LIVE_TRANSITION and CONTROLLED_ADVANCE -- see transition_state.py's own
+    # restart-routing doctrine) pushing the ball ahead to a teammate already attacking the rim
+    # ("transition rim run" -- one of this task's own named candidate sources). Receiver
+    # selection reuses `context.nearest_teammate_id` -- the SAME real, already-computed receiver
+    # SWING_PASS/RESET_PASS already use (no new "who is running the floor fastest" signal is
+    # invented; this is the smallest defensible receiver choice, not a claim about who is
+    # genuinely furthest ahead). If no teammate exists at all, the opportunity is NOT generated
+    # (no target to dispatch to) -- this is a real, structural gate, never a phantom action.
+    if state.phase == PossessionPhase.TRANSITION and context.nearest_teammate_id is not None:
+        opportunities.append(ObjectiveOpportunity(
+            _next_id(ActionType.TRANSITION_PUSH), ActionType.TRANSITION_PUSH, carrier,
+            target_player_id=context.nearest_teammate_id, target_zone=SpatialZone.RESTRICTED_RIM,
+            source="transition_phase",
+        ))
 
     return opportunities

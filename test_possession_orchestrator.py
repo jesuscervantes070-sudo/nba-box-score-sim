@@ -157,9 +157,12 @@ class TestStructuralContextDerivation(unittest.TestCase):
 class TestCapabilityGating(unittest.TestCase):
     def test_unsupported_actions_are_a_disjoint_real_set(self):
         self.assertEqual(SUPPORTED_ACTION_TYPES & CAPABILITY_GATED_ACTION_TYPES, frozenset())
-        for a in (ActionType.ISOLATION_ATTACK, ActionType.CLOSEOUT_ATTACK, ActionType.TRANSITION_PUSH,
+        # TRANSITION_PUSH moved to SUPPORTED_ACTION_TYPES ("Add interior shot-opportunity
+        # generation" -- it now dispatches as a real pass); the rest remain capability-gated.
+        for a in (ActionType.ISOLATION_ATTACK, ActionType.CLOSEOUT_ATTACK,
                   ActionType.OUTLET_PASS, ActionType.RECOVER_LOOSE_BALL):
             self.assertIn(a, CAPABILITY_GATED_ACTION_TYPES)
+        self.assertIn(ActionType.TRANSITION_PUSH, SUPPORTED_ACTION_TYPES)
 
     def test_dispatch_action_rejects_unsupported_action(self):
         from action_intent import ActionIntent
@@ -1835,6 +1838,90 @@ class TestMissedShootingFoulFgaAccounting(unittest.TestCase):
         # the sequence completing on the 2nd (final) miss is what creates the rebound dispatch --
         # confirmed by the earlier and-one fix's own identical LOOSE-state check.
         self.assertEqual(len(world.rebound_opportunity_log), 1)  # exactly once, from the FINAL miss only
+
+
+class TestTransitionPushInteriorOpportunity(unittest.TestCase):
+    """"Add interior shot-opportunity generation" -- focused tests H-M. TRANSITION_PUSH now
+    dispatches through the EXISTING, unmodified `_dispatch_pass`/`resolve_pass` -- no new
+    resolver, no new attribute, no random shot-family override after the fact."""
+
+    def _dispatch(self, phase=PossessionPhase.TRANSITION, target_zone=SpatialZone.RESTRICTED_RIM):
+        import random
+        from action_opportunity import generate_opportunities, StructuralContext
+        from possession_orchestrator import dispatch_action
+        engine = PossessionEngine("p1", "A", "B", season="2023-24", rng_seed=0)
+        apply_matchup_assignments(engine, OFF_FIVE, DEF_FIVE)
+        engine.inbound("1", SpatialZone.TOP_OF_KEY, phase)
+        world = PossessionWorld(team_a_id="A", team_b_id="B", team_a_five=OFF_FIVE, team_b_five=DEF_FIVE,
+                                 profiles=_profiles(),
+                                 player_zones={pid: SpatialZone.TOP_OF_KEY for pid in OFF_FIVE + DEF_FIVE})
+        intent = ActionIntent(action_type=ActionType.TRANSITION_PUSH, actor_player_id="1", possession_id="p1",
+                               target_player_id="2", target_zone=target_zone.value)
+        result = dispatch_action(engine, world, intent, PossessionConfig(), random.Random(0), 0)
+        return engine, world, result
+
+    def test_h_non_drive_possession_can_legally_reach_interior_zone(self):
+        engine, world, result = self._dispatch()
+        self.assertIsNone(result)  # a completed pass is never terminal by itself
+        self.assertEqual(world.player_zones["2"], SpatialZone.RESTRICTED_RIM)
+        self.assertEqual(world.just_caught_pass_player_id, "2")
+
+    def test_i_interior_opportunity_does_not_rewrite_shooting_ability(self):
+        """The receiver's own shooting-ability attributes are read, not written, by this pass --
+        completion is governed entirely by the EXISTING, unmodified passing_accuracy/defender
+        mechanics (resolve_pass), never a new attribute this phase introduced."""
+        engine, world, result = self._dispatch()
+        profile_before = world.profiles["2"]
+        self.assertEqual(world.profiles["2"], profile_before)  # unchanged object -- nothing rewrote it
+        import inspect
+        import action_opportunity as mod
+        src = inspect.getsource(mod)
+        for forbidden in ("cutting", "roll_finishing", "interior_creation", "paint_touch_skill"):
+            self.assertNotIn(forbidden, src)
+
+    def test_j_interior_opportunity_can_produce_a_rim_or_floater_shot(self):
+        """After the catch, the EXISTING, unmodified `_shot_zone_options()`/`_select_shot_zone`
+        machinery (action_opportunity.py/action_selection.py) takes over: an interior ball_zone
+        has exactly ONE shot-zone option (itself) -- no softmax, no override, the SAME rule that
+        already governs every other interior shot in this engine."""
+        from action_opportunity import generate_opportunities, StructuralContext
+        engine, world, result = self._dispatch()
+        ctx = StructuralContext(just_caught_pass=True)
+        opps = generate_opportunities(engine.state, ctx)
+        catch_and_shoot = next(o for o in opps if o.action_type == ActionType.CATCH_AND_SHOOT)
+        self.assertEqual(catch_and_shoot.shot_zone_options, (SpatialZone.RESTRICTED_RIM,))
+
+    def test_k_ordinary_perimeter_jumper_behavior_remains_reachable(self):
+        """Outside the TRANSITION phase, TRANSITION_PUSH is never even offered -- ordinary
+        halfcourt perimeter/midrange shot generation is completely untouched."""
+        from action_opportunity import generate_opportunities, StructuralContext
+        engine = PossessionEngine("p1", "A", "B", season="2023-24", rng_seed=0)
+        apply_matchup_assignments(engine, OFF_FIVE, DEF_FIVE)
+        engine.inbound("1", SpatialZone.TOP_OF_KEY, PossessionPhase.HALFCOURT)
+        ctx = StructuralContext(nearest_teammate_id="2", nearest_teammate_zone=SpatialZone.LEFT_WING)
+        opps = generate_opportunities(engine.state, ctx)
+        self.assertFalse(any(o.action_type == ActionType.TRANSITION_PUSH for o in opps))
+        pull_up = next(o for o in opps if o.action_type == ActionType.PULL_UP)
+        self.assertEqual(set(pull_up.shot_zone_options), {SpatialZone.TOP_OF_KEY, SpatialZone.MIDRANGE})
+
+    def test_l_no_impossible_zone_teleport_unrelated_to_an_opportunity_event(self):
+        """A teammate NOT targeted by the push keeps their own existing zone -- only the real
+        pass receiver's zone changes, and only because of this explicit dispatch."""
+        engine, world, result = self._dispatch()
+        for pid in OFF_FIVE:
+            if pid not in ("1", "2"):
+                self.assertEqual(world.player_zones[pid], SpatialZone.TOP_OF_KEY)  # unchanged
+
+    def test_m_no_duplicate_shot_or_action_dispatch(self):
+        """Called directly via `dispatch_action` (not the full `simulate_possession` loop, which
+        is what actually appends `world.action_log` -- see its own "Structural Timing Hook"
+        section) -- `world.trace`, written directly by `_dispatch_pass` itself, is the right
+        signal at this level: exactly one PASS_RESOLVED event, exactly one trace row."""
+        engine, world, result = self._dispatch()
+        push_rows = [r for r in world.trace if r.get("action") == "TRANSITION_PUSH"]
+        self.assertEqual(len(push_rows), 1)
+        resolved = [e for e in engine.log.events if e.event_type.name == "PASS_RESOLVED"]
+        self.assertEqual(len(resolved), 1)
 
 
 if __name__ == "__main__":

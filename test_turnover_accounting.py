@@ -110,15 +110,14 @@ class TestTurnoverAccountingReconciliation(unittest.TestCase):
         # Top-level family choice changes continuation/flip state and therefore
         # the later deterministic RNG trajectory; these pin the first shot-mix
         # baseline without changing turnover logic.
-        # Re-pinned for "Calibrate source-conditioned transition routing": DEFENSIVE_REBOUND/
-        # LIVE_STEAL/LIVE_BAD_PASS_INTERCEPTION now stochastically route to CONTROLLED_ADVANCE
-        # instead of unconditional LIVE_TRANSITION, which materially reduces total possessions
-        # (123 -> ~98.5/team) and therefore total turnover opportunities -- both totals fall
-        # proportionally with pace (team_total/old_total ratio ~0.77, matching the ~0.80
-        # possession-count ratio), not because any turnover probability changed. (Previously
-        # re-pinned for "Fix missed and-one rebound continuation".)
-        self.assertEqual(team_total, 3764)
-        self.assertEqual(player_total, 3322)
+        # Re-pinned for "Add interior shot-opportunity generation": TRANSITION_PUSH now dispatches
+        # as a real pass (new live turnover opportunities -- a TRANSITION_PUSH can now be
+        # intercepted/disrupted exactly like any other pass), on top of the prior
+        # "Calibrate source-conditioned transition routing" re-pin (which reduced total
+        # possessions/turnover opportunities). (Previously re-pinned for "Fix missed and-one
+        # rebound continuation".)
+        self.assertEqual(team_total, 4075)
+        self.assertEqual(player_total, 3690)
 
     def test_basketball_output_digest_matches_first_shot_mix_baseline(self):
         payload = []
@@ -151,12 +150,12 @@ class TestTurnoverAccountingReconciliation(unittest.TestCase):
                             "ot": result.overtime_periods, "rows": rows})
         digest = hashlib.sha256(json.dumps(payload, sort_keys=True,
                                            separators=(",", ":")).encode()).hexdigest()
-        # Re-pinned for "Calibrate source-conditioned transition routing" -- see
+        # Re-pinned for "Add interior shot-opportunity generation" -- see
         # test_benchmark_uses_team_turnovers_and_preserves_player_total's own comment above for why
-        # this baseline moved (real pace/possession-count reduction from activating CONTROLLED_ADVANCE
-        # routing, not a turnover-logic change). (Previously re-pinned for "Model drive floor fouls as
-        # observable outcomes", and before that "Fix missed and-one rebound continuation".)
-        self.assertEqual(digest, "43a507c3dae5c06a6cddea18e6ab12fb331827719db54e3f3e68a9be6a8ede96")
+        # this baseline moved. (Previously re-pinned for "Calibrate source-conditioned transition
+        # routing", "Model drive floor fouls as observable outcomes", and "Fix missed and-one
+        # rebound continuation".)
+        self.assertEqual(digest, "80bc65551a988149ad8eeb9764348adda5e1f2c89807ff2ea10fcf99a9536ddb")
 
 
 if __name__ == "__main__":

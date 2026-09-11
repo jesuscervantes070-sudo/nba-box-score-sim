@@ -174,9 +174,13 @@ PerimeterShotFamily = ShotFamily  # alias: foul_resolution.ContactContext.shot_f
 SUPPORTED_ACTION_TYPES = frozenset({
     ActionType.DRIVE, ActionType.PULL_UP, ActionType.CATCH_AND_SHOOT,
     ActionType.SWING_PASS, ActionType.KICKOUT, ActionType.RESET_PASS, ActionType.POCKET_PASS,
+    # "Add interior shot-opportunity generation" -- TRANSITION_PUSH now dispatches as a real pass
+    # (see `dispatch_action`'s own PASS_ACTIONS branch, reused unmodified) -- moved OUT of
+    # CAPABILITY_GATED_ACTION_TYPES below, not duplicated in both.
+    ActionType.TRANSITION_PUSH,
 })
 CAPABILITY_GATED_ACTION_TYPES = frozenset({
-    ActionType.ISOLATION_ATTACK, ActionType.CLOSEOUT_ATTACK, ActionType.TRANSITION_PUSH,
+    ActionType.ISOLATION_ATTACK, ActionType.CLOSEOUT_ATTACK,
     ActionType.OUTLET_PASS, ActionType.RECOVER_LOOSE_BALL,
 })
 
