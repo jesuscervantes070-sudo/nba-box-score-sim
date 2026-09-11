@@ -609,6 +609,12 @@ class PossessionWorld:
     # top-of-loop clock checks and LOOSE-ball iterations that are NOT a dispatched action -- never conflated.
     # Never read by any simulation decision; purely an observation of clock state already computed elsewhere.
     action_log: List[dict] = field(default_factory=list)
+    # DIAGNOSTIC ONLY -- one entry per real LIVE possession-stage-timing charge (`{"step", "stage",
+    # "elapsed_game_clock_seconds"}`), populated by `_charge_possession_stage_time`. Kept SEPARATE from
+    # `action_log` on purpose: a stage-timing charge is not a `SelectionPolicy`-chosen `ActionIntent`
+    # dispatch, and conflating the two would corrupt `action_count`'s own established meaning (steps and
+    # actions are never conflated -- this hook preserves that same discipline for stage timing too).
+    stage_timing_log: List[dict] = field(default_factory=list)
 
     def team_id_for(self, player_id: str) -> str:
         if player_id in self.team_a_five:
@@ -789,6 +795,64 @@ class PossessionConfig:
     initial_game_clock_seconds: Optional[float] = None
     initial_phase: PossessionPhase = PossessionPhase.HALFCOURT
     is_overtime: bool = False  # structural game context; routes Phase 21B's existing OT bonus threshold
+    # ------------------------------------------------------------------
+    # Structural Timing Hook -- see docs/DETAILED_ENGINE_FIRST_DIAGNOSTIC_REPORT.md's
+    # own "Structural Timing Hook" section. These three fields are the ONLY place LIVE
+    # pre-decision possession-stage time (advance/organize/re-set, as distinct from any
+    # individual action's own EXECUTION time -- ball flight, drive execution, shot
+    # execution are all UNCHANGED by this hook) has a home. Each is charged via the
+    # SAME existing `_charge_time` mechanism every other duration in this class already
+    # uses -- not a new clock owner, only a new REASON to call the existing one.
+    #
+    # UNCALIBRATED PLACEHOLDER VALUES. NOT NBA EMPIRICAL TRUTH. Chosen only to be
+    # conservative, nonzero, and directionally sensible (a live transition possession
+    # should structurally need less entry time than a dead-ball halfcourt inbound; a
+    # second-chance reset after an offensive rebound should need less than either) --
+    # NOT fit to any target possession-duration distribution. See `PossessionStage`.
+    ordinary_entry_seconds: float = 3.0      # UNCALIBRATED PLACEHOLDER -- a new halfcourt possession's advance/organize time
+    transition_entry_seconds: float = 1.5    # UNCALIBRATED PLACEHOLDER -- a new live-transition possession's advance time
+    second_chance_reset_seconds: float = 1.0  # UNCALIBRATED PLACEHOLDER -- post-OREB re-organization, SAME possession
+
+
+class PossessionStage:
+    """Plain string constants -- same convention this project already
+    uses for every other evolving outcome vocabulary (`DriveOutcome`,
+    `PassOutcome`, `OnBallContactOutcome`, `PossessionTerminalReason`),
+    not a locked `Enum`. Each value names WHICH live, pre-decision
+    possession-stage-timing context applies -- see
+    docs/DETAILED_ENGINE_FIRST_DIAGNOSTIC_REPORT.md's "Structural Timing
+    Hook" section for the full rationale. This is SETUP/ADVANCE/
+    ORGANIZATION time, structurally distinct from any action's own
+    EXECUTION time (ball flight, drive execution, shot execution are
+    all completely unchanged by this concept)."""
+    HALFCOURT_ENTRY = "HALFCOURT_ENTRY"          # a new possession beginning at a dead-ball, halfcourt inbound
+    TRANSITION_ENTRY = "TRANSITION_ENTRY"        # a new possession beginning live, in transition
+    SECOND_CHANCE_RESET = "SECOND_CHANCE_RESET"  # an offensive rebound continuing the SAME possession (SAME possession_id)
+
+
+def _charge_possession_stage_time(engine: PossessionEngine, world: PossessionWorld, config: PossessionConfig,
+                                   stage: str, step: int) -> None:
+    """The ONE place LIVE possession-stage time (Sec. above) is charged.
+    Reuses `_charge_time` verbatim -- the SAME game-clock/shot-clock
+    pairing, the SAME `max(0, ...)` floor, the SAME single clock-owner
+    this module has always had. This is a new REASON to call the
+    existing mechanism, never a new one. Logs the REAL elapsed amount
+    (post-clamp, matching `action_log`'s own convention) to the
+    dedicated, diagnostic-only `world.stage_timing_log` -- never
+    `world.action_log`, so `action_count` keeps meaning exactly what it
+    already means (a count of dispatched `ActionIntent`s)."""
+    seconds_by_stage = {
+        PossessionStage.HALFCOURT_ENTRY: config.ordinary_entry_seconds,
+        PossessionStage.TRANSITION_ENTRY: config.transition_entry_seconds,
+        PossessionStage.SECOND_CHANCE_RESET: config.second_chance_reset_seconds,
+    }
+    if stage not in seconds_by_stage:
+        raise ValueError(f"unknown PossessionStage {stage!r}")
+    clock_before = engine.state.game_clock_remaining
+    _charge_time(engine, seconds_by_stage[stage])
+    clock_after = engine.state.game_clock_remaining
+    elapsed = (clock_before - clock_after) if clock_before is not None and clock_after is not None else None
+    world.stage_timing_log.append({"step": step, "stage": stage, "elapsed_game_clock_seconds": elapsed})
 
 
 def _require(value: Optional[float], what: str) -> float:
@@ -943,7 +1007,7 @@ def resolve_generic_loose_ball(engine: PossessionEngine, world: PossessionWorld,
 # 9. Rebound handoff (Phase 19 reuse) -- shared by every miss/block/
 # final-missed-FT path.
 # ---------------------------------------------------------------------
-def _dispatch_rebound(engine: PossessionEngine, world: PossessionWorld, rng: random.Random,
+def _dispatch_rebound(engine: PossessionEngine, world: PossessionWorld, config: PossessionConfig, rng: random.Random,
                        source: str, shot_family: str, steps: int,
                        offense_team_id: str, defense_team_id: str) -> Optional[PossessionTerminalResult]:
     """`offense_team_id`/`defense_team_id` are the team ids AS OF THE
@@ -996,7 +1060,11 @@ def _dispatch_rebound(engine: PossessionEngine, world: PossessionWorld, rng: ran
         if result.rebounder_id is not None:
             world.player_zones[result.rebounder_id] = engine.state.ball_zone
             _sync_assigned_defender_zone(engine, world, result.rebounder_id, engine.state.ball_zone)
-        return None  # continue orchestration -- SECOND_CHANCE
+        # Structural Timing Hook -- the SAME possession_id continues (Phase 19's own real OREB shot-clock
+        # reset, via `oreb_reset_value`, already ran inside `apply_rebound_to_engine` above, unmodified);
+        # this charges a real, live re-organization cost from THAT reset clock, never a new possession.
+        _charge_possession_stage_time(engine, world, config, PossessionStage.SECOND_CHANCE_RESET, steps)
+        return None  # continue orchestration -- SECOND_CHANCE, SAME possession_id
     world.stats.dreb += 1
     return _terminal(PossessionTerminalReason.DEFENSIVE_REBOUND, engine, world, steps)
 
@@ -1053,7 +1121,7 @@ def _dispatch_floor_foul(engine: PossessionEngine, world: PossessionWorld, confi
         world.stats.ftm += seq.makes
         world.stats.points += seq.makes
         if engine.state.ball_state == BallState.LOOSE:
-            return _dispatch_rebound(engine, world, rng, ReboundSource.FINAL_MISSED_FT, "FREE_THROW", steps,
+            return _dispatch_rebound(engine, world, config, rng, ReboundSource.FINAL_MISSED_FT, "FREE_THROW", steps,
                                       offense_team_id=fouled_team_id, defense_team_id=offender_team_id)
         # a made final bonus FT -> dead ball, possession flips to the fouling team
         return _terminal(PossessionTerminalReason.FINAL_FT_MADE, engine, world, steps)
@@ -1102,8 +1170,16 @@ def _dispatch_drive(engine: PossessionEngine, world: PossessionWorld, intent: Ac
         world.log_trace(step=steps, action="ON_BALL_PRESSURE", outcome=pressure_outcome, driver=driver_id, defender=defender_id)
 
         if pressure_outcome == OnBallContactOutcome.OFFENSIVE_CHARGE:
+            # Clock bug fix (see docs/DETAILED_ENGINE_FIRST_DIAGNOSTIC_REPORT.md's "Structural Timing
+            # Hook" section): the drive itself happened, live, BEFORE the whistle -- it must consume the
+            # SAME real `drive_action_seconds` any other drive outcome already does. Charged EXACTLY ONCE,
+            # here, reusing the existing constant verbatim (no new duration invented). Foul ADMINISTRATION
+            # itself (`_dispatch_floor_foul`) remains real dead-ball time -- charges nothing additional,
+            # unchanged offensive/defensive-foul semantics, unchanged administration ownership.
+            _charge_time(engine, config.drive_action_seconds)
             return _dispatch_floor_foul(engine, world, config, rng, steps, OFFENSIVE_CHARGE, driver_id, defender_id)
         if pressure_outcome == OnBallContactOutcome.DEFENSIVE_FLOOR_FOUL:
+            _charge_time(engine, config.drive_action_seconds)  # same fix, same reasoning, as above
             return _dispatch_floor_foul(engine, world, config, rng, steps, DEFENSIVE_FLOOR_FOUL, defender_id, driver_id)
         if pressure_outcome == OnBallContactOutcome.FORCED_PICKUP:
             _charge_time(engine, config.drive_action_seconds)
@@ -1203,7 +1279,7 @@ def _dispatch_shot(engine: PossessionEngine, world: PossessionWorld, intent: Act
             return _terminal(PossessionTerminalReason.MADE_FG, engine, world, steps)
         if result.blocker_id is not None and result.outcome in (InteriorShotOutcome.BLOCKED_RETAINED_OFFENSE, InteriorShotOutcome.BLOCKED_SECURED_DEFENSE):
             world.stats.blocks += 1
-        return _dispatch_rebound(engine, world, rng, ReboundSource.MISSED_FG if result.outcome == InteriorShotOutcome.MISSED_UNBLOCKED
+        return _dispatch_rebound(engine, world, config, rng, ReboundSource.MISSED_FG if result.outcome == InteriorShotOutcome.MISSED_UNBLOCKED
                                   else ReboundSource.UNRESOLVED_BLOCK, shot_family, steps,
                                   offense_team_id=offense_team_id, defense_team_id=defense_team_id)
     else:
@@ -1218,7 +1294,7 @@ def _dispatch_shot(engine: PossessionEngine, world: PossessionWorld, intent: Act
             world.stats.fg3m += 1
             world.stats.points += result.points
             return _terminal(PossessionTerminalReason.MADE_FG, engine, world, steps)
-        return _dispatch_rebound(engine, world, rng, ReboundSource.MISSED_FG, shot_family, steps,
+        return _dispatch_rebound(engine, world, config, rng, ReboundSource.MISSED_FG, shot_family, steps,
                                   offense_team_id=offense_team_id, defense_team_id=defense_team_id)
 
 
@@ -1273,7 +1349,7 @@ def _dispatch_shooting_foul(engine: PossessionEngine, world: PossessionWorld, co
     if made:
         return _terminal(PossessionTerminalReason.MADE_FG, engine, world, steps)
     if engine.state.ball_state == BallState.LOOSE:
-        return _dispatch_rebound(engine, world, rng, ReboundSource.FINAL_MISSED_FT, shot_family, steps,
+        return _dispatch_rebound(engine, world, config, rng, ReboundSource.FINAL_MISSED_FT, shot_family, steps,
                                   offense_team_id=offense_team_id, defense_team_id=defense_team_id)
     return _terminal(PossessionTerminalReason.FINAL_FT_MADE, engine, world, steps)
 
@@ -1429,6 +1505,16 @@ def simulate_possession(
     _mirror_defender_zones(world.player_zones, engine.state.assignments)
     world.just_caught_pass_player_id = inbound_receiver_id
 
+    # Structural Timing Hook -- charged ONCE, before the very first live decision, using the SAME real
+    # signal Phase 23B already supplies (`config.initial_phase`) to distinguish a dead-ball halfcourt
+    # entry from a live transition entry. If this charge alone exhausts the shot clock or game clock, the
+    # loop's own EXISTING top-of-loop checks (immediately below) catch it on the very first iteration and
+    # terminate via the real, existing `shot_clock_violation()`/`period_expiration()` methods -- no action
+    # is ever dispatched past an expired clock, and no fake basketball event is invented.
+    entry_stage = PossessionStage.TRANSITION_ENTRY if config.initial_phase == PossessionPhase.TRANSITION \
+        else PossessionStage.HALFCOURT_ENTRY
+    _charge_possession_stage_time(engine, world, config, entry_stage, step=0)
+
     for step in range(config.max_steps_per_possession):
         if engine.state.shot_clock_remaining is not None and engine.state.shot_clock_remaining <= 0.0 \
                 and engine.state.ball_state != BallState.LOOSE:
@@ -1474,10 +1560,20 @@ def simulate_possession(
         # per real dispatched ActionIntent (distinct from `step`, which also counts top-of-loop clock/
         # LOOSE-ball iterations -- see `PossessionWorld.action_log`'s own docstring). Clock is read before
         # and after the SAME dispatch call this module already makes; nothing about dispatch itself changes.
+        # `dispatch_action` can internally trigger a SECOND_CHANCE_RESET stage-timing charge (via
+        # `_dispatch_rebound`, on an OREB, within this SAME call) -- that time is already recorded, once,
+        # in `world.stage_timing_log`; it is explicitly EXCLUDED from this action_log entry's own elapsed
+        # so the two diagnostic categories never double-count the same real clock decrement.
         clock_before = engine.state.game_clock_remaining
+        stage_log_len_before = len(world.stage_timing_log)
         terminal = dispatch_action(engine, world, intent, config, rng, step)
         clock_after = (terminal.engine_state if terminal is not None else engine.state).game_clock_remaining
         elapsed = (clock_before - clock_after) if clock_before is not None and clock_after is not None else None
+        if elapsed is not None:
+            nested_stage_seconds = sum(
+                (e.get("elapsed_game_clock_seconds") or 0.0) for e in world.stage_timing_log[stage_log_len_before:]
+            )
+            elapsed -= nested_stage_seconds
         world.action_log.append({"step": step, "action_type": intent.action_type.value, "elapsed_game_clock_seconds": elapsed})
         if terminal is not None:
             return terminal

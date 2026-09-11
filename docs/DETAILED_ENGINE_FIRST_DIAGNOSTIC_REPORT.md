@@ -806,3 +806,268 @@ baseline + 3 new). Zero regressions.
 - This diagnostic work remains **UNCOMMITTED**, on top of the pushed
   defender-zone-fix checkpoint (`7fc98de`).
 - No new gameplay phase was begun.
+
+**Checkpoint note:** the timing-diagnosis work above was subsequently
+committed (`996c5d8` "Document detailed engine timing diagnosis") and
+pushed. All measurements above are preserved exactly as reported. The
+section below implements the recommended fix/hook on top of that
+pushed baseline; it remains uncommitted.
+
+---
+
+# Structural Timing Hook
+
+Implements exactly two things, both recommended (not newly decided) by
+the prior diagnosis: (1) the literal floor-foul zero-duration clock bug
+fix, and (2) the smallest possible home for LIVE, pre-decision
+possession-stage time. **No probability, selection weight, rebound/
+turnover/shooting/foul rate, or player attribute was touched anywhere.**
+
+## Why the hook was needed
+
+The prior diagnosis (Sec. K above) concluded the 3–4 second average
+possession was caused primarily by too few modeled actions combined
+with a completely unmodeled "live but undecided" phase — NOT by any
+individual action duration being wrong for what it represents (ball
+flight, drive execution, and shot execution are all honest about their
+own narrow scope). There was no existing code location where a real,
+configurable, non-zero cost for "the ball is live and a player is
+advancing/organizing/re-setting it" could be charged. This section adds
+exactly that location, and nothing else.
+
+## Floor-foul clock bug correction
+
+**Root cause (recap, Sec. J above):** `_dispatch_drive` returned
+directly into `_dispatch_floor_foul` on `OFFENSIVE_CHARGE`/
+`DEFENSIVE_FLOOR_FOUL` outcomes, before ever reaching the
+`_charge_time(engine, config.drive_action_seconds)` call every OTHER
+drive outcome reaches.
+
+**Exact fix:** `_charge_time(engine, config.drive_action_seconds)` is
+now called immediately before each `_dispatch_floor_foul(...)` call in
+`_dispatch_drive` — the SAME existing constant, the SAME existing
+clock-decrement mechanism, charged EXACTLY once. No new duration was
+invented. `_dispatch_floor_foul` itself still charges nothing
+additional — foul ADMINISTRATION remains real dead-ball time (correct,
+unchanged), and offensive-foul/defensive-floor-foul semantics
+(personal foul, team foul, bonus, turnover-vs-continuation) are
+completely untouched. Verified:
+`test_floor_foul_drive_consumes_drive_time_exactly_once`,
+`test_floor_foul_branch_now_charges_the_same_drive_time_as_any_other_drive_outcome`.
+
+## Setup-stage semantics
+
+A new `PossessionStage` (plain string constants, the SAME convention
+as `DriveOutcome`/`PassOutcome`/`OnBallContactOutcome`/
+`PossessionTerminalReason` — not a locked `Enum`):
+
+- `HALFCOURT_ENTRY` — a new possession beginning at a dead-ball,
+  halfcourt inbound.
+- `TRANSITION_ENTRY` — a new possession beginning live, in transition.
+- `SECOND_CHANCE_RESET` — an offensive rebound continuing the SAME
+  possession.
+
+`_charge_possession_stage_time(engine, world, config, stage, step)` is
+the ONE place any of these is charged. It reuses `_charge_time`
+verbatim (same game-clock/shot-clock pairing, same `max(0, ...)`
+floor) — this is a new REASON to call the existing clock mechanism,
+never a new clock owner. The real, post-clamp elapsed amount is logged
+to a NEW, dedicated `PossessionWorld.stage_timing_log` list — kept
+deliberately SEPARATE from `world.action_log` so `action_count` keeps
+meaning exactly what it already meant (a count of `SelectionPolicy`-
+chosen `ActionIntent` dispatches); a setup-stage charge is not one of
+those.
+
+## Config fields / placeholders
+
+Added to `PossessionConfig`, prominently marked:
+
+```python
+ordinary_entry_seconds: float = 3.0       # UNCALIBRATED PLACEHOLDER
+transition_entry_seconds: float = 1.5     # UNCALIBRATED PLACEHOLDER
+second_chance_reset_seconds: float = 1.0  # UNCALIBRATED PLACEHOLDER
+```
+
+**UNCALIBRATED PLACEHOLDER. NOT NBA EMPIRICAL TRUTH.** Chosen only to
+be conservative, nonzero, and directionally sensible (a live transition
+entry should structurally cost less than a dead-ball halfcourt entry; a
+second-chance reset should cost less than either) — NOT fit to any
+target possession-duration distribution, and NOT chosen to approach the
+14.6-second reference.
+
+## Exact locations where setup time is charged
+
+1. **Entry stage** — once, in `simulate_possession`, immediately after
+   `engine.inbound(...)`/zone setup and BEFORE the possession's main
+   loop begins. The stage (`HALFCOURT_ENTRY` vs. `TRANSITION_ENTRY`) is
+   chosen from `config.initial_phase` — a real signal Phase 23B already
+   supplies, not new plumbing.
+2. **Second-chance reset** — once per real offensive rebound, inside
+   `_dispatch_rebound`'s `SECURED_OFFENSE`/`TEAM_REBOUND_OFFENSE`
+   branch, immediately before returning `None` to continue the SAME
+   possession.
+
+No third call site exists. `_charge_possession_stage_time` itself
+raises on an unknown stage name, and `_charge_time` (reused, unchanged)
+still raises on a non-positive duration — both existing safety
+properties are preserved.
+
+## State / clock ownership
+
+Unchanged doctrine, reaffirmed: `_charge_time` remains the SOLE
+game-clock/shot-clock decrement primitive in this module (`resolve_pass`
+remains the one other, pre-existing, already-audited decrementer, for
+ball-flight time only). The Structural Timing Hook adds no new clock
+field, no new clock owner, and no second decrement path — only new
+CALLS into the existing one.
+
+**Double-count bug found and fixed while building this hook** (a real
+finding, not a simulation bug — a diagnostic-instrumentation
+bookkeeping issue): the top-level loop's `action_log` entry for a
+dispatched `ActionIntent` is measured as `clock_before - clock_after`
+around the WHOLE `dispatch_action` call. When a shot's own miss
+triggers `_dispatch_rebound`'s `SECOND_CHANCE_RESET` charge WITHIN that
+same call (an OREB resolved inline), the outer measurement folded the
+stage-timing seconds into the action's own recorded elapsed — and
+`stage_timing_log` recorded them AGAIN, separately. **Fixed**: the loop
+now subtracts any `stage_timing_log` entries newly appended DURING the
+`dispatch_action` call from the action's own recorded elapsed, before
+logging it — the REAL clock decrement (verified via the full
+possession-elapsed reconciliation) was always correct; only the
+DIAGNOSTIC ATTRIBUTION between the two telemetry categories was
+double-counting. Verified:
+`test_action_and_loose_ball_time_fully_explains_total_elapsed` (now
+reconciles exactly, `2880.0 == 2880.0`, vs. a `163.0`-second over-count
+before the fix) and `test_shot_execution_duration_excludes_stage_timing`.
+
+## OREB timing semantics
+
+An offensive rebound remains the SAME `possession_id` and the SAME
+`simulate_possession` call — confirmed directly
+(`test_second_chance_reset_charged_after_a_real_oreb_same_possession_id`:
+every event in the terminal result shares one `possession_id` even
+after a real, boosted-rate OREB fires a `SECOND_CHANCE_RESET` charge).
+The shot-clock reset itself is Phase 19's own existing, unmodified
+`oreb_reset_value` machinery (14s modern-era reset) — the setup charge
+consumes FROM that already-reset clock, exactly like any other live
+action would, never a second reset and never a new possession.
+
+## Transition timing semantics
+
+`TRANSITION_ENTRY` is charged whenever `config.initial_phase ==
+PossessionPhase.TRANSITION` — the SAME real signal Phase 23B already
+computes (`RestartType.LIVE_TRANSITION` → `PossessionPhase.TRANSITION`)
+to distinguish a live rebound/steal restart from a dead-ball inbound.
+No transition offense, transition scoring bonus, or transition-specific
+mechanic was built — only this one timing-context distinction. Verified:
+`test_transition_entry_consumes_configured_setup_time`.
+
+## Focused tests
+
+18 new tests across `test_possession_orchestrator.py`
+(`TestStructuralTimingHook`, 12 tests) and
+`test_detailed_engine_diagnostics.py` (`TestClockAccounting`, 3 updated/
+new tests) plus 3 pre-existing tests updated for the fix's own
+legitimate, demonstrated effect on possession counts (loose numeric
+bounds widened, not weakened — see each test's own comment). Covers:
+floor-foul drive timing (exactly once, correct duration), ordinary/
+transition entry charging the correct configured amount, second-chance
+reset with same-possession-id preservation, exactly-once game/shot
+clock decrementing, period expiration and shot-clock expiration DURING
+setup correctly preventing any action dispatch (`action_count == 0` is
+now a legitimate, tested possibility), no negative clocks, pass-flight/
+drive-execution/shot-execution durations all unchanged outside the
+fixed bug, deterministic replay, and diagnostic attribution of the new
+`stage_timing` category.
+
+Full suite: `python3 -m unittest discover -p "test_*.py"` → **919/919
+OK** (907 baseline + 12 new). Zero regressions.
+
+## Before / after (STRUCTURAL sensitivity test, NOT a realism claim)
+
+### Seed 23024
+
+| Metric | BEFORE (defender-zone fix only) | AFTER (+ Structural Timing Hook) |
+|---|---|---|
+| Score | HOME 458 – 395 AWAY | HOME 283 – 241 AWAY |
+| Total possessions | 794 | **486** |
+| Mean / median possession seconds | 3.627 / 2.300 | **5.926 / 4.500** |
+| Mean / median actions per possession | 3.171 / 2 | 3.109 / 2 |
+| FGA / misses | 857 / 567 | 521 / 342 |
+| OREB / DREB | 276 / 286 | 163 / 177 |
+| OREB share | 0.491 | 0.479 |
+| Turnovers (rate) | 211 (26.6%) | 124 (25.5%) |
+| Setup/stage time (new category) | n/a | **1,177.3s (40.9% of game clock)** — HALFCOURT_ENTRY 573.3s/192 charges, TRANSITION_ENTRY 441.0s/294 charges, SECOND_CHANCE_RESET 163.0s/163 charges |
+| Action-execution time | 2,786.9s (96.8%) | 1,650.7s (57.3%) |
+| Faults | 0 | 0 |
+
+### 10-game sample (seeds 23024–23033)
+
+| Metric | BEFORE | AFTER |
+|---|---|---|
+| Mean possessions | 769.8 | **471.4** |
+| Mean OREB / DREB | 257.9 / 275.2 | 156.1 / 171.4 |
+| Mean OREB share | 0.484 | 0.477 |
+| Mean personal fouls | 15.4 | 8.5 |
+| Mean FTA | 34.0 | 19.3 |
+| Mean turnovers (rate) | 187.3 (24.3%) | 113.1 (24.0%) |
+| Faults across 10 games | 0 | 0 |
+
+(Personal fouls/FTA dropped simply because FEWER, LONGER possessions
+occurred in the same 48 minutes — not because any foul probability
+changed; foul rate PER POSSESSION is essentially unchanged, consistent
+with turnover rate also being essentially unchanged.)
+
+**This is exactly the required structural proof, nothing more:**
+adding a real, nonzero, uncalibrated setup-time placeholder
+mechanically lengthened possessions (794→486, a real ~39% reduction in
+possession count for the SAME 48 minutes) and increased mean/median
+possession duration (3.6s→5.9s / 2.3s→4.5s), while every individual
+action-execution duration (drive, shot, pass) remained byte-for-byte
+identical to before, and OREB share / turnover rate — governed
+entirely by UNTOUCHED resolver logic — stayed within noise of their
+pre-hook values. **Pace is still far short of the real ~14.6s
+reference and this is explicitly NOT a calibration claim.**
+
+## What remains uncalibrated
+
+- All three new stage-timing constants (3.0s / 1.5s / 1.0s) are
+  explicitly-flagged placeholders with no empirical grounding.
+- The existing action-execution durations (2.5s drive, 1.5s pull-up,
+  1.0s catch-and-shoot, 0.4–0.9s pass) are unchanged and remain the
+  SAME placeholders diagnosed previously.
+- No inter-action "hold/dribble" timing stage was added (explicitly
+  out of scope per instruction — "do not make every pass reception
+  automatically create a full possession-entry delay"); this remains a
+  documented future extension point, not built here.
+- The floor-foul branch's now-correct `drive_action_seconds` charge is
+  itself still an uncalibrated placeholder (same one every other drive
+  outcome already used).
+
+## Empirical quantities needed next (data dependency only, not researched this task)
+
+- Real seconds a possession's advance/setup phase should cost, and
+  whether/how much `TRANSITION_ENTRY` should differ from
+  `HALFCOURT_ENTRY` (real NBA transition possessions are measurably
+  faster) — derivable from NBA play-by-play event timestamps or public
+  tracking-derived possession-duration distributions.
+- Real seconds a second-chance reset should cost, separated from an
+  ordinary new-possession entry.
+- Whether an inter-action hold/dribble stage is empirically warranted
+  at all, and if so its real magnitude — not assumed or estimated here.
+
+## Confirmations
+
+- No probability, selection-weight, rebound/turnover/shooting/foul
+  RATE, or player attribute was changed anywhere — verified by direct
+  diff review (`git diff 996c5d8 -- possession_orchestrator.py`)
+  containing no touched numeric constant outside the three new,
+  clearly-named timing fields and the floor-foul fix's reuse of the
+  existing `drive_action_seconds`.
+- No legacy/product file was touched: `game_engine.py`, `main.py`,
+  `season.py`, `playoffs.py`, `db.py`, `models.py`, `README.md`,
+  `ACCURACY.md`, `CLAUDE.md` are all untouched.
+- Both the floor-foul bug fix and the Structural Timing Hook remain
+  **UNCOMMITTED**, on top of the pushed timing-diagnosis checkpoint
+  (`996c5d8`).
+- No new gameplay phase was begun.

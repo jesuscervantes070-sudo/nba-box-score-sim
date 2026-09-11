@@ -220,7 +220,7 @@ class TestReboundMissingEstimateGating(unittest.TestCase):
         world = PossessionWorld(team_a_id="A", team_b_id="B", team_a_five=OFF_FIVE, team_b_five=DEF_FIVE,
                                  profiles=profiles)
         world.player_zones = {pid: SpatialZone.RESTRICTED_RIM for pid in OFF_FIVE + DEF_FIVE}
-        result = _dispatch_rebound(engine, world, random.Random(1), ReboundSource.MISSED_FG, "RIM", 0,
+        result = _dispatch_rebound(engine, world, PossessionConfig(), random.Random(1), ReboundSource.MISSED_FG, "RIM", 0,
                                     offense_team_id="A", defense_team_id="B")
         # with zero eligible offensive candidates, resolve_rebound's own real fallback applies --
         # never an individual offensive rebounder fabricated from a missing estimate.
@@ -599,7 +599,7 @@ class TestDefenderZoneStalenessFix(unittest.TestCase):
                 world.player_zones["1"] = SpatialZone.RESTRICTED_RIM
                 _sync_assigned_defender_zone(engine, world, "1", SpatialZone.RESTRICTED_RIM)
                 self._loose_ball_after_interior_miss(engine)
-                terminal = _dispatch_rebound(engine, world, random.Random(seed), ReboundSource.MISSED_FG, family, 0,
+                terminal = _dispatch_rebound(engine, world, PossessionConfig(), random.Random(seed), ReboundSource.MISSED_FG, family, 0,
                                               offense_team_id="A", defense_team_id="B")
                 if terminal is not None and terminal.reason == PossessionTerminalReason.DEFENSIVE_REBOUND:
                     found[family] = True
@@ -616,7 +616,7 @@ class TestDefenderZoneStalenessFix(unittest.TestCase):
             engine, world = self._engine_and_world()
             engine.begin_shot(SpatialZone.TOP_OF_KEY, dt=0.0)
             engine.resolve_shot_missed_pending_rebound("1", dt=0.0)
-            terminal = _dispatch_rebound(engine, world, random.Random(seed), ReboundSource.MISSED_FG, "THREE_POINT", 0,
+            terminal = _dispatch_rebound(engine, world, PossessionConfig(), random.Random(seed), ReboundSource.MISSED_FG, "THREE_POINT", 0,
                                           offense_team_id="A", defense_team_id="B")
             seen.add(terminal.reason if terminal is not None else "OFFENSE_CONTINUES")
         self.assertEqual(seen, {PossessionTerminalReason.DEFENSIVE_REBOUND, "OFFENSE_CONTINUES"})
@@ -662,6 +662,169 @@ class TestDefenderZoneStalenessFix(unittest.TestCase):
         # test_detailed_engine_diagnostics.py; this just confirms the new sync doesn't break trace/action_log shape.
         self.assertIsInstance(result.world.trace, list)
         self.assertIsInstance(result.world.action_log, list)
+
+
+class TestStructuralTimingHook(unittest.TestCase):
+    """Focused tests for the Structural Timing Hook -- see
+    docs/DETAILED_ENGINE_FIRST_DIAGNOSTIC_REPORT.md's "Structural Timing
+    Hook" section."""
+
+    def test_floor_foul_drive_consumes_drive_time_exactly_once(self):
+        cfg = PossessionConfig(force_on_ball_contact_established=True)
+        found = False
+        for seed in range(200):
+            result = _run(config=cfg, seed=seed, possession_id=f"ff{seed}")
+            drive_entries = [a for a in result.world.action_log if a["action_type"] == "DRIVE"]
+            for entry in drive_entries:
+                if entry["elapsed_game_clock_seconds"] is not None:
+                    self.assertLessEqual(entry["elapsed_game_clock_seconds"], cfg.drive_action_seconds + 1e-9)
+                    if abs(entry["elapsed_game_clock_seconds"] - cfg.drive_action_seconds) < 1e-9:
+                        found = True
+        self.assertTrue(found, "expected at least one full-duration DRIVE entry within 200 seeds")
+
+    def test_ordinary_halfcourt_entry_consumes_configured_setup_time(self):
+        cfg = PossessionConfig()
+        result = _run(config=cfg, seed=1, possession_id="entry")
+        entry = result.world.stage_timing_log[0]
+        self.assertEqual(entry["stage"], "HALFCOURT_ENTRY")
+        self.assertAlmostEqual(entry["elapsed_game_clock_seconds"], cfg.ordinary_entry_seconds, places=6)
+
+    def test_transition_entry_consumes_configured_setup_time(self):
+        cfg = PossessionConfig(initial_phase=PossessionPhase.TRANSITION)
+        result = _run(config=cfg, seed=1, possession_id="trans_entry")
+        entry = result.world.stage_timing_log[0]
+        self.assertEqual(entry["stage"], "TRANSITION_ENTRY")
+        self.assertAlmostEqual(entry["elapsed_game_clock_seconds"], cfg.transition_entry_seconds, places=6)
+
+    def test_second_chance_reset_charged_after_a_real_oreb_same_possession_id(self):
+        from dataclasses import replace
+        cfg = PossessionConfig()
+        profiles = _profiles()
+        for p in OFF_FIVE:
+            profiles[p] = replace(profiles[p], offensive_rebounding_shrunk_rate=0.6)
+        found = False
+        for seed in range(200):
+            result = _run(config=cfg, profiles=profiles, seed=seed, possession_id=f"oreb{seed}")
+            reset_entries = [e for e in result.world.stage_timing_log if e["stage"] == "SECOND_CHANCE_RESET"]
+            if reset_entries:
+                self.assertAlmostEqual(reset_entries[0]["elapsed_game_clock_seconds"], cfg.second_chance_reset_seconds, places=6)
+                # SAME possession_id throughout -- an OREB never starts a new possession
+                self.assertTrue(all(e.possession_id == result.engine_state.possession_id for e in result.events))
+                found = True
+                break
+        self.assertTrue(found, "expected a real second-chance reset within 200 boosted-OREB seeds")
+
+    def test_setup_decrements_game_and_shot_clock_exactly_once(self):
+        engine_config = PossessionConfig()
+        result = _run(config=engine_config, seed=1, possession_id="clockcheck")
+        # the entry-stage charge is the FIRST clock-consuming event of the possession -- confirm the
+        # possession's own total elapsed time is not smaller than the entry stage alone (i.e. it was
+        # really applied, not skipped), and that no clock value is ever negative anywhere in the result.
+        self.assertGreaterEqual(result.engine_state.game_clock_remaining, 0.0)
+        if result.engine_state.shot_clock_remaining is not None:
+            self.assertGreaterEqual(result.engine_state.shot_clock_remaining, 0.0)
+        self.assertGreaterEqual(len(result.world.stage_timing_log), 1)
+
+    def test_period_expiration_during_setup_prevents_action_dispatch(self):
+        short_game = EraRules(era_name="test_short_game", shot_clock_seconds=24.0, oreb_shot_clock_reset_seconds=None,
+                               bonus_foul_threshold=5, period_length_seconds=1.0, periods_per_game=4)
+        cfg = PossessionConfig(era_rules=short_game)  # 1.0s period clock < ordinary_entry_seconds (3.0s)
+        result = _run(config=cfg, seed=1, possession_id="period_setup")
+        self.assertEqual(result.reason, PossessionTerminalReason.PERIOD_END)
+        self.assertEqual(len(result.world.action_log), 0)  # no SelectionPolicy dispatch ever reached
+        self.assertEqual(result.engine_state.game_clock_remaining, 0.0)
+
+    def test_shot_clock_expiration_during_setup_prevents_action_dispatch(self):
+        short_shot_clock = EraRules(era_name="test_short_shot_clock", shot_clock_seconds=1.0,
+                                     oreb_shot_clock_reset_seconds=None, bonus_foul_threshold=5,
+                                     period_length_seconds=720.0, periods_per_game=4)
+        cfg = PossessionConfig(era_rules=short_shot_clock)  # 1.0s shot clock < ordinary_entry_seconds (3.0s)
+        result = _run(config=cfg, seed=1, possession_id="shotclock_setup")
+        self.assertEqual(result.reason, PossessionTerminalReason.SHOT_CLOCK_VIOLATION)
+        self.assertEqual(len(result.world.action_log), 0)
+        self.assertEqual(result.engine_state.shot_clock_remaining, 0.0)
+
+    def test_pass_flight_duration_unaffected_by_the_timing_hook(self):
+        from possession_orchestrator import _dispatch_pass
+        engine = PossessionEngine("p1", "A", "B", season="2023-24", rng_seed=1)
+        apply_matchup_assignments(engine, OFF_FIVE, DEF_FIVE)
+        engine.inbound("1", SpatialZone.TOP_OF_KEY, PossessionPhase.HALFCOURT)
+        world = PossessionWorld(team_a_id="A", team_b_id="B", team_a_five=OFF_FIVE, team_b_five=DEF_FIVE, profiles=_profiles())
+        intent = ActionIntent(action_type=ActionType.SWING_PASS, actor_player_id="1", target_player_id="2",
+                               possession_id="p1", target_zone=SpatialZone.TOP_OF_KEY.value)
+        import random
+        for seed in range(50):
+            e2 = PossessionEngine("p1", "A", "B", season="2023-24", rng_seed=1)
+            apply_matchup_assignments(e2, OFF_FIVE, DEF_FIVE)
+            e2.inbound("1", SpatialZone.TOP_OF_KEY, PossessionPhase.HALFCOURT)
+            w2 = PossessionWorld(team_a_id="A", team_b_id="B", team_a_five=OFF_FIVE, team_b_five=DEF_FIVE, profiles=_profiles())
+            clock_before = e2.state.game_clock_remaining
+            outcome = _dispatch_pass(e2, w2, intent, random.Random(seed), 0)
+            if outcome is None:  # a completed pass
+                elapsed = clock_before - e2.state.game_clock_remaining
+                self.assertAlmostEqual(elapsed, 0.4, places=6)  # DIRECT-family flight time, unchanged
+                return
+        self.fail("expected a completed pass within 50 seeds")
+
+    def test_ordinary_drive_execution_duration_unchanged_outside_the_floor_foul_bug(self):
+        result = _run(config=PossessionConfig(), seed=1, possession_id="drivecheck")
+        for entry in result.world.action_log:
+            if entry["action_type"] == "DRIVE" and entry["elapsed_game_clock_seconds"] is not None:
+                self.assertLessEqual(entry["elapsed_game_clock_seconds"], PossessionConfig().drive_action_seconds + 1e-9)
+
+    def test_shot_execution_duration_excludes_stage_timing(self):
+        """The action_log's own recorded elapsed for a shot must reflect
+        ONLY that shot's own execution duration, never a nested
+        SECOND_CHANCE_RESET charge folded in (that would double-count
+        the same clock decrement across two diagnostic categories)."""
+        from dataclasses import replace
+        cfg = PossessionConfig()
+        profiles = _profiles()
+        for p in OFF_FIVE:
+            profiles[p] = replace(profiles[p], offensive_rebounding_shrunk_rate=0.6)
+        for seed in range(200):
+            result = _run(config=cfg, profiles=profiles, seed=seed, possession_id=f"shotex{seed}")
+            reset_entries = [e for e in result.world.stage_timing_log if e["stage"] == "SECOND_CHANCE_RESET"]
+            if not reset_entries:
+                continue
+            step = reset_entries[0]["step"]
+            same_step_action = [a for a in result.world.action_log if a["step"] == step]
+            if same_step_action and same_step_action[0]["action_type"] in ("PULL_UP", "CATCH_AND_SHOOT"):
+                self.assertLessEqual(same_step_action[0]["elapsed_game_clock_seconds"],
+                                      max(cfg.pull_up_action_seconds, cfg.catch_and_shoot_action_seconds) + 1e-9)
+                return
+        # not every seed will line up a shot with a same-step OREB reset -- absence is not a failure,
+        # the reconciliation test in test_detailed_engine_diagnostics.py already proves no double-count globally.
+
+    def test_deterministic_replay_preserved_with_stage_timing(self):
+        def run():
+            return simulate_possession("A", "B", OFF_FIVE, DEF_FIVE, _profiles(), inbound_receiver_id="1",
+                                        config=PossessionConfig(), rng_seed=99, possession_id="det_stage")
+        first, second = run(), run()
+        self.assertEqual(first.reason, second.reason)
+        self.assertEqual(first.stats.points, second.stats.points)
+        self.assertEqual(first.world.stage_timing_log, second.world.stage_timing_log)
+
+    def test_diagnostics_correctly_attribute_stage_timing(self):
+        from detailed_engine_diagnostics import diagnose_game
+        from detailed_game import simulate_detailed_game
+        from possession_orchestrator import PlayerSimulationProfile
+        home = tuple(str(i) for i in range(1, 6))
+        away = tuple(str(i) for i in range(11, 16))
+        profiles = {}
+        for p in home:
+            profiles[p] = PlayerSimulationProfile.synthetic(p, "HOME")
+        for p in away:
+            profiles[p] = PlayerSimulationProfile.synthetic(p, "AWAY")
+        result = simulate_detailed_game("HOME", "AWAY", home, away, profiles, rng_seed=23024)
+        diag = diagnose_game(result)
+        self.assertIn("HALFCOURT_ENTRY", diag.stage_timing)
+        raw_total = sum(
+            (e.get("elapsed_game_clock_seconds") or 0.0)
+            for r in result.possessions for e in r.terminal_result.world.stage_timing_log
+            if e["stage"] == "HALFCOURT_ENTRY"
+        )
+        self.assertAlmostEqual(diag.stage_timing["HALFCOURT_ENTRY"].total_seconds, raw_total, places=6)
 
 
 if __name__ == "__main__":

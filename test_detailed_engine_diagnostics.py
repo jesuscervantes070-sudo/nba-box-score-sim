@@ -50,7 +50,13 @@ class TestPossessionDiagnostics(unittest.TestCase):
             # relationship (e.g. a possession terminating on its very first dispatch has
             # step_count=0, action_count=1).
             self.assertGreaterEqual(d.step_count, 0)
-            self.assertGreaterEqual(d.action_count, 1)
+            if d.terminal_reason in ("SHOT_CLOCK_VIOLATION", "PERIOD_END"):
+                # Structural Timing Hook: the entry-stage charge itself can now exhaust the shot/game
+                # clock before ANY action is ever dispatched (a real, intended possibility, e.g. very
+                # little clock remains at a period's end) -- action_count==0 is legitimate here.
+                self.assertGreaterEqual(d.action_count, 0)
+            else:
+                self.assertGreaterEqual(d.action_count, 1)
 
     def test_misses_counted_exactly_once_per_shot(self):
         for record in self.result.possessions:
@@ -161,13 +167,14 @@ class TestMultiGameDiagnostics(unittest.TestCase):
         multi = diagnose_games(results)
         self.assertEqual(multi.game_count, 10)
         # Loose bounds -- not a calibration assertion, just confirming the telemetry reconstructs the same
-        # order of magnitude every run. Widened after the defender-zone staleness fix (see
-        # docs/DETAILED_ENGINE_FIRST_DIAGNOSTIC_REPORT.md's "Defender-Zone Staleness Correction" section):
-        # possessions per game and OREB share both legitimately shifted once defense could actually compete
-        # for interior rebounds (this is the fix's own intended, demonstrated downstream effect, not a bug).
-        self.assertGreater(multi.mean_total_possessions, 600)
+        # order of magnitude every run. Widened twice: once after the defender-zone staleness fix (see
+        # "Defender-Zone Staleness Correction"), and again after the Structural Timing Hook (see
+        # "Structural Timing Hook") -- possessions per game legitimately DROPPED once real, nonzero
+        # possession-stage time started consuming game clock (fewer, longer possessions fit in 48 minutes),
+        # which is that hook's own intended, demonstrated structural effect, not a bug.
+        self.assertGreater(multi.mean_total_possessions, 350)
         self.assertLess(multi.mean_total_possessions, 900)
-        self.assertGreater(multi.mean_oreb, 150)
+        self.assertGreater(multi.mean_oreb, 100)
 
 
 class TestTelemetryIsObservationalOnly(unittest.TestCase):
@@ -209,8 +216,9 @@ class TestClockAccounting(unittest.TestCase):
 
     def test_action_and_loose_ball_time_fully_explains_total_elapsed(self):
         """Every second of game clock consumed must be attributable to a
-        known, already-tracked category (dispatched-action time or
-        generic loose-ball recovery time) -- confirms no clock is being
+        known, already-tracked category (dispatched-action time, generic
+        loose-ball recovery time, or -- post Structural Timing Hook --
+        possession-stage-timing time) -- confirms no clock is being
         silently consumed/lost by an unaccounted-for code path."""
         result = _game()
         diag = diagnose_game(result)
@@ -218,38 +226,37 @@ class TestClockAccounting(unittest.TestCase):
         loose_ball_count = sum(1 for r in result.possessions for e in r.terminal_result.world.trace
                                 if e.get("action") == "LOOSE_BALL_RECOVERY")
         loose_ball_seconds = loose_ball_count * PossessionConfig().loose_ball_action_seconds
+        stage_timing_seconds = sum(
+            e.get("elapsed_game_clock_seconds") or 0.0
+            for r in result.possessions for e in r.terminal_result.world.stage_timing_log
+        )
         total_elapsed = sum(r.start_game_clock - r.end_game_clock for r in result.possessions)
         # small floating-point tolerance only -- not a calibration fudge factor
-        self.assertAlmostEqual(action_seconds + loose_ball_seconds, total_elapsed, delta=1.0)
+        self.assertAlmostEqual(action_seconds + loose_ball_seconds + stage_timing_seconds, total_elapsed, delta=1.0)
 
-    def test_floor_foul_branch_currently_charges_zero_elapsed_time(self):
-        """DOCUMENTS a real, demonstrated clock-bookkeeping asymmetry
-        (see the diagnosis report) -- NOT fixed in this task. An ordinary
-        drive always charges `drive_action_seconds`; a drive that routes
-        into the floor-foul branch (`_dispatch_floor_foul`) currently
-        charges NONE. This has zero effect on the default-config
-        diagnostic numbers reported (that branch requires
-        `force_on_ball_contact_established=True`, which ordinary
-        autonomous play never sets), so it is reported, not corrected."""
+    def test_floor_foul_branch_now_charges_the_same_drive_time_as_any_other_drive_outcome(self):
+        """Regression test for the fixed clock-bookkeeping bug (see the
+        diagnosis report's Sec. J and the "Structural Timing Hook"
+        section's own correction). A drive routing into the floor-foul
+        branch (`OFFENSIVE_CHARGE`/`DEFENSIVE_FLOOR_FOUL`) must now
+        charge EXACTLY `drive_action_seconds` -- the SAME real constant
+        every other drive outcome already charges -- exactly once, not
+        zero and not twice."""
         cfg = DetailedGameConfig(possession_config=PossessionConfig(force_on_ball_contact_established=True))
         result = _game(config=cfg)
-        clock_before_by_step = {}
-        found_zero_duration_foul = False
+        found_foul = False
         for record in result.possessions:
             trace = record.terminal_result.world.trace
             for e in trace:
                 if e.get("action") == "ON_BALL_PRESSURE" and e.get("outcome") in ("OFFENSIVE_CHARGE", "DEFENSIVE_FLOOR_FOUL"):
-                    # the DRIVE action_log entry for this same step exists (the top-level loop always
-                    # records one per dispatched intent) but its own elapsed time is exactly 0.0 -- the
-                    # drive's own `_charge_time(engine, config.drive_action_seconds)` call never runs on
-                    # this branch, unlike every other drive outcome.
                     step = e.get("step")
                     drive_entries = [a for a in record.terminal_result.world.action_log
                                      if a.get("step") == step and a.get("action_type") == "DRIVE"]
-                    self.assertEqual(len(drive_entries), 1)
-                    self.assertEqual(drive_entries[0]["elapsed_game_clock_seconds"], 0.0)
-                    found_zero_duration_foul = True
-        self.assertTrue(found_zero_duration_foul, "expected at least one floor foul with forced contact enabled")
+                    self.assertEqual(len(drive_entries), 1)  # charged exactly once -- no double-charge
+                    self.assertAlmostEqual(drive_entries[0]["elapsed_game_clock_seconds"],
+                                            PossessionConfig().drive_action_seconds, places=6)
+                    found_foul = True
+        self.assertTrue(found_foul, "expected at least one floor foul with forced contact enabled")
 
 
 if __name__ == "__main__":
