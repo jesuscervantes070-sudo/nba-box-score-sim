@@ -170,6 +170,26 @@ def _net_disruption_leverage(defender: DefenderCandidate) -> float:
     return leverage
 
 
+def disruption_attempt_probability(base_rate: float, defender: DefenderCandidate) -> float:
+    """One eligible defender's exact disruption-attempt probability."""
+    if not 0.0 < base_rate < 1.0:
+        raise ValueError("disruption base rate must be strictly between 0 and 1")
+    return _logistic(_logit(base_rate) + _net_disruption_leverage(defender))
+
+
+def analytic_any_disruption_probability(base_rate: float,
+                                         defenders: List[DefenderCandidate]) -> float:
+    """Exact probability that the sequential first-success loop fires.
+
+    This is conditional on reaching the disruption loop; the independent
+    bad-pass branch executes first in the actual resolver.
+    """
+    no_disruption = 1.0
+    for defender in defenders:
+        no_disruption *= 1.0 - disruption_attempt_probability(base_rate, defender)
+    return 1.0 - no_disruption
+
+
 def derive_rng(parent_rng: random.Random, label: str) -> random.Random:
     """Deterministic RNG-substream isolation -- a fresh `random.Random`
     seeded from `parent_rng`'s own state plus a fixed label, so pass
@@ -189,6 +209,9 @@ class PassResolutionContext:
     already_filtered: bool = False                  # if False, default_eligible_defenders() is applied first
     advantage: Optional[AdvantageModel] = None       # read-only context; never mutated unless advantage_updater is supplied
     advantage_updater: Optional[Callable[[AdvantageModel], AdvantageModel]] = None  # explicit opt-in hook -- no automatic preserve/reset/decay
+    # Narrow calibration seam. None preserves the module's calibrated default;
+    # only the per-eligible-defender disruption-attempt base reads this.
+    disruption_base_rate: Optional[float] = None
 
 
 # Real, hand-set placeholder base rates for the disruption/turnover
@@ -197,7 +220,7 @@ class PassResolutionContext:
 # no public per-pass disruption-outcome dataset exists). Order matters:
 # checked in sequence against independent rolls, never compounded into
 # one probability.
-BASE_RATE_ANY_DISRUPTION_ATTEMPT = 0.12         # per ELIGIBLE defender, before defensive_playmaking/posture adjustment
+BASE_RATE_ANY_DISRUPTION_ATTEMPT = 0.08         # FIRST-PASS CALIBRATED (was .12): per ELIGIBLE defender, before defensive_playmaking/posture adjustment
 BASE_RATE_DISRUPTION_IS_CLEAN_INTERCEPTION = 0.35   # of an actual disruption: how often it's a clean, possession-flipping takeaway
 BASE_RATE_DISRUPTION_IS_LOOSE_BALL = 0.30           # vs. retained-by-offense (the remainder)
 BASE_RATE_BAD_PASS_INDEPENDENT_OF_DEFENSE = 0.02    # a passer-attributed unforced error (sails out of bounds / behind a cutter) -- independent of any defender
@@ -291,9 +314,10 @@ def _resolve_disruption_and_delivery(context: PassResolutionContext, eligible: L
 
     # 2) each eligible defender gets ONE independent disruption-attempt roll -- no cross-zone teleportation,
     #    no automatic steal; at most the FIRST successful attempt (in caller-supplied order) matters.
+    disruption_base_rate = BASE_RATE_ANY_DISRUPTION_ATTEMPT \
+        if context.disruption_base_rate is None else context.disruption_base_rate
     for defender in eligible:
-        leverage = _net_disruption_leverage(defender)
-        attempt_rate = _logistic(_logit(BASE_RATE_ANY_DISRUPTION_ATTEMPT) + leverage)
+        attempt_rate = disruption_attempt_probability(disruption_base_rate, defender)
         if rng.random() < attempt_rate:
             roll = rng.random()
             if roll < BASE_RATE_DISRUPTION_IS_CLEAN_INTERCEPTION:

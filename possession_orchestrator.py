@@ -866,6 +866,9 @@ class PossessionConfig:
     initial_game_clock_seconds: Optional[float] = None
     initial_phase: PossessionPhase = PossessionPhase.HALFCOURT
     is_overtime: bool = False  # structural game context; routes Phase 21B's existing OT bonus threshold
+    # Narrow shared pass-disruption calibration input. None preserves
+    # pass_resolution.py's calibrated module constant exactly.
+    pass_disruption_base_rate: Optional[float] = None
     # ------------------------------------------------------------------
     # Structural Timing Hook -- see docs/DETAILED_ENGINE_FIRST_DIAGNOSTIC_REPORT.md's
     # own "Structural Timing Hook" section. These three fields are the ONLY place LIVE
@@ -1553,7 +1556,8 @@ def _dispatch_shooting_foul(engine: PossessionEngine, world: PossessionWorld, co
 # 13. Pass dispatch.
 # ---------------------------------------------------------------------
 def _dispatch_pass(engine: PossessionEngine, world: PossessionWorld, intent: ActionIntent,
-                    rng: random.Random, steps: int) -> Optional[PossessionTerminalResult]:
+                    rng: random.Random, steps: int,
+                    config: Optional[PossessionConfig] = None) -> Optional[PossessionTerminalResult]:
     passer_id = intent.actor_player_id
     receiver_id = intent.target_player_id
     passer_profile = world.profiles[passer_id]
@@ -1570,8 +1574,12 @@ def _dispatch_pass(engine: PossessionEngine, world: PossessionWorld, intent: Act
             is_receiver_defender=(assignment.assigned_to_player_id == receiver_id),
             is_passer_defender=(assignment.assigned_to_player_id == passer_id),
         ))
-    pass_ctx = PassResolutionContext(passing_accuracy=passer_profile.passing_accuracy_ast_pct, eligible_defenders=candidates,
-                                      already_filtered=False, advantage=engine.advantage)
+    pass_ctx = PassResolutionContext(
+        passing_accuracy=passer_profile.passing_accuracy_ast_pct,
+        eligible_defenders=candidates, already_filtered=False,
+        advantage=engine.advantage,
+        disruption_base_rate=(config.pass_disruption_base_rate if config is not None else None),
+    )
     outcome = resolve_pass(engine, intent, pass_ctx, rng)
     world.log_trace(step=steps, action=intent.action_type.value, outcome=outcome, passer=passer_id, receiver=receiver_id,
                      zone=destination_zone.value)
@@ -1656,7 +1664,7 @@ def dispatch_action(engine: PossessionEngine, world: PossessionWorld, intent: Ac
     if intent.action_type in (ActionType.PULL_UP, ActionType.CATCH_AND_SHOOT):
         return _dispatch_shot(engine, world, intent, config, rng, steps)
     if intent.action_type in PASS_ACTIONS:
-        return _dispatch_pass(engine, world, intent, rng, steps)
+        return _dispatch_pass(engine, world, intent, rng, steps, config)
     raise UnsupportedActionError(f"dispatch_action has no route for {intent.action_type} despite it being "
                                   f"in SUPPORTED_ACTION_TYPES -- a real implementation gap, not a gate")
 

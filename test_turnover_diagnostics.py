@@ -17,7 +17,10 @@ from turnover_diagnostics import (
 class TestTurnoverDiagnosis(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.games = run_benchmark_sample(range(25000, 25100))
+        historical_config = DetailedGameConfig(
+            possession_config=PossessionConfig(pass_disruption_base_rate=0.12),
+        )
+        cls.games = run_benchmark_sample(range(25000, 25100), config=historical_config)
         cls.diagnosis = diagnose_turnovers(cls.games)
 
     def test_every_turnover_like_terminal_has_one_stable_category(self):

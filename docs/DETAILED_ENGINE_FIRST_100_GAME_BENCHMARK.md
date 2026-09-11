@@ -744,3 +744,146 @@ has not begun.
 
 Verification: **12/12** new accounting-focused tests, **234/234** combined
 detailed-engine focused tests, and **1014/1014** repository tests pass.
+
+---
+
+## First Pass-Disruption Calibration
+
+This is a macro-constrained structural calibration, not direct pass-event
+empirical calibration. The verified public target is 14.3 team turnovers per
+team-game. Verified 2024–25 league-wide bad-pass share, lost-ball share,
+interception share, and pass-turnover/pass denominator are not available here,
+so no candidate pass-turnover rate is labeled “NBA correct.” Independent bad
+passes, handling, action selection, player attributes, timing, and the
+`.35/.30/.35` disruption outcomes remained frozen.
+
+### Analytic effective-probability audit
+
+`BASE_RATE_ANY_DISRUPTION_ATTEMPT` is a probability **per eligible defender**,
+not per pass. After the independent bad-pass gate, eligible defenders receive
+sequential independent rolls in caller order; the first success ends the loop.
+For defender probabilities `p_i`, the exact conditional probability of any
+disruption is `1 - product(1 - p_i)`. Two neutral defenders therefore turn the
+old `.12` base into `1-(1-.12)^2 = 22.56%` per pass conditional on reaching
+the loop, rather than 12%. At synthetic passing accuracy `.18`, the unchanged
+independent bad-pass probability is
+`sigmoid(logit(.02)-.15*.18) = 1.9477602%`; including that preceding gate, the
+old full-flow disruption probability is 22.120585%.
+
+| Per-defender base | Two-neutral-defender conditional | Full flow after unchanged bad-pass gate |
+|---:|---:|---:|
+| .12 | 22.56% | 22.1206% |
+| .10 | 19.00% | 18.6299% |
+| .08 | 15.36% | 15.0608% |
+| .06 | 11.64% | 11.4133% |
+| .04 | 7.84% | 7.6873% |
+
+Observed sensitivity rates match this control-flow calculation.
+
+### Two-defender exposure audit
+
+Every pass in the calibration benchmark had exactly two eligible defenders.
+The default filter always admits the passer’s matchup defender and receiver’s
+matchup defender. Other defenders qualify only when their coarse zone is
+central or on the same side as the pass origin or destination. With the
+current mirrored coarse geometry, no additional matchup defender qualified in
+the benchmark.
+
+This represents two distinct lane pressures, not the same defender counted
+twice. It is therefore **structurally correct but calibration-sensitive and
+high-leverage**, rather than clearly incorrect. The independent sequential
+rolls nonlinearly amplify the per-defender base, but there is not enough
+evidence to remove an exposure merely because aggregate turnovers are high.
+
+### Deterministic 20-game sensitivity study
+
+Seeds `26000–26019`; all inputs except the shared per-eligible-defender base
+were frozen. “Opportunities” are eligible-defender roll slots. “Loose” includes
+the disruption branch’s loose-ball outcomes, whether the offense ultimately
+retained the ball or not. Rates per team-game use 40 team-games.
+
+| Base | Pass attempts | Opportunities | Disruptions | Disruptions/pass | Clean INT | Loose | Pass TOV | Pass TOV/pass | Player TOV/tg | Team TOV/tg | STL/tg | True poss/game | FGA/tg | Shot-clock TOV/tg | Faults |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| .12 | 6,030 | 12,060 | 1,341 | 22.2388% | 472 | 869 | 915 | 15.1741% | 24.300 | 29.850 | 12.600 | 224.75 | 114.675 | 5.550 | 0 |
+| .10 | 5,969 | 11,938 | 1,109 | 18.5793% | 394 | 715 | 772 | 12.9335% | 20.700 | 26.750 | 10.650 | 217.95 | 114.575 | 6.050 | 0 |
+| **.08** | **5,907** | **11,814** | **886** | **14.9992%** | **321** | **565** | **642** | **10.8685%** | **17.350** | **23.750** | **8.775** | **210.10** | **114.000** | **6.400** | **0** |
+| .06 | 5,830 | 11,660 | 670 | 11.4923% | 238 | 432 | 496 | 8.5077% | 13.650 | 20.475 | 6.625 | 203.40 | 114.050 | 6.825 | 0 |
+| .04 | 5,754 | 11,508 | 461 | 8.0118% | 173 | 288 | 365 | 6.3434% | 10.325 | 17.675 | 5.000 | 196.70 | 113.750 | 7.350 | 0 |
+
+The selected first-pass value is **`.08`**. It substantially removes the
+shared-disruption excess without using pass errors to compensate for the
+separate clock problem. `.10` leaves player turnovers high; `.06` lowers
+steals to 6.625/team-game, below the supplied 8.2 target. `.08` produces
+8.775 steals/team-game in calibration, preserves passing volume and all other
+mechanisms, creates no faults, and avoids fake precision. The value was frozen
+before independent validation.
+
+### Independent validation
+
+Seeds `26100–26149`, 50 games, default `.08`; no retuning afterward:
+
+| Metric | Validation result |
+|---|---:|
+| Team TOV/team-game | 22.940 |
+| Player TOV/team-game | 16.900 |
+| Pass TOV/team-game | 15.820 |
+| Pass TOV/pass | 10.8164% |
+| STL/team-game | 8.300 |
+| Shot-clock TOV/team-game | 6.040 |
+| True possessions/game | 209.90 |
+| FGA/team-game | 115.750 |
+| Mechanical faults | 0 |
+
+The same configuration and seed also reproduce identical complete detailed
+game results, establishing configuration-level deterministic replay.
+
+### Canonical 100-game before/after
+
+Seeds `25000–25099`; before explicitly pins `.12`, after uses the selected
+default `.08`.
+
+| Metric | Before `.12` | After `.08` | Change |
+|---|---:|---:|---:|
+| Team TOV/team-game | 29.835 | 23.720 | -6.115 |
+| Player TOV/team-game | 24.230 | 17.065 | -7.165 |
+| Pass TOV/team-game | 23.105 | 15.980 | -7.125 |
+| Pass TOV/pass | 15.4141% | 10.9116% | -4.5025 pp |
+| Handling TOV/team-game | 1.125 | 1.085 | -0.040 observed |
+| Shot-clock TOV/team-game | 5.605 | 6.655 | +1.050 observed |
+| STL/team-game | 12.360 | 8.295 | -4.065 |
+| True possessions/game | 223.98 | 211.63 | -12.35 |
+| FGA/team-game | 114.235 | 114.015 | -0.220 |
+| PTS/team-game | 121.035 | 120.555 | -0.480 |
+| ORtg (true possessions) | 108.263 | 114.139 | +5.876 |
+| OREB% | 47.5698% | 47.3883% | -0.1815 pp |
+| FTA/FGA | 3.8677% | 3.8669% | -0.0008 pp |
+| 3PAr | 92.8019% | 92.6968% | -0.1051 pp |
+| FG% | 35.6641% | 35.5904% | -0.0737 pp |
+| PF/team-game | 2.065 | 2.070 | +0.005 |
+| Mechanical faults | 0 | 0 | 0 |
+
+The after-calibration team TOV result remains **65.87% above** 14.3. This is
+expected and is a flag, not a reason to force pass disruption lower. The
+shared-base change directly reduces pass turnovers and clean interceptions;
+possession count and ORtg then move because fewer early possession changes
+alter downstream paths. FGA, points, handling turnovers, and the other error
+vector entries above are observations only, not calibration targets.
+
+Shot-clock mechanics are unchanged: ordinary entry remains 9.0 seconds,
+transition entry 1.5, second chance 1.0, and inter-action 3.0. The realized
+shot-clock count rises from 5.605 to 6.655/team-game only because more passes
+survive and possessions reach later clock states. The high shot-clock rate
+remains a separate timing/control-flow calibration problem.
+
+Remaining turnover debt includes that shot-clock problem, lack of verified
+empirical pass-event denominators/composition, and later evaluation of the
+disruption composition and lane representation with richer geometry. Neither
+the `.35/.30/.35` outcome split nor any other subsystem was changed here.
+
+**Classification: PASS DISRUPTION CALIBRATION VALIDATED WITH FLAGS.** The
+calibration materially improves both pass turnovers and steals with zero
+faults, while total team turnovers remain high and the empirical limitation
+prevents claiming direct NBA pass-event calibration.
+
+Verification: **7/7** new calibration guardrails, **278/278** combined
+detailed-engine focused tests, and **1021/1021** repository tests pass.

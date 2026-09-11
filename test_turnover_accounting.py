@@ -4,8 +4,9 @@ import json
 import unittest
 
 from detailed_engine_benchmark import aggregate_team_game_stats, run_benchmark_sample
+from detailed_game import DetailedGameConfig
 from possession_events import EventType
-from possession_orchestrator import derive_stat_deltas_from_events
+from possession_orchestrator import PossessionConfig, derive_stat_deltas_from_events
 from turnover_diagnostics import TurnoverCategory, classify_turnover, diagnose_turnovers
 
 
@@ -22,7 +23,10 @@ def _clean(value):
 class TestTurnoverAccountingReconciliation(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.games = run_benchmark_sample(range(25000, 25100))
+        historical_config = DetailedGameConfig(
+            possession_config=PossessionConfig(pass_disruption_base_rate=0.12),
+        )
+        cls.games = run_benchmark_sample(range(25000, 25100), config=historical_config)
         cls.diagnosis = diagnose_turnovers(cls.games)
         cls.by_category = {}
         for game in cls.games:
