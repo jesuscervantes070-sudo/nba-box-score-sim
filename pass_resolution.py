@@ -30,10 +30,11 @@ has no authority -- there is no passer "lost-ball" roll and no receiver
 attribute in this repository, and this module does not invent one.
 """
 import random
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Callable, Dict, List, Optional, Tuple
 
 from action_intent import ActionIntent, ActionType, PASS_ACTIONS
+from clock_semantics import ClockTerminalCause, advance_live_clocks
 from possession_advantage import AdvantageModel
 from possession_engine import PossessionEngine
 from possession_events import EventType
@@ -118,6 +119,7 @@ class PassOutcome:
     DEFLECTED_LOOSE_BALL = "DEFLECTED_LOOSE_BALL"      # genuinely unresolved loose ball -- Phase 15's existing LOOSE state, no team possession assumed
     CLEAN_INTERCEPTION = "CLEAN_INTERCEPTION"          # defender secures control -- possession flips, STL is attributable
     BAD_PASS_OUT_OF_BOUNDS = "BAD_PASS_OUT_OF_BOUNDS"  # passer-attributed dead-ball TOV
+    PERIOD_EXPIRATION_DURING_FLIGHT = "PERIOD_EXPIRATION_DURING_FLIGHT"
     BAD_PASS_TO_DEFENDER = "BAD_PASS_TO_DEFENDER"      # passer-attributed live-ball TOV via a legally-reachable eligible defender
 
 
@@ -261,32 +263,51 @@ def resolve_pass(engine: PossessionEngine, intent: ActionIntent, context: PassRe
                                                             "n_eligible": len(eligible)})
 
     flight_dt = FLIGHT_DURATION_SECONDS[family]
+    # One authoritative competing-clock rule, shared with every other
+    # live timing category. Pass outcomes resolve at arrival, so either
+    # horn reached before arrival owns the terminal result.
+    clock_advance = advance_live_clocks(
+        flight_dt, engine.state.shot_clock_remaining, engine.state.game_clock_remaining,
+    )
+    engine.state = replace(
+        engine.state,
+        shot_clock_remaining=clock_advance.shot_clock_after,
+        game_clock_remaining=clock_advance.game_clock_after,
+    )
+    clock_meta = {
+        "pass_family": family,
+        "nominal_flight_seconds": flight_dt,
+        "actual_elapsed_seconds": clock_advance.actual_elapsed_seconds,
+        "truncated_by_shot_clock_seconds": clock_advance.truncated_by_shot_clock_seconds,
+        "truncated_by_period_clock_seconds": clock_advance.truncated_by_period_clock_seconds,
+        "clock_terminal_cause": clock_advance.terminal_cause,
+    }
+    if clock_advance.terminal_cause == ClockTerminalCause.SHOT_CLOCK:
+        engine._log(EventType.REACTION_CHECKPOINT, 0.0,
+                    meta={"checkpoint": "disruption_attempt", "outcome": "NOT_RESOLVED_CLOCK_EXPIRATION"})
+        engine.shot_clock_violation(dt=0.0)
+        engine._log(
+            EventType.PASS_RESOLVED, clock_advance.actual_elapsed_seconds,
+            primary=passer_id, secondary=receiver_id,
+            meta={**clock_meta, "outcome": "SHOT_CLOCK_VIOLATION_ON_ARRIVAL",
+                  "disrupting_defender_id": None},
+        )
+        return "SHOT_CLOCK_VIOLATION_ON_ARRIVAL"
+    if clock_advance.terminal_cause == ClockTerminalCause.PERIOD:
+        engine._log(EventType.REACTION_CHECKPOINT, 0.0,
+                    meta={"checkpoint": "disruption_attempt", "outcome": "NOT_RESOLVED_CLOCK_EXPIRATION"})
+        engine.period_expiration(dt=0.0)
+        engine._log(
+            EventType.PASS_RESOLVED, clock_advance.actual_elapsed_seconds,
+            primary=passer_id, secondary=receiver_id,
+            meta={**clock_meta, "outcome": PassOutcome.PERIOD_EXPIRATION_DURING_FLIGHT,
+                  "disrupting_defender_id": None},
+        )
+        return PassOutcome.PERIOD_EXPIRATION_DURING_FLIGHT
+
     outcome, disrupting_defender_id = _resolve_disruption_and_delivery(context, eligible, rng)
-    engine._log(EventType.REACTION_CHECKPOINT, 0.0, meta={"checkpoint": "disruption_attempt", "outcome": outcome})
-
-    # Clock integration -- routed through the engine's own real EraRules
-    # object (Phase 15's rule hook), never a bare invented constant. A
-    # real NBA rule (checked, not asserted from memory without looking
-    # at the existing architecture): a shot clock that reaches zero
-    # while the ball is genuinely still in flight on a pass produces a
-    # shot-clock violation once the ball is next controlled -- modeled
-    # here ONLY for an otherwise-completing pass (a disruption/turnover
-    # outcome already ends the possession through its own real pathway
-    # and is not further overridden by a clock check).
-    from possession_state import BallState as _BallState
-    if engine.state.shot_clock_remaining is not None:
-        remaining_after_flight = engine.state.shot_clock_remaining - flight_dt
-        from dataclasses import replace as _replace_clock
-        engine.state = _replace_clock(engine.state, shot_clock_remaining=max(0.0, remaining_after_flight))
-        if remaining_after_flight <= 0.0 and outcome in (PassOutcome.COMPLETED_CLEAN, PassOutcome.COMPLETED_ADJUSTED):
-            engine.shot_clock_violation(dt=0.0)
-            engine._log(EventType.PASS_RESOLVED, flight_dt, primary=passer_id, secondary=receiver_id,
-                        meta={"pass_family": family, "outcome": "SHOT_CLOCK_VIOLATION_ON_ARRIVAL", "disrupting_defender_id": None})
-            return "SHOT_CLOCK_VIOLATION_ON_ARRIVAL"
-    if engine.state.game_clock_remaining is not None:
-        from dataclasses import replace as _replace_clock
-        engine.state = _replace_clock(engine.state, game_clock_remaining=max(0.0, engine.state.game_clock_remaining - flight_dt))
-
+    engine._log(EventType.REACTION_CHECKPOINT, 0.0,
+                meta={"checkpoint": "disruption_attempt", "outcome": outcome})
     _apply_outcome(engine, passer_id, receiver_id, disrupting_defender_id, destination_zone, outcome, flight_dt)
     engine._log(EventType.REACTION_CHECKPOINT, 0.0, meta={"checkpoint": "arrival"})
 
@@ -294,8 +315,10 @@ def resolve_pass(engine: PossessionEngine, intent: ActionIntent, context: PassRe
         engine.advantage = context.advantage_updater(context.advantage)
     # if no updater was supplied, engine.advantage is left EXACTLY as it was -- no automatic preserve/reset/decay
 
-    engine._log(EventType.PASS_RESOLVED, flight_dt, primary=passer_id, secondary=receiver_id, zone=destination_zone,
-                meta={"pass_family": family, "outcome": outcome, "disrupting_defender_id": disrupting_defender_id})
+    engine._log(EventType.PASS_RESOLVED, clock_advance.actual_elapsed_seconds,
+                primary=passer_id, secondary=receiver_id, zone=destination_zone,
+                meta={**clock_meta, "outcome": outcome,
+                      "disrupting_defender_id": disrupting_defender_id})
     return outcome
 
 

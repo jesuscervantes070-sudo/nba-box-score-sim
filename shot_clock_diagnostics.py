@@ -36,6 +36,8 @@ class ShotClockViolationObservation:
     pass_family: Optional[str]
     configured_final_timing_seconds: Optional[float]
     elapsed_final_timing_seconds: Optional[float]
+    truncated_by_shot_clock_seconds: float
+    truncated_by_period_clock_seconds: float
     previous_action_type: Optional[str]
     previous_action_outcome: Optional[str]
     passes: int

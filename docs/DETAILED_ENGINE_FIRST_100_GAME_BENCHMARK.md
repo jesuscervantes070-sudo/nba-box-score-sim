@@ -1124,3 +1124,97 @@ re-diagnosed separately before any timing value is calibrated.
 Verification: **7/7** new shot-clock diagnostic tests, **256/256**
 focused diagnostic/timing/pass/benchmark tests, and **1028/1028** repository
 tests pass.
+
+## Shot-Clock Expiration Clock Semantics
+
+### Mechanical bug and authoritative rule
+
+The previous live-clock helper independently subtracted the full nominal
+duration from both clocks and clamped each at zero. For example, a 3.0-second
+inter-action segment starting at 1.2 on the shot clock and 100.0 on the game
+clock produced 0.0 and 97.0. The possession actually ends at the shot-clock
+horn, so the physically correct game clock is 98.8; the remaining 1.8 seconds
+never occur.
+
+All live timing now uses one competing-clock calculation:
+
+`actual elapsed = min(nominal duration, active shot clock, period clock)`
+
+The returned result contains nominal duration, actual elapsed duration, both
+post-segment clocks, terminal cause, and separate shot-clock and period-clock
+truncation. Configured durations are unchanged. Callers that resolve outcomes
+at the end of a drive, pass, or loose-ball segment preflight the same rule, so
+no RNG result or basketball action occurs after an earlier horn.
+
+Exact equality is terminal. If the shot and period clocks expire
+simultaneously, `SHOT_CLOCK` deterministically wins, preserving the detailed
+engine's established top-of-loop shot-clock-first ordering. If the period clock
+expires strictly earlier, `PERIOD` wins and no shot-clock turnover is created.
+Clocks are clamped at zero. The existing `1e-9` timing-test tolerance is reused,
+so meaningless positive floating-point residue cannot authorize another live
+segment.
+
+Legally released shots are the explicit exception to the shot-clock stop
+condition: their existing make/miss/foul resolution is preserved after release.
+The shot clock still decrements and clamps for state display, while the period
+clock remains an active bound.
+
+### Pass-arrival correction and timing coverage
+
+Pass flight previously reduced the shot clock first and returned early on an
+otherwise completed pass that reached zero, before reducing the game clock.
+Passes now use the same competing-clock result as every other live category.
+A pass beginning at 0.2 seconds with a 0.4-second nominal flight charges 0.2
+seconds to both clocks, records 0.2 seconds of shot-clock truncation, and
+terminates at the horn without resolving a later arrival outcome. A period horn
+that occurs strictly first similarly ends the period without a turnover.
+
+The shared semantics cover halfcourt entry, transition entry, second-chance
+setup, inter-action time, drive execution, loose-ball recovery, and pass
+flight. Shot execution uses the documented legal-release exception above.
+Clock-charge telemetry now reconciles timing totals against actual elapsed
+game time rather than treating nominal overshoot as elapsed time.
+
+### Canonical 100-game before/after
+
+Seeds `25000–25099`, accepted default pass-disruption rate `.08`; this is a
+correctness comparison, not a calibration claim:
+
+| Measure | Before | After | Change |
+|---|---:|---:|---:|
+| Shot-clock violations | 1,331 | 1,425 | +94 |
+| Violations/team-game | 6.655 | 7.125 | +0.470 |
+| Inter-action causes | 1,292 | 1,379 | +87 |
+| Loose-ball recovery causes | 18 | 38 | +20 |
+| Pass-flight causes | 21 | 8 | -13 |
+| Mean game-clock time consumed by terminal segment | 2.914s | 1.683s | -1.231s |
+| Mean total game-clock time in violating possession | 26.158s | 24.841s | -1.317s |
+| Requested time truncated at shot-clock horns | not represented | 1,761.1s | physically removed |
+| True possessions/game | 211.63 | 213.17 | +1.54 |
+| Pace error vs. 197.6 | +7.100% | +7.880% | +0.780 pp |
+| Mean shot clock at FGA | 13.055s | 13.083s | +0.028s |
+| Team TOV/team-game | 23.720 | 24.120 | +0.400 |
+| Player TOV/team-game | 17.065 | 16.995 | -0.070 |
+| STL/team-game | 8.295 | 8.280 | -0.015 |
+| Points/team-game | 120.555 | 121.040 | +0.485 |
+| Combined score/game | 241.110 | 242.080 | +0.970 |
+| Simulation faults | 0 | 0 | 0 |
+
+The 1,761.1 seconds are nominal remainders that the corrected run explicitly
+attributes to shot-clock truncation and no longer subtracts from game clocks.
+That recovered time permits 154 additional possessions across 100 games. The
+changed violation total, cause mix, overtime count (2 to 3), turnover totals,
+and scoring are legitimate downstream consequences of later period state and
+RNG consumption; none is interpreted as benchmark improvement.
+
+Late-clock urgency remains deliberately deferred. After the correction, 1,229
+of 1,425 violations still followed a decision with a feasible shot, and passes
+remain 733 of 1,852 selections (**39.58%**) at two seconds or less. The next
+intervention remains a separately reviewed decision/urgency change, not a clock
+or timing-constant adjustment.
+
+**Classification: CLOCK EXPIRATION SEMANTICS VALIDATED.**
+
+Verification: **17/17** focused clock-expiration tests and **1045/1045**
+repository tests pass. No action-selection weight, probability, pass-disruption
+rate, player attribute, or configured timing constant changed.
