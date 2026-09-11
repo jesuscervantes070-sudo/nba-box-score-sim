@@ -79,7 +79,7 @@ class TestExtractBlockRateSample(unittest.TestCase):
         ])
         gf_patch, pbp_patch = self._patch_endpoints(["0022500001"], {"0022500001": df})
         with gf_patch, pbp_patch:
-            payload = bri.extract_block_rate_sample("2025-26", sample_size=1, force=True)
+            payload = bri.extract_block_rate_sample("TEST-BLOCK-RATE-SEASON", sample_size=1, force=True)
 
         self.assertEqual(len(payload["shot_events"]), 2)
         self.assertEqual(len(payload["block_events"]), 1)
@@ -97,7 +97,7 @@ class TestExtractBlockRateSample(unittest.TestCase):
         ])
         gf_patch, pbp_patch = self._patch_endpoints(["0022500002"], {"0022500002": df})
         with gf_patch, pbp_patch:
-            payload = bri.extract_block_rate_sample("2025-26", sample_size=1, force=True)
+            payload = bri.extract_block_rate_sample("TEST-BLOCK-RATE-SEASON", sample_size=1, force=True)
         self.assertEqual(payload["block_events"], [])
 
     def test_made_shot_never_produces_a_block_event(self):
@@ -107,7 +107,7 @@ class TestExtractBlockRateSample(unittest.TestCase):
         ])
         gf_patch, pbp_patch = self._patch_endpoints(["0022500003"], {"0022500003": df})
         with gf_patch, pbp_patch:
-            payload = bri.extract_block_rate_sample("2025-26", sample_size=1, force=True)
+            payload = bri.extract_block_rate_sample("TEST-BLOCK-RATE-SEASON", sample_size=1, force=True)
         self.assertEqual(payload["block_events"], [])
         self.assertEqual(len(payload["shot_events"]), 1)
         self.assertTrue(payload["shot_events"][0]["made"])
@@ -115,7 +115,7 @@ class TestExtractBlockRateSample(unittest.TestCase):
     def test_unreachable_network_raises_connection_error_never_fabricates_data(self):
         with patch("nba_api.stats.endpoints.leaguegamefinder.LeagueGameFinder", side_effect=Exception("boom")):
             with self.assertRaises(ConnectionError):
-                bri.extract_block_rate_sample("2025-26", sample_size=1, force=True)
+                bri.extract_block_rate_sample("TEST-BLOCK-RATE-SEASON", sample_size=1, force=True)
 
 
 class TestSummarizeAndReconcile(unittest.TestCase):
