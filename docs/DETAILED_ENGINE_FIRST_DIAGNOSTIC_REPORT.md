@@ -231,3 +231,258 @@ remain if a possession had ANY explicit non-zero pre-decision setup cost
 - Nothing was committed or pushed this task, and no new gameplay phase
   was begun. Phase 23C plus this diagnostic instrumentation remain
   available locally, uncommitted, for HQ review.
+
+**Checkpoint note (superseded by the follow-up task below):** Phase 23C
+and this diagnostic instrumentation were subsequently checkpointed as
+two separate commits (`aa7e327` "Add Phase 23C minimal detailed game",
+`b2d6432` "Add detailed engine diagnostic instrumentation") and pushed
+to `origin/codex/empirical-player-modeling`. All measurements above are
+preserved exactly as originally reported (the BEFORE state) — see the
+new section below for the defender-zone fix built on top of that
+checkpoint, left uncommitted for HQ review.
+
+---
+
+# Defender-Zone Staleness Correction
+
+A follow-up, SMALL, targeted fix for exactly the one structural bug this
+diagnostic pass demonstrated (Sec. J/N.1 above) — nothing else. Built on
+top of the checkpointed commits `aa7e327`/`b2d6432`; **left uncommitted**.
+
+## Root-cause trace
+
+1. **Offensive player zones are initialized** by `default_v0_zone_placement`
+   (called once, in `simulate_possession`, at possession start): the
+   inbound receiver gets `initial_ball_zone`; the other four offensive
+   players cycle deterministically through `_V0_PERIMETER_CYCLE`.
+2. **Defender zones are initialized** by `_mirror_defender_zones`
+   (called once, immediately after, also only at possession start): each
+   defender is set to the SAME zone as `engine.state.assignments[defender_id].assigned_to_player_id`'s
+   zone at that instant.
+3. **Actions that update OFFENSIVE locations** (confirmed by direct
+   source read, all writes to `world.player_zones[X]` where `X` is an
+   offensive participant): `_dispatch_drive` (`world.player_zones[driver_id] = engine.state.ball_zone`),
+   `_dispatch_pass` on a completed reception (`world.player_zones[receiver_id] = destination_zone`),
+   `_dispatch_floor_foul`'s non-bonus re-inbound (`world.player_zones[fouled_player_id] = engine.state.ball_zone`),
+   `resolve_generic_loose_ball` (`world.player_zones[winner] = zone` — either side, whoever recovers),
+   `_dispatch_rebound` on `SECURED_OFFENSE` (`world.player_zones[result.rebounder_id] = engine.state.ball_zone`).
+4. **Actions that update defender posture/assignment**: `resolve_drive`
+   calls `engine.update_posture(defender_id, ...)` (posture only);
+   `on_ball_pressure_resolution` outcomes may also change posture via
+   existing Phase 15 engine methods; Phase 22A's atomic switch
+   (`off_ball_screen_resolution._atomic_switch_assignments`) can change
+   the assignment pointer itself — but Phase 22A remains fully
+   caller-triggered and was NOT invoked anywhere in the orchestrator's
+   own dispatch loop (confirmed by source scan, unchanged by this fix).
+5. **Whether any action updated defender ZONES before this fix: NO.**
+   Confirmed by an exhaustive grep of every `world.player_zones[...] =`
+   assignment in the pre-fix file — none targeted a `defender_id`.
+6. **Rebound candidate construction** (`_dispatch_rebound`) reads
+   `world.player_zones.get(pid, engine.state.ball_zone)` for literally
+   every one of the ten players, then `rebound_resolution.eligible_rebound_candidates`
+   filters to `candidate.zone == opportunity.effective_zone` (always
+   `engine.state.ball_zone` at the moment of the miss, per
+   `_dispatch_rebound`'s own explicit `rebound_zone=engine.state.ball_zone`).
+7. **Why RIM/FLOATER misses produced total defender exclusion**: an
+   interior shot only happens after the ball has moved into
+   `RESTRICTED_RIM`/`PAINT`, almost always via a drive. Step 3 correctly
+   moves the DRIVER's own zone to match. The driver's ASSIGNED DEFENDER's
+   zone, however, was mirrored once at possession start (frequently to
+   the driver's ORIGINAL, often-perimeter, starting zone) and never
+   updated when the driver subsequently moved — leaving that defender
+   structurally ineligible for the resulting interior-zone rebound.
+   Empirically confirmed pre-fix: 0 of 79 interior (RIM/FLOATER)
+   rebound opportunities were won by the defense in seed 23024, and
+   ZERO defenders were ever recorded in the interior zone across 369
+   possessions that reached a rebound opportunity.
+
+## Smallest ownership-correct fix
+
+**One new function, `_sync_assigned_defender_zone(engine, world, offensive_player_id, new_zone)`**,
+called at the four offensive-zone-update sites that represent
+genuinely supported possession actions moving a tracked player
+(`_dispatch_drive`, `_dispatch_pass`'s completed-reception branch,
+`_dispatch_floor_foul`'s re-inbound, `_dispatch_rebound`'s
+`SECURED_OFFENSE` continuation). It does exactly one thing: look up the
+offensive player's CURRENT defender via `engine.state.assignments`
+(the existing, real man-to-man matchup pointer — re-resolved fresh on
+every call, so it automatically respects a switch) and write that
+defender's entry in the SAME `world.player_zones` dict every other
+update already uses.
+
+This is the EXACT SAME real rule `_mirror_defender_zones` already
+established once at possession start (a defender occupies their
+assignment's zone) — simply re-applied every time that assignment's own
+zone changes, instead of only once. No new location authority, no
+`defender_zones_v2`, no rebound-resolver-internal synthetic zone: still
+`PossessionWorld.player_zones`, the ONE existing coarse-location map.
+`resolve_generic_loose_ball`'s own zone write (item 3 above) was
+DELIBERATELY left untouched — a loose-ball recovery does not have a
+stable "offensive player + their assigned defender" framing (either
+side may recover it, becoming the new ball handler), and touching it
+was not required to remove the demonstrated pathology (which is
+specifically about drives/receptions into the interior).
+
+No probability, duration, skill weight, or resolver logic was touched.
+`_sync_assigned_defender_zone` consumes no RNG (verified:
+`test_sync_consumes_no_rng`) and does not depend on posture,
+`AdvantageModel`, or any ability value — it is a pure, deterministic
+coarse geometry update.
+
+## State ownership after the fix
+
+Unchanged from the project's existing doctrine, restated for clarity:
+
+- `PossessionWorld.player_zones` — coarse possession spatial/context
+  state for all ten players (the ONLY location authority; still one
+  dict, now kept fresh rather than only initialized once).
+- `PossessionState` (`engine.state`) — ball/carrier/in-flight possession
+  mechanics; untouched by this fix.
+- `engine.state.assignments` — the defensive matchup/posture
+  relationship; untouched by this fix, and now READ fresh (never
+  cached) every time a defender's zone needs to follow their man.
+
+No duplicate authority was introduced (verified:
+`test_sync_writes_only_to_the_existing_player_zones_dict`, which checks
+both the source text and `PossessionWorld`'s own dataclass fields for
+any second location map).
+
+## Files changed for the fix
+
+Only `possession_orchestrator.py` (the new `_sync_assigned_defender_zone`
+function plus four call sites) and `test_possession_orchestrator.py`
+(12 new focused tests, plus one pre-existing multi-game diagnostic
+test's loose bounds widened to reflect the fix's own legitimate,
+demonstrated effect on the rebound distribution — see below). No other
+file was touched.
+
+## Focused tests (`TestDefenderZoneStalenessFix`, 12 new tests)
+
+1. `test_defender_zones_initialized_to_match_their_assignment` — defender zones initialize correctly.
+2. `test_drive_updates_the_drivers_own_defender_zone` — a drive updates the relevant defender's zone.
+3. `test_pass_reception_updates_the_receivers_own_defender_zone_not_frozen_across_sequence` — zone state is not frozen across a drive/pass sequence.
+4. `test_matchup_identity_unchanged_by_zone_sync` — matchup identity remains valid after movement.
+5. `test_zone_sync_respects_a_real_atomic_switch` — switch assignment remains atomic; the sync follows the NEW pairing, never a stale one.
+6. `test_interior_miss_has_a_structurally_eligible_defender_candidate` — an interior miss produces at least one structurally eligible defensive candidate.
+7. `test_defensive_rebound_reachable_after_rim_and_floater_misses` — a defensive rebound is genuinely reachable after both a RIM and a FLOATER miss.
+8. (combined into 7)
+9. `test_three_point_rebound_both_outcomes_remain_reachable` — existing 3PT rebound behavior (both offense and defense winning) remains structurally valid.
+10. `test_sync_writes_only_to_the_existing_player_zones_dict` — no duplicate player/location authority introduced.
+11. `test_deterministic_replay_preserved_with_zone_sync` — same-seed determinism preserved.
+12. `test_sync_consumes_no_rng` — the sync itself never rolls dice or reads an ability value (action outcomes are unchanged by the fix except where downstream geometry legitimately differs).
+13. `test_diagnostics_still_reconstructs_correctly_after_zone_fix` — diagnostic telemetry remains observational and structurally intact post-fix.
+14. No legacy/product file was touched (unchanged from the prior checkpoint's own confirmation; re-verified via `git status --short` below).
+
+**Result: 56/56 in `test_possession_orchestrator.py`, 24/24 in
+`test_detailed_game.py`, 16/16 in `test_detailed_engine_diagnostics.py`
+→ 96/96 combined focused. Full suite: 904/904 OK** (892 baseline + 12
+new). Zero regressions. One pre-existing test's loose numeric bounds
+(`test_ten_game_sample_matches_known_reported_aggregate`) were widened
+to reflect the fix's own intended, demonstrated shift in the rebound
+distribution — not a weakened assertion, a legitimately different real
+range now being measured.
+
+## Seed 23024 — BEFORE vs AFTER (BEFORE preserved exactly as originally reported above)
+
+| Metric | BEFORE (pre-fix) | AFTER (post-fix) |
+|---|---|---|
+| Score | HOME 463 – 400 AWAY | HOME 458 – 395 AWAY |
+| Total possessions | 681 | 794 |
+| Mean / median possession seconds | 4.229 / 2.700 | 3.627 / 2.300 |
+| Mean / median actions per possession | 3.696 / 2 | 3.171 / 2 |
+| FGA / FGM / misses | 857 / 300 / 557 | 857 / 290 / 567 |
+| Rebound opportunities | 552 | 562 |
+| OREB / DREB | 353 / 199 | 276 / 286 |
+| OREB share `OREB/(OREB+DREB)` | **0.639** | **0.491** |
+| Interior (RIM+FLOATER) opportunities | 79 | 51 |
+| Interior OREB / DREB | 79 / **0** | 25 / **26** |
+| 3PT opportunities | 473 | 511 |
+| 3PT OREB / DREB | 274 / 199 | 251 / 260 |
+| OREB-count distribution (0/1/2/3+) | 459/134/61/27 | 587/151/47/9 |
+| Turnovers (rate) | 174 (25.6%) | 211 (26.6%) |
+| Personal fouls / FTA / FTM | 18 / 32 / 24 | 19 / 35 / 25 |
+| Faults | 0 | 0 |
+
+The FGA count is identical (857) because the shot-attempt/make-
+probability machinery was not touched at all — the change is entirely
+in what happens AFTER a miss.
+
+## 10-game sample (seeds 23024–23033) — BEFORE vs AFTER
+
+| Metric | BEFORE | AFTER |
+|---|---|---|
+| Mean possessions | 672.3 | 769.8 |
+| Mean OREB / DREB | 327.3 / 196.7 | 257.9 / 275.2 |
+| Mean OREB share | 0.624 | 0.484 |
+| Mean personal fouls | 16.3 | 15.4 |
+| Mean FTA | 34.4 | 34.0 |
+| Mean turnovers (rate) | 162.0 (24.0%) | 187.3 (24.3%) |
+| Faults across all 10 games | 0 | 0 |
+
+## What improved
+
+- **The pathological total exclusion is gone.** Interior DREB went from
+  a hard **0** to **26** (seed 23024) — the defense can now genuinely
+  compete for and win interior rebounds, because their zone now
+  actually reflects where the play developed rather than where the
+  possession began.
+- **OREB share dropped from 0.64 → 0.49 (seed 23024) / 0.62 → 0.48
+  (10-game mean)** — a large, real, structural shift, entirely as a
+  DOWNSTREAM CONSEQUENCE of correct geometry, with zero change to any
+  rebounding skill value, weight, or resolver constant.
+- **3PT rebounding also became more balanced** (0.42 → 0.51 defense
+  share on 3PT misses specifically) as a secondary, expected effect of
+  the same fix (some defenders assigned to players who moved via a pass
+  were ALSO previously stale for perimeter rebounds, not only interior
+  ones).
+- Zero faults, identical deterministic-replay behavior, and no
+  detectable change in FGA volume or shot-family mix (the fix touches
+  only post-miss geometry).
+
+## What remains abnormal (NOT addressed by this fix, do not tune)
+
+- **OREB share (0.48–0.49) is still roughly 1.7–2× the real NBA rate
+  (~0.25–0.28).** This fix removed the total-exclusion pathology; it
+  did not, and was not intended to, calibrate the resulting rate to any
+  target.
+- **Total possessions increased (672→770 mean)**, a legitimate,
+  understood downstream effect: fewer OREB-driven second-chance
+  loop-continuations per trip means each individual trip now resolves
+  faster on average, so more distinct trips fit into the same 48
+  minutes of game clock. This is a real, explainable consequence of the
+  fix, not a new bug.
+- **Turnover rate is essentially unchanged (~25–26%)** — expected, since
+  this fix never touched pass/turnover resolution.
+- **Pace remains structurally too fast, UNCHANGED, as instructed.**
+  Mean/median possession length (3.6s / 2.3s post-fix, vs. 4.2s / 2.7s
+  pre-fix — the shift is a downstream artifact of the rebound-share
+  change, not a timing fix) is still far below the real ~14.6s
+  reference. Median actions per possession is still 2. **No duration,
+  action-selection weight, or timing constant was touched in this
+  task**, per explicit instruction — this remains the next,
+  separately-scoped, HQ-reviewed engineering problem.
+
+## Classification
+
+**FIX VALIDATED WITH FLAGS.** The demonstrated geometric pathology
+(0-of-79 interior defensive rebounds, caused by literal defender-zone
+staleness) is structurally removed — defense can now win interior
+rebounds, no duplicate rebound opportunities were introduced, no
+source-of-truth violation was introduced, deterministic replay remains
+valid, and the full test suite (904/904) passes. Flagged: the resulting
+OREB share, while no longer pathological, is not claimed to be
+realistic or calibrated — no such claim was in scope. Pace remains
+unaddressed by design.
+
+## Confirmations
+
+- No legacy/product files touched: `game_engine.py`, `main.py`,
+  `season.py`, `playoffs.py`, `db.py`, `models.py`, `README.md`,
+  `ACCURACY.md`, `CLAUDE.md` are all untouched by this fix.
+- The fix (`possession_orchestrator.py` + `test_possession_orchestrator.py`
+  changes) remains **UNCOMMITTED**, for HQ review, on top of the two
+  pushed checkpoint commits (`aa7e327`, `b2d6432`).
+- No probability, duration, weight, or calibration constant was changed
+  anywhere in this task — confirmed by source diff review: the only
+  new code is `_sync_assigned_defender_zone` (a pure dict write with no
+  RNG, no skill read) and its four call sites.

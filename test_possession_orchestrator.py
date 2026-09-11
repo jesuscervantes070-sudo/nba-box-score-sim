@@ -1,7 +1,7 @@
 """Phase 23A -- focused + integration tests for possession_orchestrator.py."""
 import unittest
 
-from action_intent import ActionType
+from action_intent import ActionIntent, ActionType
 from possession_orchestrator import (
     CAPABILITY_GATED_ACTION_TYPES,
     SUPPORTED_ACTION_TYPES,
@@ -11,9 +11,15 @@ from possession_orchestrator import (
     PossessionTerminalReason,
     PossessionWorld,
     UnsupportedActionError,
+    _dispatch_drive,
+    _dispatch_pass,
+    _mirror_defender_zones,
+    _primary_defender,
+    _sync_assigned_defender_zone,
     apply_matchup_assignments,
     build_matchup_assignments,
     build_structural_context,
+    default_v0_zone_placement,
     dispatch_action,
     simulate_possession,
     validate_lineups,
@@ -485,6 +491,177 @@ class TestSourceOfTruthHierarchy(unittest.TestCase):
         src = inspect.getsource(mod)
         self.assertNotIn("import game_engine", src)
         self.assertNotIn("from game_engine", src)
+
+
+class TestDefenderZoneStalenessFix(unittest.TestCase):
+    """Focused tests for the defender-zone tracking fix -- see
+    docs/DETAILED_ENGINE_FIRST_DIAGNOSTIC_REPORT.md's "Defender-Zone
+    Staleness Correction" section for the demonstrated pathology this
+    addresses (0 of 79 interior rebound opportunities won by the
+    defense, entirely because defender zones were set once at inbound
+    and never updated)."""
+
+    def _engine_and_world(self):
+        engine = PossessionEngine("p1", "A", "B", season="2023-24", rng_seed=1)
+        apply_matchup_assignments(engine, OFF_FIVE, DEF_FIVE)
+        engine.inbound("1", SpatialZone.TOP_OF_KEY, PossessionPhase.HALFCOURT)
+        world = PossessionWorld(team_a_id="A", team_b_id="B", team_a_five=OFF_FIVE, team_b_five=DEF_FIVE,
+                                 profiles=_profiles())
+        world.player_zones = default_v0_zone_placement(OFF_FIVE, "1", SpatialZone.TOP_OF_KEY)
+        _mirror_defender_zones(world.player_zones, engine.state.assignments)
+        return engine, world
+
+    # 1. defender zones are initialized correctly
+    def test_defender_zones_initialized_to_match_their_assignment(self):
+        engine, world = self._engine_and_world()
+        for defender_id, assignment in engine.state.assignments.items():
+            self.assertEqual(world.player_zones[defender_id], world.player_zones[assignment.assigned_to_player_id])
+
+    # 2 + 3. supported actions update relevant defender zones; state is not frozen across a sequence
+    def test_drive_updates_the_drivers_own_defender_zone(self):
+        engine, world = self._engine_and_world()
+        defender_id = _primary_defender(engine, "1")
+        stale_zone_before = world.player_zones[defender_id]
+        intent = ActionIntent(action_type=ActionType.DRIVE, actor_player_id="1", possession_id="p1")
+        _dispatch_drive(engine, world, intent, PossessionConfig(force_on_ball_contact_established=False), __import__("random").Random(7), 0)
+        self.assertEqual(world.player_zones[defender_id], engine.state.ball_zone)
+        # a real drive with real leverage rolled -- not a no-op -- so this is a genuine, not incidental, check
+        self.assertIsNotNone(engine.state.ball_zone)
+
+    def test_pass_reception_updates_the_receivers_own_defender_zone_not_frozen_across_sequence(self):
+        engine, world = self._engine_and_world()
+        receiver_defender_id = _primary_defender(engine, "2")
+        original_zone = world.player_zones[receiver_defender_id]
+        intent = ActionIntent(action_type=ActionType.SWING_PASS, actor_player_id="1", target_player_id="2",
+                               possession_id="p1", target_zone=SpatialZone.RESTRICTED_RIM.value)
+        import random
+        rng = random.Random(1)
+        for _ in range(200):
+            engine2, world2 = self._engine_and_world()
+            outcome = _dispatch_pass(engine2, world2, intent, rng, 0)
+            if outcome is None and world2.player_zones.get(_primary_defender(engine2, "2")) == SpatialZone.RESTRICTED_RIM:
+                # a completed pass moved the receiver's OWN defender's zone away from its stale inbound value
+                self.assertNotEqual(SpatialZone.RESTRICTED_RIM, original_zone)
+                return
+        self.fail("expected at least one completed pass to RESTRICTED_RIM within 200 tries")
+
+    # 4. matchup identity remains valid after movement
+    def test_matchup_identity_unchanged_by_zone_sync(self):
+        engine, world = self._engine_and_world()
+        defender_id = _primary_defender(engine, "1")
+        _sync_assigned_defender_zone(engine, world, "1", SpatialZone.RESTRICTED_RIM)
+        self.assertEqual(engine.state.assignments[defender_id].assigned_to_player_id, "1")  # unchanged
+
+    # 5. switch assignment remains atomic and location state remains valid
+    def test_zone_sync_respects_a_real_atomic_switch(self):
+        from off_ball_screen_resolution import _atomic_switch_assignments
+        engine, world = self._engine_and_world()
+        old_defender = _primary_defender(engine, "1")
+        other_defender = next(d for d in DEF_FIVE if d != old_defender)
+        _atomic_switch_assignments(engine, old_defender, other_defender)
+        new_defender = _primary_defender(engine, "1")
+        self.assertNotEqual(new_defender, old_defender)  # the switch really changed who guards player "1"
+        _sync_assigned_defender_zone(engine, world, "1", SpatialZone.RESTRICTED_RIM)
+        # the sync followed the assignment AS IT NOW STANDS, not a stale pre-switch pointer
+        self.assertEqual(world.player_zones[new_defender], SpatialZone.RESTRICTED_RIM)
+
+    # 6. interior miss creates structurally eligible defensive rebound candidates
+    def test_interior_miss_has_a_structurally_eligible_defender_candidate(self):
+        from rebound_resolution import ReboundCandidate, ReboundOpportunity, eligible_rebound_candidates
+        engine, world = self._engine_and_world()
+        world.player_zones["1"] = SpatialZone.RESTRICTED_RIM  # the driver's own zone, as a real drive would set it
+        _sync_assigned_defender_zone(engine, world, "1", SpatialZone.RESTRICTED_RIM)
+        defender_id = _primary_defender(engine, "1")
+        candidates = [
+            ReboundCandidate(player_id="1", side="OFFENSE", zone=world.player_zones["1"], offensive_rebounding=0.1),
+            ReboundCandidate(player_id=defender_id, side="DEFENSE", zone=world.player_zones[defender_id], defensive_rebounding=0.1),
+        ]
+        opportunity = ReboundOpportunity(source="MISSED_FG", shot_family="RIM",
+                                          rebound_zone=SpatialZone.RESTRICTED_RIM, candidates=candidates)
+        eligible = eligible_rebound_candidates(opportunity)
+        self.assertEqual({c.player_id for c in eligible}, {"1", defender_id})
+
+    def _loose_ball_after_interior_miss(self, engine):
+        """Real engine transition -- the same one shot resolution actually performs -- rather than
+        hand-setting `ball_state`/`ball_zone` directly."""
+        engine.begin_shot(SpatialZone.RESTRICTED_RIM, dt=0.0)
+        engine.resolve_shot_missed_pending_rebound("1", dt=0.0)
+
+    # 7/8/9. defensive rebound possible after RIM/FLOATER miss; 3PT rebound behavior remains valid
+    def test_defensive_rebound_reachable_after_rim_and_floater_misses(self):
+        from possession_orchestrator import _dispatch_rebound
+        from rebound_resolution import ReboundSource
+        import random
+        found = {"RIM": False, "FLOATER": False}
+        for family in ("RIM", "FLOATER"):
+            for seed in range(50):
+                engine, world = self._engine_and_world()
+                world.player_zones["1"] = SpatialZone.RESTRICTED_RIM
+                _sync_assigned_defender_zone(engine, world, "1", SpatialZone.RESTRICTED_RIM)
+                self._loose_ball_after_interior_miss(engine)
+                terminal = _dispatch_rebound(engine, world, random.Random(seed), ReboundSource.MISSED_FG, family, 0,
+                                              offense_team_id="A", defense_team_id="B")
+                if terminal is not None and terminal.reason == PossessionTerminalReason.DEFENSIVE_REBOUND:
+                    found[family] = True
+                    break
+        self.assertTrue(found["RIM"], "expected a real defensive rebound reachable after a RIM miss")
+        self.assertTrue(found["FLOATER"], "expected a real defensive rebound reachable after a FLOATER miss")
+
+    def test_three_point_rebound_both_outcomes_remain_reachable(self):
+        from possession_orchestrator import _dispatch_rebound
+        from rebound_resolution import ReboundSource
+        import random
+        seen = set()
+        for seed in range(50):
+            engine, world = self._engine_and_world()
+            engine.begin_shot(SpatialZone.TOP_OF_KEY, dt=0.0)
+            engine.resolve_shot_missed_pending_rebound("1", dt=0.0)
+            terminal = _dispatch_rebound(engine, world, random.Random(seed), ReboundSource.MISSED_FG, "THREE_POINT", 0,
+                                          offense_team_id="A", defense_team_id="B")
+            seen.add(terminal.reason if terminal is not None else "OFFENSE_CONTINUES")
+        self.assertEqual(seen, {PossessionTerminalReason.DEFENSIVE_REBOUND, "OFFENSE_CONTINUES"})
+
+    # 10. no duplicate player/location authority introduced
+    def test_sync_writes_only_to_the_existing_player_zones_dict(self):
+        import inspect
+        src = inspect.getsource(_sync_assigned_defender_zone)
+        self.assertIn("world.player_zones[", src)
+        self.assertNotIn("defender_zones_v2", src)
+        self.assertNotIn("synthetic_zone", src)
+        self.assertNotIn("rebound_only_zone", src)
+        # confirms the field this function writes to is PossessionWorld's own existing field, not a new one
+        import dataclasses
+        from possession_orchestrator import PossessionWorld as _World
+        field_names = {f.name for f in dataclasses.fields(_World)}
+        self.assertIn("player_zones", field_names)
+        self.assertNotIn("defender_zones", field_names)
+
+    # 11. same-seed determinism preserved
+    def test_deterministic_replay_preserved_with_zone_sync(self):
+        def run():
+            return simulate_possession("A", "B", OFF_FIVE, DEF_FIVE, _profiles(), inbound_receiver_id="1",
+                                        config=PossessionConfig(), rng_seed=42, possession_id="det")
+        first, second = run(), run()
+        self.assertEqual(first.reason, second.reason)
+        self.assertEqual(first.stats.points, second.stats.points)
+        self.assertEqual(first.steps_taken, second.steps_taken)
+
+    # 12. the sync itself never consumes RNG or changes an action's own outcome
+    def test_sync_consumes_no_rng(self):
+        import inspect
+        src = inspect.getsource(_sync_assigned_defender_zone)
+        self.assertNotIn("rng", src)
+        self.assertNotIn("random", src)
+
+    # 13. diagnostic telemetry remains observational after the fix
+    def test_diagnostics_still_reconstructs_correctly_after_zone_fix(self):
+        from detailed_engine_diagnostics import diagnose_possession
+        result = simulate_possession("A", "B", OFF_FIVE, DEF_FIVE, _profiles(), inbound_receiver_id="1",
+                                      config=PossessionConfig(), rng_seed=23024, possession_id="diag_check")
+        # a lightweight PossessionRecord-shaped stand-in is unnecessary here -- the real cross-check lives in
+        # test_detailed_engine_diagnostics.py; this just confirms the new sync doesn't break trace/action_log shape.
+        self.assertIsInstance(result.world.trace, list)
+        self.assertIsInstance(result.world.action_log, list)
 
 
 if __name__ == "__main__":

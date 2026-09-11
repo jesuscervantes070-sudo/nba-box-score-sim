@@ -648,6 +648,28 @@ def _primary_defender(engine: PossessionEngine, offensive_player_id: str) -> Opt
     return None
 
 
+def _sync_assigned_defender_zone(engine: PossessionEngine, world: PossessionWorld,
+                                  offensive_player_id: str, new_zone: SpatialZone) -> None:
+    """Defender-zone staleness fix (see docs/DETAILED_ENGINE_FIRST_DIAGNOSTIC_REPORT.md's
+    "Defender-Zone Staleness Correction" section). `_mirror_defender_zones` already establishes
+    the real, existing rule this project uses for defender location: a defender occupies the SAME
+    coarse zone as their CURRENT man-to-man assignment (`engine.state.assignments`, unchanged).
+    That rule was previously applied only ONCE, at possession start -- every subsequent offensive
+    zone update (`world.player_zones[offensive_player_id] = ...`) left it stale. This helper
+    re-applies the EXACT SAME existing rule at every point an offensive player's own zone changes,
+    so it never goes stale relative to `engine.state.assignments` -- it does not invent a new
+    location authority (still writes to the SAME `world.player_zones` dict every other update
+    already uses), does not touch posture/`AdvantageModel`, and does not move a defender "onto the
+    ball" -- it moves them to wherever THEIR OWN real assignment (a man-to-man matchup pointer, not
+    the ball) currently is, which is coarse man-to-man defense, not ball-chasing. A defender whose
+    assignment has since switched (Phase 22A's atomic switch) is looked up FRESH via
+    `engine.state.assignments` on every call, so a switch's own new pairing is respected
+    automatically -- no second, independently-mutable assignment/location copy is created."""
+    defender_id = _primary_defender(engine, offensive_player_id)
+    if defender_id is not None:
+        world.player_zones[defender_id] = new_zone
+
+
 # ---------------------------------------------------------------------
 # 4. Deterministic V0 zone placement -- ORCHESTRATION SCAFFOLDING, NOT
 # calibrated player behavior/tendency-informed positioning. A future
@@ -973,6 +995,7 @@ def _dispatch_rebound(engine: PossessionEngine, world: PossessionWorld, rng: ran
         world.stats.oreb += 1
         if result.rebounder_id is not None:
             world.player_zones[result.rebounder_id] = engine.state.ball_zone
+            _sync_assigned_defender_zone(engine, world, result.rebounder_id, engine.state.ball_zone)
         return None  # continue orchestration -- SECOND_CHANCE
     world.stats.dreb += 1
     return _terminal(PossessionTerminalReason.DEFENSIVE_REBOUND, engine, world, steps)
@@ -1039,6 +1062,7 @@ def _dispatch_floor_foul(engine: PossessionEngine, world: PossessionWorld, confi
     # at the same zone (the smallest honest V0 choice -- no inbound-playcalling is modeled).
     engine.inbound(fouled_player_id, engine.state.ball_zone, PossessionPhase.HALFCOURT)
     world.player_zones[fouled_player_id] = engine.state.ball_zone
+    _sync_assigned_defender_zone(engine, world, fouled_player_id, engine.state.ball_zone)
     return None  # continue orchestration
 
 
@@ -1100,6 +1124,7 @@ def _dispatch_drive(engine: PossessionEngine, world: PossessionWorld, intent: Ac
     outcome = resolve_drive(engine, driver_id, defender_id, drive_ctx, rng)
     _charge_time(engine, config.drive_action_seconds)
     world.player_zones[driver_id] = engine.state.ball_zone
+    _sync_assigned_defender_zone(engine, world, driver_id, engine.state.ball_zone)
     world.log_trace(step=steps, action="DRIVE", outcome=outcome, driver=driver_id, defender=defender_id,
                      zone=engine.state.ball_zone.value)
     return None  # a drive is never terminal by itself in V0 -- selection re-runs from the new structure
@@ -1286,6 +1311,7 @@ def _dispatch_pass(engine: PossessionEngine, world: PossessionWorld, intent: Act
 
     if outcome in (PassOutcome.COMPLETED_CLEAN, PassOutcome.COMPLETED_ADJUSTED):
         world.player_zones[receiver_id] = destination_zone
+        _sync_assigned_defender_zone(engine, world, receiver_id, destination_zone)
         world.just_caught_pass_player_id = receiver_id
         return None
 

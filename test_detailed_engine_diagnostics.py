@@ -160,11 +160,14 @@ class TestMultiGameDiagnostics(unittest.TestCase):
         results = [_game(seed=s) for s in range(23024, 23034)]
         multi = diagnose_games(results)
         self.assertEqual(multi.game_count, 10)
-        # loose bounds around the previously reported 10-game means -- not a calibration assertion,
-        # just confirming the telemetry reconstructs the same order of magnitude every run.
+        # Loose bounds -- not a calibration assertion, just confirming the telemetry reconstructs the same
+        # order of magnitude every run. Widened after the defender-zone staleness fix (see
+        # docs/DETAILED_ENGINE_FIRST_DIAGNOSTIC_REPORT.md's "Defender-Zone Staleness Correction" section):
+        # possessions per game and OREB share both legitimately shifted once defense could actually compete
+        # for interior rebounds (this is the fix's own intended, demonstrated downstream effect, not a bug).
         self.assertGreater(multi.mean_total_possessions, 600)
-        self.assertLess(multi.mean_total_possessions, 750)
-        self.assertGreater(multi.mean_oreb, 250)
+        self.assertLess(multi.mean_total_possessions, 900)
+        self.assertGreater(multi.mean_oreb, 150)
 
 
 class TestTelemetryIsObservationalOnly(unittest.TestCase):
