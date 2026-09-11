@@ -8,9 +8,9 @@ from possession_engine import PossessionEngine
 from possession_state import BallState, PossessionPhase, SpatialZone
 from transition_state import (
     AHEAD_OF_BALL, BEHIND_BALL, CONTEXT_DEPENDENT, DEAD_BALL_INBOUND,
-    LIVE_TRANSITION_CAPABLE, NEAR_BALL, SOURCE_CLASSIFICATION,
-    FloorPlayer, PossessionChangeSource, TransitionRestartType, TransitionState,
-    _COURT_FLIP_MAP, classify_source, decide_restart_type,
+    LIVE_TRANSITION_CAPABLE, NEAR_BALL, SOURCE_CLASSIFICATION, SOURCE_TRANSITION_PROFILES,
+    FloorPlayer, PossessionChangeSource, TransitionRestartType, TransitionSourceProfile, TransitionState,
+    _COURT_FLIP_MAP, classify_source, decide_restart_type, decide_restart_type_stochastic,
     flip_zone_to_new_offense_frame, initialize_transition_state, relational_tag,
 )
 
@@ -393,6 +393,106 @@ class TestCanonicalRestartRouting(unittest.TestCase):
         referenced_names = set(decide_restart_type.__code__.co_names)
         for forbidden in ("random", "rng", "SpatialZone", "clock", "pace", "target"):
             self.assertNotIn(forbidden, referenced_names)
+
+
+class _FakeRandom:
+    """Duck-typed deterministic `rng` -- only `.random()` is ever called by
+    `decide_restart_type_stochastic`; a fixed-return fake is the smallest real forcing hook
+    (reuses this project's own established "construct a deterministic fake, don't add new
+    production test-only architecture" convention)."""
+    def __init__(self, value):
+        self._value = value
+        self.calls = 0
+
+    def random(self):
+        self.calls += 1
+        return self._value
+
+
+class TestSourceConditionedTransitionRouting(unittest.TestCase):
+    """"Calibrate source-conditioned transition routing" -- focused tests A/B/C/D/E/F."""
+
+    def test_a_dreb_is_no_longer_unconditionally_transition(self):
+        """A. A roll ABOVE DEFENSIVE_REBOUND's real live_transition_probability (0.512) must
+        route to CONTROLLED_ADVANCE, not LIVE_TRANSITION -- proving the old unconditional mapping
+        is gone."""
+        rng = _FakeRandom(0.9)
+        result = decide_restart_type_stochastic(PossessionChangeSource.DEFENSIVE_REBOUND,
+                                                 LIVE_TRANSITION_CAPABLE, rng)
+        self.assertEqual(result, TransitionRestartType.CONTROLLED_ADVANCE)
+
+    def test_b_forced_transition_routing_is_deterministic(self):
+        """B. A roll BELOW the probability deterministically produces LIVE_TRANSITION."""
+        rng = _FakeRandom(0.1)
+        result = decide_restart_type_stochastic(PossessionChangeSource.DEFENSIVE_REBOUND,
+                                                 LIVE_TRANSITION_CAPABLE, rng)
+        self.assertEqual(result, TransitionRestartType.LIVE_TRANSITION)
+
+    def test_c_forced_controlled_advance_works_for_every_profiled_source(self):
+        """C. Same forcing mechanism works for every profiled live source, not just DREB."""
+        for source in SOURCE_TRANSITION_PROFILES:
+            with self.subTest(source=source):
+                rng = _FakeRandom(0.999)
+                result = decide_restart_type_stochastic(source, LIVE_TRANSITION_CAPABLE, rng)
+                self.assertEqual(result, TransitionRestartType.CONTROLLED_ADVANCE)
+
+    def test_d_dead_ball_inbound_sources_stay_settled_and_consume_zero_rng(self):
+        """D. MADE_BASKET_INBOUND/DEAD_BALL_TURNOVER remain unconditionally DEAD_BALL_INBOUND --
+        even a `rng` that would ALWAYS say "transition" if ever consulted proves it is never
+        consulted at all for these sources."""
+        rng = _FakeRandom(0.0)  # would satisfy almost any "< probability" check if ever called
+        for source in (PossessionChangeSource.MADE_BASKET_INBOUND, PossessionChangeSource.DEAD_BALL_TURNOVER,
+                       PossessionChangeSource.PERIOD_START):
+            with self.subTest(source=source):
+                result = decide_restart_type_stochastic(source, DEAD_BALL_INBOUND, rng)
+                self.assertEqual(result, TransitionRestartType.DEAD_BALL_INBOUND)
+        self.assertEqual(rng.calls, 0)
+
+    def test_e_profile_probabilities_reconcile_to_one(self):
+        """E. Every profiled source's live_transition_probability + controlled_advance_probability
+        sums to exactly 1.0 (enforced structurally by TransitionSourceProfile.__post_init__, and
+        re-confirmed here for every REAL profiled source, not just a hypothetical one)."""
+        self.assertGreater(len(SOURCE_TRANSITION_PROFILES), 0)
+        for source, profile in SOURCE_TRANSITION_PROFILES.items():
+            with self.subTest(source=source):
+                self.assertAlmostEqual(
+                    profile.live_transition_probability + profile.controlled_advance_probability, 1.0)
+
+    def test_transition_source_profile_rejects_probabilities_that_do_not_sum_to_one(self):
+        with self.assertRaises(ValueError):
+            TransitionSourceProfile(live_transition_probability=0.5, controlled_advance_probability=0.3)
+
+    def test_f_profiled_live_source_consumes_exactly_one_rng_draw(self):
+        """F. A profiled LIVE_TRANSITION_CAPABLE source consumes EXACTLY one `rng.random()` call
+        -- never zero, never more than one."""
+        rng = _FakeRandom(0.5)
+        decide_restart_type_stochastic(PossessionChangeSource.DEFENSIVE_REBOUND, LIVE_TRANSITION_CAPABLE, rng)
+        self.assertEqual(rng.calls, 1)
+
+    def test_unprofiled_live_source_preserves_old_behavior_with_zero_rng(self):
+        """LOOSE_BALL_RECOVERY has no real extraction yet (see transition_rate_ingestion.py's own
+        coverage note) -- must stay unconditionally LIVE_TRANSITION, consuming zero RNG, never a
+        guessed rate."""
+        rng = _FakeRandom(0.999)
+        result = decide_restart_type_stochastic(PossessionChangeSource.LOOSE_BALL_RECOVERY,
+                                                 LIVE_TRANSITION_CAPABLE, rng)
+        self.assertEqual(result, TransitionRestartType.LIVE_TRANSITION)
+        self.assertEqual(rng.calls, 0)
+
+    def test_context_dependent_source_preserves_old_behavior_with_zero_rng(self):
+        rng = _FakeRandom(0.999)
+        result = decide_restart_type_stochastic(PossessionChangeSource.BLOCK_RECOVERY_DEFENSE,
+                                                 CONTEXT_DEPENDENT, rng)
+        self.assertEqual(result, TransitionRestartType.LIVE_TRANSITION)
+        self.assertEqual(rng.calls, 0)
+
+    def test_old_deterministic_function_is_unchanged(self):
+        """`decide_restart_type` (the old, pre-calibration function) is NOT rewritten in place --
+        still importable, still deterministic, still the Phase 20 baseline."""
+        self.assertEqual(
+            decide_restart_type(PossessionChangeSource.DEFENSIVE_REBOUND, LIVE_TRANSITION_CAPABLE),
+            TransitionRestartType.LIVE_TRANSITION,
+        )
 
 
 if __name__ == "__main__":

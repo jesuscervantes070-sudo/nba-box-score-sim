@@ -41,7 +41,7 @@ from transition_state import (
     TransitionRestartType,
     build_transition_diagnostic,
     classify_source,
-    decide_restart_type,
+    decide_restart_type_stochastic,
 )
 
 
@@ -53,6 +53,7 @@ class RestartType:
     """Compatibility names backed by the canonical Phase 20 vocabulary."""
     DEAD_BALL_INBOUND = TransitionRestartType.DEAD_BALL_INBOUND
     LIVE_TRANSITION = TransitionRestartType.LIVE_TRANSITION
+    CONTROLLED_ADVANCE = TransitionRestartType.CONTROLLED_ADVANCE
 
 
 class SegmentStopReason:
@@ -233,12 +234,18 @@ def initialize_next_possession(state: DetailedGameState,
         source=PossessionChangeSource.PERIOD_START,
         ball_carrier_id=offense_five[0],
     )
-    if restart.restart_type not in (RestartType.DEAD_BALL_INBOUND, RestartType.LIVE_TRANSITION):
+    if restart.restart_type not in (RestartType.DEAD_BALL_INBOUND, RestartType.LIVE_TRANSITION,
+                                    RestartType.CONTROLLED_ADVANCE):
         raise ValueError(f"unsupported restart_type {restart.restart_type!r}")
     receiver = restart.ball_carrier_id or offense_five[0]
     if receiver not in offense_five:
         raise ValueError("restart ball carrier must belong to the current offensive five")
-    phase = PossessionPhase.TRANSITION if restart.restart_type == RestartType.LIVE_TRANSITION \
+    # CONTROLLED_ADVANCE is live (the ball never went dead), same as LIVE_TRANSITION, for
+    # engine.state.phase purposes -- it is distinguished from a genuine fast break ONLY by its
+    # own entry-stage timing (PossessionStage.CONTROLLED_ADVANCE_ENTRY, wired below via
+    # PossessionConfig.controlled_advance_entry), not by PossessionPhase.
+    phase = PossessionPhase.TRANSITION if restart.restart_type in (RestartType.LIVE_TRANSITION,
+                                                                    RestartType.CONTROLLED_ADVANCE) \
         else PossessionPhase.HALFCOURT
     return PossessionStart(
         possession_id=f"period{state.period}-possession{state.next_possession_sequence}",
@@ -328,8 +335,20 @@ def apply_possession_result(state: DetailedGameState, start: PossessionStart,
 
 def next_restart_context(result: PossessionTerminalResult,
                          new_state: DetailedGameState,
-                         home_five: Tuple[str, ...], away_five: Tuple[str, ...]) -> Optional[RestartContext]:
-    """Centralized terminal reason -> next-possession restart policy."""
+                         home_five: Tuple[str, ...], away_five: Tuple[str, ...],
+                         rng: random.Random) -> Optional[RestartContext]:
+    """Centralized terminal reason -> next-possession restart policy.
+
+    `rng` ("Calibrate source-conditioned transition routing"): consulted by
+    `decide_restart_type_stochastic` -- exactly ONE draw for a profiled LIVE_TRANSITION_CAPABLE
+    source (DEFENSIVE_REBOUND/LIVE_STEAL/LIVE_BAD_PASS_INTERCEPTION), ZERO draws otherwise
+    (DEAD_BALL_INBOUND sources, CONTEXT_DEPENDENT, or an unprofiled live source like
+    LOOSE_BALL_RECOVERY -- see that function's own docstring). This is the SAME parent `rng`
+    `simulate_possessions` already owns (used there to derive each possession's own
+    `rng.getrandbits(64)` seed) -- the restart-type draw happens on that parent stream, never on
+    a possession's own isolated RNG, so activating this does not perturb any single possession's
+    own internal replay determinism, only the SEQUENCE of seeds handed to subsequent
+    possessions (an expected, documented consequence of this real behavioral change)."""
     if result.reason == PossessionTerminalReason.PERIOD_END or new_state.game_clock_seconds <= 0.0:
         return None
     next_five = _lineup_for(new_state.current_offense_team_id, new_state, home_five, away_five)
@@ -357,8 +376,11 @@ def next_restart_context(result: PossessionTerminalResult,
         source = PossessionChangeSource.DEAD_BALL_TURNOVER
 
     source_taxonomy = classify_source(source)
-    restart_type = decide_restart_type(source, source_taxonomy)
-    if restart_type == RestartType.LIVE_TRANSITION:
+    restart_type = decide_restart_type_stochastic(source, source_taxonomy, rng)
+    if restart_type in (RestartType.LIVE_TRANSITION, RestartType.CONTROLLED_ADVANCE):
+        # the ball is LIVE either way -- same real carrier, same diagnostic; only the restart_type
+        # (and, downstream, the entry-stage timing) differs between a genuine fast break and a
+        # controlled advance.
         diagnostic = build_transition_diagnostic(source, result.world, new_state.current_offense_team_id,
                                                   new_state.current_defense_team_id, carrier)
         return RestartContext(restart_type, source,
@@ -400,6 +422,7 @@ def simulate_possessions(home_five: Tuple[str, ...], away_five: Tuple[str, ...],
             initial_game_clock_seconds=state.game_clock_seconds,
             initial_phase=start.phase,
             initial_ball_zone=start.ball_zone,
+            controlled_advance_entry=(start.restart_context.restart_type == RestartType.CONTROLLED_ADVANCE),
         )
         terminal = simulate_possession(
             offense_team_id=start.offense_team_id,
@@ -415,7 +438,7 @@ def simulate_possessions(home_five: Tuple[str, ...], away_five: Tuple[str, ...],
         )
         previous = state
         state = apply_possession_result(previous, start, terminal)
-        restart = next_restart_context(terminal, state, home_five, away_five)
+        restart = next_restart_context(terminal, state, home_five, away_five, rng)
         records.append(PossessionRecord(
             possession_id=start.possession_id,
             offense_team_id=start.offense_team_id,

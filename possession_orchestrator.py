@@ -984,17 +984,29 @@ class PossessionConfig:
     ordinary_entry_seconds: float = 9.0      # FIRST-PASS CALIBRATED (was 3.0 UNCALIBRATED) -- a new halfcourt possession's advance/organize time
     transition_entry_seconds: float = 1.5    # UNCALIBRATED PLACEHOLDER (unchanged this pass) -- a new live-transition possession's advance time
     second_chance_reset_seconds: float = 1.0  # UNCALIBRATED PLACEHOLDER (unchanged this pass) -- post-OREB re-organization, SAME possession
-    # STRUCTURAL TYPE ONLY, CURRENTLY INERT -- see `PossessionStage.CONTROLLED_ADVANCE_ENTRY`'s own
-    # comment and the architecture-review task's "Add Controlled-Advance Structural Type" section.
-    # UNCALIBRATED. Deliberately NOT chosen from the 197.6-possession pace target (this project's own
-    # explicit instruction: do not target-fit a timing constant) -- set equal to `ordinary_entry_seconds`
-    # ONLY as an inert starting point (a controlled advance is conceptually closer to an organized,
-    # settled-defense entry than to a genuine fast break), pending a FUTURE, SEPARATE, disciplined
-    # sensitivity study, exactly like the one `ordinary_entry_seconds`/`inter_action_seconds` already
-    # went through. NO current code path ever reads this field -- confirmed:
-    # `_charge_possession_stage_time`'s own `seconds_by_stage` dict does not map
-    # `CONTROLLED_ADVANCE_ENTRY` to it, and no call site ever passes that stage constant.
-    controlled_advance_entry_seconds: float = 9.0  # UNCALIBRATED, INERT -- not yet wired to any stage-charge call site
+    # ACTIVATED ("Calibrate source-conditioned transition routing" phase). Real, first-pass value
+    # -- NOT a target-fit, NOT a midpoint of `transition_entry_seconds`/`ordinary_entry_seconds`:
+    # derived directly from `transition_rate_ingestion.py`'s real 2025-26 extraction, specifically
+    # DEFENSIVE_REBOUND's own measured mean elapsed-to-first-offensive-action AMONG the real
+    # possessions that took >=8 seconds (the subset this phase routes to CONTROLLED_ADVANCE) --
+    # 15.73s, n=1,323 real events (DEFENSIVE_REBOUND is the dominant CONTROLLED_ADVANCE-routed
+    # source by volume; LIVE_STEAL/LIVE_BAD_PASS_INTERCEPTION's own >=8s conditional means, 18.05s
+    # and 17.97s respectively, are close enough to this same real number that a single shared
+    # constant is not an unreasonable first pass). This is the TOTAL real elapsed-to-first-shot
+    # time for that subset, not independently decomposed into "entry burn" vs. subsequent
+    # inter-action/execution time (that decomposition was not attempted this phase -- flagged
+    # PROVISIONAL, same posture as `transition_entry_seconds`/`second_chance_reset_seconds` below).
+    # `_charge_possession_stage_time`'s own `seconds_by_stage` dict now maps
+    # `CONTROLLED_ADVANCE_ENTRY` to this field, and `controlled_advance_entry` (below) is the real
+    # per-possession signal that selects it.
+    controlled_advance_entry_seconds: float = 15.73  # REAL FIRST-PASS (was 9.0 UNCALIBRATED/INERT) -- see comment above
+    # Set by `detailed_game_orchestrator.simulate_possessions` from the real, stochastically-
+    # decided `RestartContext.restart_type` (`TransitionRestartType.CONTROLLED_ADVANCE`) -- never
+    # set directly by a production caller constructing `PossessionConfig` from scratch. `False` is
+    # the correct default for any caller that does not go through that orchestration layer (e.g. a
+    # standalone `simulate_possession` test) -- ordinary HALFCOURT_ENTRY/TRANSITION_ENTRY timing
+    # then applies exactly as before this phase.
+    controlled_advance_entry: bool = False
     # ------------------------------------------------------------------
     # Inter-Action Timing Structure -- see docs/DETAILED_ENGINE_FIRST_DIAGNOSTIC_REPORT.md's own
     # "Inter-Action Timing Structure" section. This is a SEPARATE concept from the three ENTRY/RESET
@@ -1033,17 +1045,15 @@ class PossessionStage:
     HALFCOURT_ENTRY = "HALFCOURT_ENTRY"          # a new possession beginning at a dead-ball, halfcourt inbound
     TRANSITION_ENTRY = "TRANSITION_ENTRY"        # a new possession beginning live, in transition
     SECOND_CHANCE_RESET = "SECOND_CHANCE_RESET"  # an offensive rebound continuing the SAME possession (SAME possession_id)
-    # STRUCTURAL TYPE ONLY -- see the architecture-review task's "Add Controlled-Advance Structural
-    # Type" section. Represents a LIVE possession change (not a dead-ball inbound) where the
-    # observational transition classifier (`transition_state.build_transition_diagnostic`) would find
-    # no meaningful structural transition advantage -- the new offense has the ball live but must
-    # still advance/organize, distinct from both a genuine fast-break TRANSITION_ENTRY and a dead-ball
-    # HALFCOURT_ENTRY. CURRENTLY INERT: no `PossessionConfig` field maps this stage to a value in
-    # `_charge_possession_stage_time`'s own `seconds_by_stage` dict, and NO current call site ever
-    # passes this constant to that function -- `simulate_possession`'s own entry-stage charge (see its
-    # own "Structural Timing Hook" section) still selects only HALFCOURT_ENTRY/TRANSITION_ENTRY, exactly
-    # as before this addition. Activating this stage (routing SOME live restarts through it) is an
-    # explicit, SEPARATE, NOT-YET-MADE decision -- see docs' "Recommended next decision" section.
+    # ACTIVATED ("Calibrate source-conditioned transition routing" phase). Represents a LIVE
+    # possession change (not a dead-ball inbound) that `transition_state.decide_restart_type_stochastic`
+    # routed to `TransitionRestartType.CONTROLLED_ADVANCE` using a real, source-conditioned
+    # empirical probability (see that module's own docstring) -- the new offense has the ball live
+    # but must still advance/organize, distinct from both a genuine fast-break TRANSITION_ENTRY and
+    # a dead-ball HALFCOURT_ENTRY. `_charge_possession_stage_time`'s own `seconds_by_stage` dict now
+    # maps this stage to `PossessionConfig.controlled_advance_entry_seconds`, selected whenever
+    # `PossessionConfig.controlled_advance_entry` is True (set by
+    # `detailed_game_orchestrator.simulate_possessions` from the real stochastic restart decision).
     CONTROLLED_ADVANCE_ENTRY = "CONTROLLED_ADVANCE_ENTRY"
 
 
@@ -1078,6 +1088,7 @@ def _charge_possession_stage_time(engine: PossessionEngine, world: PossessionWor
         PossessionStage.HALFCOURT_ENTRY: config.ordinary_entry_seconds,
         PossessionStage.TRANSITION_ENTRY: config.transition_entry_seconds,
         PossessionStage.SECOND_CHANCE_RESET: config.second_chance_reset_seconds,
+        PossessionStage.CONTROLLED_ADVANCE_ENTRY: config.controlled_advance_entry_seconds,
     }
     if stage not in seconds_by_stage:
         raise ValueError(f"unknown PossessionStage {stage!r}")
@@ -2108,8 +2119,16 @@ def simulate_possession(
     # loop's own EXISTING top-of-loop checks (immediately below) catch it on the very first iteration and
     # terminate via the real, existing `shot_clock_violation()`/`period_expiration()` methods -- no action
     # is ever dispatched past an expired clock, and no fake basketball event is invented.
-    entry_stage = PossessionStage.TRANSITION_ENTRY if config.initial_phase == PossessionPhase.TRANSITION \
-        else PossessionStage.HALFCOURT_ENTRY
+    # `controlled_advance_entry` is checked FIRST, before `initial_phase`, because a controlled
+    # advance also sets `initial_phase=TRANSITION` (the ball is live, same as a genuine fast break
+    # -- see detailed_game_orchestrator.initialize_next_possession's own comment) and needs its
+    # OWN distinct entry-stage timing, not TRANSITION_ENTRY's.
+    if config.controlled_advance_entry:
+        entry_stage = PossessionStage.CONTROLLED_ADVANCE_ENTRY
+    elif config.initial_phase == PossessionPhase.TRANSITION:
+        entry_stage = PossessionStage.TRANSITION_ENTRY
+    else:
+        entry_stage = PossessionStage.HALFCOURT_ENTRY
     _charge_possession_stage_time(engine, world, config, entry_stage, step=0)
 
     for step in range(config.max_steps_per_possession):

@@ -112,6 +112,93 @@ def decide_restart_type(source: str, source_taxonomy: str) -> str:
         return TransitionRestartType.LIVE_TRANSITION
     raise ValueError(f"unsupported possession-change taxonomy {source_taxonomy!r}")
 
+
+# =========================================================================
+# "Calibrate source-conditioned transition routing" (Phase 20 correction).
+# =========================================================================
+#
+# ============================ EMPIRICAL SOURCE (verified directly, not guessed) ============================
+# `transition_rate_ingestion.py` -- real nba_api `playbyplayv3` extraction, 2025-26 regular
+# season, 112-game stratified sample (14,819 possession-change events; see that module's own
+# docstring for the exact, audited event-pairing rules). For each LIVE_TRANSITION_CAPABLE source,
+# `live_transition_probability` below is that source's own measured SHARE of real possessions
+# whose first offensive action (shot/turnover/foul) occurred within 8 seconds of the
+# rebound/steal/interception -- the SAME "<8 second" framing this project's own prior Phase 20
+# architecture audit already used (not a freshly-invented cutoff this phase):
+#   DEFENSIVE_REBOUND:          n=2,709   <8s share = 0.512   (mean 9.60s, median 7.00s)
+#   LIVE_STEAL:                 n=738     <8s share = 0.623   (mean 9.51s, median 6.00s)
+#   LIVE_BAD_PASS_INTERCEPTION: n=1,087   <8s share = 0.611   (mean 9.65s, median 6.00s)
+# DEAD_BALL_INBOUND sources were ALSO measured and confirm the existing deterministic behavior
+# rather than overriding it: MADE_BASKET_INBOUND (n=9,206) <8s share = 0.091, mean 17.38s;
+# DEAD_BALL_TURNOVER (n=1,079) <8s share = 0.087, mean 15.79s -- both overwhelmingly settled,
+# so they are NOT given a `TransitionSourceProfile` below and remain unconditionally
+# `DEAD_BALL_INBOUND` (zero RNG consumed), matching the task's own expectation.
+#
+# ============================ LOOSE_BALL_RECOVERY -- NOT COVERED (missing != zero) ============================
+# This extraction does NOT resolve `LOOSE_BALL_RECOVERY` timing (see
+# `transition_rate_ingestion.py`'s own "COVERAGE NOTE" -- who recovers a live loose ball is a
+# separate event this extraction does not yet track). `LOOSE_BALL_RECOVERY` therefore has NO
+# profile below and keeps its pre-existing deterministic `LIVE_TRANSITION` behavior, UNCHANGED --
+# never guessed from a similar-looking source's own rate.
+#
+# ============================ WHAT "CONTROLLED_ADVANCE" MEANS HERE ============================
+# For a profiled source, `1 - live_transition_probability` is NOT "settled/dead-ball" (the ball
+# never went dead) -- it is `TransitionRestartType.CONTROLLED_ADVANCE`: a live change of
+# possession that must still be advanced/organized, distinct from both a genuine fast break and a
+# dead-ball inbound (see `possession_orchestrator.PossessionStage.CONTROLLED_ADVANCE_ENTRY`,
+# activated by this same phase).
+@dataclass(frozen=True)
+class TransitionSourceProfile:
+    """`live_transition_probability` + `controlled_advance_probability` sum to exactly 1.0 for
+    every profiled source -- there is no third "settled" option for a LIVE source (see module
+    comment above: the ball never went dead, so `DEAD_BALL_INBOUND` is never a valid outcome
+    here)."""
+    live_transition_probability: float
+    controlled_advance_probability: float
+
+    def __post_init__(self) -> None:
+        total = self.live_transition_probability + self.controlled_advance_probability
+        if abs(total - 1.0) > 1e-9:
+            raise ValueError(f"TransitionSourceProfile probabilities must sum to 1.0, got {total}")
+
+
+SOURCE_TRANSITION_PROFILES: Dict[str, TransitionSourceProfile] = {
+    PossessionChangeSource.DEFENSIVE_REBOUND: TransitionSourceProfile(0.512, 0.488),
+    PossessionChangeSource.LIVE_STEAL: TransitionSourceProfile(0.623, 0.377),
+    PossessionChangeSource.LIVE_BAD_PASS_INTERCEPTION: TransitionSourceProfile(0.611, 0.389),
+    # PossessionChangeSource.LOOSE_BALL_RECOVERY: deliberately absent -- see module comment above.
+}
+
+
+def decide_restart_type_stochastic(source: str, source_taxonomy: str, rng: random.Random) -> str:
+    """Real-evidence-driven replacement for `decide_restart_type` above, used by production
+    (`detailed_game_orchestrator.next_restart_context`). `decide_restart_type` itself is left
+    completely UNCHANGED (still the deterministic Phase 20 baseline, still independently
+    tested/importable) -- this is a separate, additive function, not a rewrite in place.
+
+    Consumes EXACTLY ONE `rng.random()` draw for a profiled LIVE_TRANSITION_CAPABLE source, and
+    ZERO draws for every other case (DEAD_BALL_INBOUND, CONTEXT_DEPENDENT, or an unprofiled live
+    source like LOOSE_BALL_RECOVERY) -- missing evidence must never silently cost an RNG draw
+    nor silently default to one particular outcome."""
+    canonical_taxonomy = classify_source(source)
+    if source_taxonomy != canonical_taxonomy:
+        raise ValueError(
+            f"source taxonomy mismatch for {source!r}: "
+            f"expected {canonical_taxonomy!r}, got {source_taxonomy!r}"
+        )
+    if source_taxonomy == DEAD_BALL_INBOUND:
+        return TransitionRestartType.DEAD_BALL_INBOUND
+    if source_taxonomy == CONTEXT_DEPENDENT:
+        return TransitionRestartType.LIVE_TRANSITION  # unchanged -- BLOCK_RECOVERY_DEFENSE not yet profiled
+    if source_taxonomy != LIVE_TRANSITION_CAPABLE:
+        raise ValueError(f"unsupported possession-change taxonomy {source_taxonomy!r}")
+
+    profile = SOURCE_TRANSITION_PROFILES.get(source)
+    if profile is None:
+        return TransitionRestartType.LIVE_TRANSITION  # unprofiled live source (e.g. LOOSE_BALL_RECOVERY) -- unchanged, zero RNG
+    return (TransitionRestartType.LIVE_TRANSITION if rng.random() < profile.live_transition_probability
+            else TransitionRestartType.CONTROLLED_ADVANCE)
+
 # A real, coarse "distance from the defended rim" ranking over the
 # existing coarse-zone topology -- reused, not replaced. Used ONLY to derive
 # the relational ahead/behind-ball tags below; no continuous coordinate

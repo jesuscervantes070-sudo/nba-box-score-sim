@@ -200,7 +200,13 @@ class TestInitializationAndFlipRules(unittest.TestCase):
         ])):
             result = game.simulate_possessions(HOME, AWAY, profiles(), initial_state(), 2, 1)
         second = result.possessions[1]
-        self.assertEqual(second.restart_context.restart_type, game.RestartType.LIVE_TRANSITION)
+        # "Calibrate source-conditioned transition routing": DEFENSIVE_REBOUND now stochastically
+        # routes to either LIVE_TRANSITION or CONTROLLED_ADVANCE -- both are LIVE (the ball never
+        # went dead), so the carrier/source handoff this test actually checks is identical either
+        # way. See TestSourceConditionedTransitionRouting below for dedicated, deterministic
+        # per-restart-type coverage.
+        self.assertIn(second.restart_context.restart_type,
+                      (game.RestartType.LIVE_TRANSITION, game.RestartType.CONTROLLED_ADVANCE))
         self.assertEqual(second.restart_context.ball_carrier_id, AWAY[2])
         self.assertEqual(second.restart_context.source, PossessionChangeSource.DEFENSIVE_REBOUND)
 
@@ -210,7 +216,8 @@ class TestInitializationAndFlipRules(unittest.TestCase):
             {"reason": PossessionTerminalReason.MADE_FG},
         ])):
             result = game.simulate_possessions(HOME, AWAY, profiles(), initial_state(), 2, 1)
-        self.assertEqual(result.possessions[1].restart_context.restart_type, game.RestartType.LIVE_TRANSITION)
+        self.assertIn(result.possessions[1].restart_context.restart_type,
+                      (game.RestartType.LIVE_TRANSITION, game.RestartType.CONTROLLED_ADVANCE))
         self.assertEqual(result.possessions[1].restart_context.ball_carrier_id, AWAY[1])
 
     def test_dead_ball_turnover_and_charge_restart_dead(self):
@@ -492,29 +499,24 @@ class TestTransitionDiagnosticWiring(unittest.TestCase):
         self.assertEqual(p_ctx.transition_diagnostic, "NOT_A_REAL_DIAGNOSTIC_OBJECT")  # the patch DID take effect
         self.assertNotEqual(b_ctx.transition_diagnostic, p_ctx.transition_diagnostic)  # yet nothing else moved
 
-    def test_controlled_advance_stage_exists_but_is_inert(self):
-        """The new `PossessionStage.CONTROLLED_ADVANCE_ENTRY` constant and
-        `PossessionConfig.controlled_advance_entry_seconds` field exist,
-        but no current call site ever activates the stage -- confirmed
-        by both a direct call (must raise, matching the SAME behavior an
-        unknown stage always has) and a source-level firewall scan."""
-        import inspect as _inspect
+    def test_controlled_advance_stage_is_now_active(self):
+        """"Calibrate source-conditioned transition routing" activates
+        `PossessionStage.CONTROLLED_ADVANCE_ENTRY`: `controlled_advance_entry_seconds` is now a
+        real, first-pass value derived from `transition_rate_ingestion.py`'s own 2025-26
+        extraction (15.73s, DEFENSIVE_REBOUND's own >=8s conditional mean -- see
+        `PossessionConfig`'s own docstring for the exact provenance), and the stage charges
+        cleanly (no longer raises) when `PossessionConfig.controlled_advance_entry=True`."""
         from possession_orchestrator import PossessionStage, PossessionConfig, _charge_possession_stage_time
         self.assertEqual(PossessionStage.CONTROLLED_ADVANCE_ENTRY, "CONTROLLED_ADVANCE_ENTRY")
-        self.assertEqual(PossessionConfig().controlled_advance_entry_seconds, 9.0)
-
-        import possession_orchestrator as po
-        src = _inspect.getsource(po)
-        # the ONLY appearances of the new stage constant are its own definition/comment and the
-        # config field's own comment -- never passed as an argument to _charge_possession_stage_time
-        # or PossessionStage.CONTROLLED_ADVANCE_ENTRY used as a live dispatch argument anywhere.
-        self.assertNotIn("_charge_possession_stage_time(engine, world, config, PossessionStage.CONTROLLED_ADVANCE_ENTRY",
-                          src)
+        self.assertEqual(PossessionConfig().controlled_advance_entry_seconds, 15.73)
+        self.assertFalse(PossessionConfig().controlled_advance_entry)  # correct default for a caller outside this orchestration layer
 
         engine = PossessionEngine("p1", "HOME", "AWAY", season="2023-24", rng_seed=1)
+        engine.inbound(HOME[0], SpatialZone.TOP_OF_KEY, PossessionPhase.TRANSITION)
         world = PossessionWorld(team_a_id="HOME", team_b_id="AWAY", team_a_five=HOME, team_b_five=AWAY, profiles=profiles())
-        with self.assertRaises(ValueError):
-            _charge_possession_stage_time(engine, world, PossessionConfig(), PossessionStage.CONTROLLED_ADVANCE_ENTRY, step=0)
+        clock_before = engine.state.game_clock_remaining
+        _charge_possession_stage_time(engine, world, PossessionConfig(), PossessionStage.CONTROLLED_ADVANCE_ENTRY, step=0)
+        self.assertAlmostEqual(clock_before - engine.state.game_clock_remaining, 15.73, places=6)
 
     def test_canonical_seed_bit_identical_with_and_without_diagnostic_computation(self):
         """The strongest available proof of Phase 11's own requirement:
@@ -565,7 +567,10 @@ class TestTransitionDiagnosticWiring(unittest.TestCase):
              patch.object(game, "build_transition_diagnostic", return_value=GarbageGeometry()):
             result = game.simulate_possessions(HOME, AWAY, profiles(), initial_state(), 2, 1)
         context = result.possessions[1].restart_context
-        self.assertEqual(context.restart_type, TransitionRestartType.LIVE_TRANSITION)
+        # "Calibrate source-conditioned transition routing": DEFENSIVE_REBOUND is now
+        # stochastically LIVE_TRANSITION or CONTROLLED_ADVANCE -- both LIVE, so this test's own
+        # real claim (invalid geometry cannot reach the routing seam) holds for either outcome.
+        self.assertIn(context.restart_type, (TransitionRestartType.LIVE_TRANSITION, TransitionRestartType.CONTROLLED_ADVANCE))
         self.assertEqual(context.source, PossessionChangeSource.DEFENSIVE_REBOUND)
         self.assertIsInstance(context.transition_diagnostic, GarbageGeometry)
 
@@ -575,11 +580,12 @@ class TestTransitionDiagnosticWiring(unittest.TestCase):
             {"reason": PossessionTerminalReason.MADE_FG},
         ]
         with patch.object(game, "simulate_possession", side_effect=scripted_runner(specs)), \
-             patch.object(game, "decide_restart_type", wraps=game.decide_restart_type) as decision:
+             patch.object(game, "decide_restart_type_stochastic", wraps=game.decide_restart_type_stochastic) as decision:
             game.simulate_possessions(HOME, AWAY, profiles(), initial_state(), 2, 1)
         decision.assert_any_call(
             PossessionChangeSource.DEFENSIVE_REBOUND,
             "LIVE_TRANSITION_CAPABLE",
+            unittest.mock.ANY,
         )
 
 
