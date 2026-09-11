@@ -133,10 +133,60 @@ TENDENCY_PULLUP_VS_CATCH_WEIGHT = 1.0
 TENDENCY_ZONE_WEIGHT = 1.0
 
 
-def _score_action(action_type: ActionType, role: RoleContext, tendency: TendencyContext) -> float:
+DRIVE_FOLLOWUP_LOG_WEIGHT: Dict[str, float] = {
+    "CLEAN_PENETRATION": 3.2,
+    "PARTIAL_EDGE": 1.8,
+    "CONTAINED": 0.6,
+    "FORCED_PICKUP": 0.0,  # dead dribble -- DRIVE/ISOLATION_ATTACK/PULL_UP are never live-dribble-gated
+    # opportunities after this outcome anyway (`resolve_drive` calls `engine.dead_dribble()`), so a
+    # shot-vs-pass reallocation would never even see a shot-side option to bias toward here.
+}
+# "Calibrate drive follow-up decisions" phase -- MODEL-IMPOSED structure, not an observed within-
+# outcome split (no public per-outcome drive->shot/pass rate exists; see module docstring for the
+# aggregate constraint this satisfies). Preserves the required monotonic ordering
+# (CLEAN_PENETRATION > PARTIAL_EDGE > CONTAINED > FORCED_PICKUP, by construction of the table
+# itself). CALIBRATED, as a SET (one shared scale factor over a fixed 3.2:1.8:0.6 ratio -- not each
+# value fit independently, which this project has no real per-outcome data to do honestly), against
+# the real AGGREGATE 2025-26 drive->FGA (~41.0%) rate: a small scale grid on TRAIN seeds
+# 25000-25049 found scale=2.0 (over the same 1.6:0.9:0.3 base ratio) reaches drive->shot%=40.09 on
+# TRAIN and 41.03 on HELDOUT seeds 25050-25099, with pace/FGA/3PA STABLE or slightly IMPROVED (not
+# regressed) at every scale tested -- unlike `drive_selection_log_weight`, this lever does not trade
+# off against pace, because it only reallocates the SAME already-live decision between an existing
+# shot vs. an existing pass action, it does not change how many decisions a possession takes.
+
+
+def _score_action(action_type: ActionType, role: RoleContext, tendency: TendencyContext,
+                   drive_selection_log_weight: float = 0.0,
+                   post_drive_outcome: Optional[str] = None) -> float:
     """One action's additive log-weight score -- every term below is
-    independent and bounded; none is multiplied by another."""
+    independent and bounded; none is multiplied by another.
+
+    `drive_selection_log_weight` ("Calibrate drive follow-up decisions" phase) is a real,
+    STRUCTURAL environment/era prior -- same additive-log-weight-space convention as
+    `ShotFamilySelectionContext.three_point_baseline_log_weight` -- NOT a player tendency (it is
+    NEVER read from any `TendencyContext`/`drive_aggression`, which stays exactly what it always
+    was: one specific player's own real relative drive preference). It exists because
+    `BASE_WEIGHT` is a single flat, hand-set prior shared by every action type (this module's own
+    documented limitation, Sec. "Base weights" above) -- direct measurement (see
+    `docs/PROJECT_STATE.md`'s "Expand interior scoring opportunities"/"Calibrate drive follow-up
+    decisions" phase notes) found DRIVE is selected far less often, PER LIVE-DRIBBLE OPPORTUNITY,
+    than real 2025-26 drives-per-100-possessions tracking implies -- a genuine selection-level gap,
+    not a pace artifact (drives/100 stayed low even after pace normalized close to the real
+    reference). Defaults to 0.0 (no effect, byte-for-byte identical to this term not existing)
+    until a caller opts in via `PossessionConfig.drive_selection_log_weight`."""
     score = BASE_WEIGHT
+    if action_type == ActionType.DRIVE:
+        score += drive_selection_log_weight
+
+    if post_drive_outcome is not None:
+        bias = DRIVE_FOLLOWUP_LOG_WEIGHT.get(post_drive_outcome, 0.0)
+        # SAME additive, opposite-sign-for-shot-vs-pass convention `tendency.pass_vs_shoot` already
+        # uses below -- a real DRIVE outcome shifting THIS ONE decision's shot/pass balance, kept
+        # fully independent of (added on top of, never multiplying) the player's own tendency term.
+        if action_type in SHOT_ACTIONS:
+            score += bias
+        elif action_type in PASS_ACTIONS:
+            score -= bias
 
     if action_type in CREATION_ACTIONS and role.role_off_initiation is not None:
         score += ROLE_INITIATION_SCALE * (role.role_off_initiation - ROLE_INITIATION_REFERENCE)
@@ -271,7 +321,9 @@ class SelectionPolicy:
 
     def select(self, perceived: List[PerceivedOpportunity], role: RoleContext, tendency: TendencyContext,
                clock: ClockContext, possession_id: str,
-               shot_family_context: Optional[ShotFamilySelectionContext] = None) -> Optional[ActionIntent]:
+               shot_family_context: Optional[ShotFamilySelectionContext] = None,
+               drive_selection_log_weight: float = 0.0,
+               post_drive_outcome: Optional[str] = None) -> Optional[ActionIntent]:
         """Returns None only when the perceived menu is genuinely empty
         after clock-feasibility filtering (e.g. a LOOSE-ball state with
         no recovery opportunities, or every remaining option infeasible)
@@ -280,7 +332,9 @@ class SelectionPolicy:
         if not feasible:
             return None
 
-        scores = [_score_action(p.opportunity.action_type, role, tendency) for p in feasible]
+        scores = [_score_action(p.opportunity.action_type, role, tendency, drive_selection_log_weight,
+                                 post_drive_outcome)
+                  for p in feasible]
         probabilities = _softmax(scores)
         chosen_index = _weighted_choice(self.rng, probabilities)
         chosen = feasible[chosen_index]

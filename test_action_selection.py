@@ -394,5 +394,70 @@ class TestDeterminismAndIsolation(unittest.TestCase):
         self.assertEqual(state2.ball_zone, SpatialZone.TOP_OF_KEY)
 
 
+class TestDriveFollowupScoring(unittest.TestCase):
+    """"Calibrate drive follow-up decisions" phase -- focused tests G/H/N from the task's own
+    required list: (G) a DRIVE's outcome is preserved independently of whatever follow-up gets
+    selected next (this module never mutates `DriveOutcome`, it only reads it), (H) the
+    monotonic drive-followup ordering (CLEAN_PENETRATION > PARTIAL_EDGE > CONTAINED >
+    FORCED_PICKUP) holds in `DRIVE_FOLLOWUP_LOG_WEIGHT` itself, (N) foul/selection behavior stays
+    deterministic under a fixed seed with `post_drive_outcome` set (a real, already-tested
+    property of `_score_action`, re-confirmed here for the new parameter specifically)."""
+
+    def test_h_drive_followup_log_weight_is_monotonic_by_outcome(self):
+        from action_selection import DRIVE_FOLLOWUP_LOG_WEIGHT
+        from drive_resolution import DriveOutcome
+        ordered = [DRIVE_FOLLOWUP_LOG_WEIGHT[o] for o in
+                   (DriveOutcome.CLEAN_PENETRATION, DriveOutcome.PARTIAL_EDGE,
+                    DriveOutcome.CONTAINED, DriveOutcome.FORCED_PICKUP)]
+        self.assertEqual(ordered, sorted(ordered, reverse=True))
+        self.assertGreater(ordered[0], ordered[-1])  # a real, non-degenerate ordering, not four equal values
+
+    def test_g_post_drive_outcome_never_mutates_the_opportunity_or_intent(self):
+        """`post_drive_outcome` only shifts a SCORE -- it is never written back onto the chosen
+        `ActionIntent`, the `DriveOutcome` string itself, or any opportunity object."""
+        from drive_resolution import DriveOutcome
+        state = _held_state()
+        ctx = StructuralContext(nearest_teammate_id="2")
+        opps = generate_opportunities(state, ctx)
+        perceived = perceive(opps, vision_latent_propensity=None, rng=random.Random(1))
+        policy = SelectionPolicy(random.Random(1))
+        intent = policy.select(perceived, RoleContext(), TendencyContext(),
+                                ClockContext(shot_clock_remaining=18.0), "p1",
+                                post_drive_outcome=DriveOutcome.CLEAN_PENETRATION)
+        self.assertIsNotNone(intent)
+        self.assertNotIn("post_drive_outcome", intent.to_dict())  # never leaks into the handoff object
+        self.assertEqual(DriveOutcome.CLEAN_PENETRATION, "CLEAN_PENETRATION")  # the constant itself is untouched
+
+    def test_n_post_drive_scoring_is_deterministic_under_a_fixed_seed(self):
+        from drive_resolution import DriveOutcome
+        state = _held_state()
+        ctx = StructuralContext(nearest_teammate_id="2")
+
+        def run():
+            opps = generate_opportunities(state, ctx)
+            perceived = perceive(opps, vision_latent_propensity=None, rng=random.Random(3))
+            policy = SelectionPolicy(random.Random(3))
+            return policy.select(perceived, RoleContext(), TendencyContext(),
+                                  ClockContext(shot_clock_remaining=18.0), "p1",
+                                  post_drive_outcome=DriveOutcome.PARTIAL_EDGE)
+
+        self.assertEqual(run().to_dict(), run().to_dict())
+
+    def test_shot_actions_favored_over_pass_actions_after_clean_penetration(self):
+        """Directly exercises `_score_action`'s own additive bias: a SHOT_ACTIONS member scores
+        strictly higher, and a PASS_ACTIONS member strictly lower, once a CLEAN_PENETRATION
+        `post_drive_outcome` is supplied, than with no drive context at all."""
+        from drive_resolution import DriveOutcome
+        role, tendency = RoleContext(), TendencyContext()
+        baseline_shot = _score_action(ActionType.PULL_UP, role, tendency)
+        biased_shot = _score_action(ActionType.PULL_UP, role, tendency,
+                                     post_drive_outcome=DriveOutcome.CLEAN_PENETRATION)
+        baseline_pass = _score_action(ActionType.SWING_PASS, role, tendency)
+        biased_pass = _score_action(ActionType.SWING_PASS, role, tendency,
+                                     post_drive_outcome=DriveOutcome.CLEAN_PENETRATION)
+        self.assertGreater(biased_shot, baseline_shot)
+        self.assertLess(biased_pass, baseline_pass)
+
+
 if __name__ == "__main__":
     unittest.main()

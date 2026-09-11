@@ -972,6 +972,25 @@ class PossessionConfig:
     # CALIBRATED at a deliberately round -0.2 on seeds 28000-28019; a
     # later era adapter may vary it without rewriting player tendencies.
     three_point_family_log_weight: float = -0.2
+    # ACTIVATED ("Calibrate drive follow-up decisions" phase). Structural, environment-level DRIVE
+    # selection-weight prior -- see `action_selection._score_action`'s own docstring for the full
+    # rationale (a real, measured selection-level gap: DRIVE is chosen far less often per live-
+    # dribble opportunity than real 2025-26 drives-per-100-possessions tracking implies, even after
+    # pace is close to the real reference -- NOT a pace artifact, NOT a player-tendency change).
+    # CALIBRATED (small grid, TRAIN seeds 25000-25049, validated on HELDOUT seeds 25050-25099).
+    # HONEST FINDING, not fully resolved: DRIVE structurally competes with PULL_UP/CATCH_AND_SHOOT
+    # in the SAME softmax AND a selected DRIVE extends the possession (another decision must follow
+    # it) rather than terminating it -- so pushing this weight far enough to close the FULL real gap
+    # (drives/100 ~66.8) collapses pace/FGA/3PA well outside this task's own guardrails (measured:
+    # w=0.8 reaches drives/100=66.1 but crashes pace to ~88/team and 3PA to ~30/team; w=1.5+ is
+    # far worse). 0.2 is the largest value that keeps pace (~94-95/team), FGA (~90/team), and 3PA
+    # (~34/team) inside or close to this task's stated bands on BOTH the TRAIN and HELDOUT seed
+    # halves -- a real, measured, GUARDRAIL-RESPECTING partial improvement (drives/100 ~36 -> ~43),
+    # not a fit to the full real gap. Closing the remainder honestly needs a DIFFERENT lever
+    # (shorter DRIVE action/inter-action timing, or a non-drive-extending representation) that this
+    # phase's own scope excludes ("do NOT globally alter possession timing"). 0.0 is byte-for-byte
+    # the prior behavior (this term literally does not fire).
+    drive_selection_log_weight: float = 0.2
     # ------------------------------------------------------------------
     # Structural Timing Hook -- see docs/DETAILED_ENGINE_FIRST_DIAGNOSTIC_REPORT.md's
     # own "Structural Timing Hook" section. These three fields are the ONLY place LIVE
@@ -2189,6 +2208,17 @@ def simulate_possession(
         entry_stage = PossessionStage.HALFCOURT_ENTRY
     _charge_possession_stage_time(engine, world, config, entry_stage, step=0)
 
+    # "Calibrate drive follow-up decisions" phase: the outcome of a just-dispatched DRIVE, carried
+    # for EXACTLY the one following decision (see the bottom of this loop body, where it is set
+    # after a DRIVE dispatch and cleared unconditionally on every iteration) -- `drive_resolution.py`
+    # itself already returns the sampled `DriveOutcome`, but nothing previously threaded it forward
+    # into the NEXT selection decision; `_score_action` read the SAME generic `tendency.pass_vs_shoot`
+    # term regardless of whether a drive had just happened. `pending_drive_outcome` is real memory of
+    # a real, already-resolved event -- NOT a new resolver, NOT a new attribute, and it can never
+    # persist past one decision (a second consecutive DRIVE, or any other action type, both fall
+    # through to the unconditional reset below).
+    pending_drive_outcome: Optional[str] = None
+
     for step in range(config.max_steps_per_possession):
         if engine.state.shot_clock_remaining is not None and engine.state.shot_clock_remaining <= 0.0:
             world.log_trace(step=step, action="SHOT_CLOCK_VIOLATION_DIAGNOSTIC",
@@ -2249,7 +2279,12 @@ def simulate_possession(
         policy = SelectionPolicy(rng)
         intent = policy.select(perceived, _role_context(carrier_profile), _tendency_context(carrier_profile),
                                 clock_ctx, engine.state.possession_id,
-                                ShotFamilySelectionContext(config.three_point_family_log_weight))
+                                ShotFamilySelectionContext(config.three_point_family_log_weight),
+                                drive_selection_log_weight=config.drive_selection_log_weight,
+                                post_drive_outcome=pending_drive_outcome)
+        # consumed for exactly this ONE decision, regardless of what gets selected next --
+        # re-armed below only if THIS iteration's own dispatched action is itself a DRIVE.
+        pending_drive_outcome = None
         def diagnostic_opportunity_row(opportunity) -> dict:
             """Zero-RNG snapshot of an already-generated opportunity."""
             return {
@@ -2333,6 +2368,13 @@ def simulate_possession(
                                  "elapsed_game_clock_seconds": elapsed,
                                  "shot_clock_before": shot_clock_before,
                                  "shot_clock_after": shot_clock_after})
+        if intent.action_type == ActionType.DRIVE:
+            # Re-arm for exactly the NEXT decision -- read straight off the SAME real trace row
+            # `_dispatch_drive` already writes (`world.trace`'s own "DRIVE" action/outcome entry,
+            # the identical source `detailed_engine_opportunity_diagnostics.py` already reads),
+            # never a duplicate/parallel outcome channel.
+            drive_row = next((r for r in reversed(world.trace) if r.get("step") == step and r.get("action") == "DRIVE"), None)
+            pending_drive_outcome = drive_row.get("outcome") if drive_row is not None else None
         if terminal is not None:
             if terminal.reason == PossessionTerminalReason.SHOT_CLOCK_VIOLATION \
                     and not world.shot_clock_violation_log:
