@@ -106,6 +106,16 @@ class ClockFeasibilityResult:
         return bool(self.removed_for_late_clock)
 
 
+@dataclass(frozen=True)
+class ShotFamilySelectionContext:
+    """Era/environment prior, separate from player tendency and skill.
+
+    The baseline is an additive THREE-vs-MIDRANGE log weight. A future
+    era adapter can vary it without rewriting player identity.
+    """
+    three_point_baseline_log_weight: float = 0.0
+
+
 # Base weights -- a flat, hand-set prior per action type, NOT derived
 # from any calibration this phase. Deliberately simple/uniform-ish so
 # every ranking difference in a test is attributable to role/tendency,
@@ -215,25 +225,39 @@ def evaluate_clock_feasibility(perceived: List[PerceivedOpportunity],
     return ClockFeasibilityResult(feasible, removed, terminal_shots)
 
 
+def shot_zone_probabilities(options: Tuple[SpatialZone, ...], tendency: TendencyContext,
+                            context: ShotFamilySelectionContext) -> List[float]:
+    """Return the hierarchical family-choice distribution for one shot action.
+
+    `three_point_preference` is already a logit-relative-to-league-average
+    player deviation for real 3PA/FGA, so its natural coefficient here is 1.
+    `midrange_preference` is deliberately excluded: it means midrange share
+    *within two-point zones*, not broad TWO-vs-THREE preference.
+    """
+    scores = []
+    player_three_deviation = tendency.three_point_preference or 0.0
+    for zone in options:
+        score = 0.0
+        if zone in PERIMETER_ZONES or zone == SpatialZone.BACKCOURT:
+            score += context.three_point_baseline_log_weight + player_three_deviation
+        scores.append(score)
+    return _softmax(scores)
+
+
 def _select_shot_zone(action_type: ActionType, default_zone: Optional[SpatialZone],
-                       tendency: TendencyContext) -> Optional[SpatialZone]:
-    """A minimal sub-choice for shot-type actions: when both an interior
-    and a perimeter zone are structurally plausible for the SAME shot
-    action, `three_point_preference`/`midrange_preference` nudge which
-    one -- tendency-only, never touching make probability. Deliberately
-    tiny (one binary choice) -- full shot-location modeling is
-    resolution-phase work, out of scope here."""
+                       shot_zone_options: Tuple[SpatialZone, ...], tendency: TendencyContext,
+                       context: ShotFamilySelectionContext, rng: random.Random) -> Optional[SpatialZone]:
+    """Hierarchical family choice after action selection, before resolution."""
     if action_type not in SHOT_ACTIONS or default_zone is None:
         return default_zone
-    if (default_zone not in PERIMETER_ZONES and default_zone not in MIDRANGE_ZONES
-            and default_zone not in INTERIOR_ZONES):
+    options = shot_zone_options or (default_zone,)
+    if len(options) == 1:
+        return options[0]
+    if any(zone not in PERIMETER_ZONES | MIDRANGE_ZONES | INTERIOR_ZONES
+           and zone != SpatialZone.BACKCOURT for zone in options):
         return default_zone
-    three_pt = tendency.three_point_preference or 0.0
-    midrange = tendency.midrange_preference or 0.0
-    # a simple, interpretable, additive nudge -- not used to move OUT of
-    # a structurally-available zone family, only to express a mild lean
-    # within the family already implied by the opportunity's own default_zone
-    return default_zone
+    probabilities = shot_zone_probabilities(options, tendency, context)
+    return options[_weighted_choice(rng, probabilities)]
 
 
 class SelectionPolicy:
@@ -246,7 +270,8 @@ class SelectionPolicy:
         self.rng = rng
 
     def select(self, perceived: List[PerceivedOpportunity], role: RoleContext, tendency: TendencyContext,
-               clock: ClockContext, possession_id: str) -> Optional[ActionIntent]:
+               clock: ClockContext, possession_id: str,
+               shot_family_context: Optional[ShotFamilySelectionContext] = None) -> Optional[ActionIntent]:
         """Returns None only when the perceived menu is genuinely empty
         after clock-feasibility filtering (e.g. a LOOSE-ball state with
         no recovery opportunities, or every remaining option infeasible)
@@ -261,7 +286,10 @@ class SelectionPolicy:
         chosen = feasible[chosen_index]
         opp = chosen.opportunity
 
-        target_zone = _select_shot_zone(opp.action_type, opp.target_zone, tendency)
+        family_context = shot_family_context or ShotFamilySelectionContext()
+        target_zone = _select_shot_zone(
+            opp.action_type, opp.target_zone, opp.shot_zone_options, tendency, family_context, self.rng,
+        )
         return ActionIntent(
             action_type=opp.action_type, actor_player_id=opp.actor_player_id, possession_id=possession_id,
             target_player_id=opp.target_player_id, target_zone=target_zone.value if target_zone is not None else None,

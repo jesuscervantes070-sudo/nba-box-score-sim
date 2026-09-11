@@ -2148,3 +2148,152 @@ Verification: **12/12** focused reconnection tests, **18/18** combined
 reconnection/shot-family diagnostics, **301/301** related subsystem tests, and
 **1096/1096** repository tests pass. This implementation remains uncommitted
 and unpushed for review.
+
+## First 2PA-vs-3PA Shot-Mix Calibration
+
+The accepted autonomous-midrange reconnection was checkpointed as `6f4eb96`
+before this calibration. This pass targets only the verified 2024-25 top-level
+constraint: 37.6 3PA / 89.2 FGA = approximately 42.2% 3PAr. It makes no claim
+about the correct division of two-point attempts among rim, paint non-RA, and
+midrange.
+
+### Post-reconnection topology and architectural layer
+
+At the clean reconnection checkpoint, shot family was fixed before selection by
+the carrier's current zone. Across canonical seeds `25000-25099`, 38,354
+perimeter/live-dribble decisions exposed only a three-point family, 18,439
+exposed only a two-point family, and zero exposed both. That is why activating a
+preference coefficient alone could not repair the mix: the alternative family
+did not coexist in any decision.
+
+The minimal correction is a hierarchical family subchoice *after* the ordinary
+pull-up/catch-and-shoot action wins selection and *before* resolution. One shot
+action opportunity now carries its structurally available release zones; it is
+not duplicated in the action-level menu, so adding a family alternative does
+not by itself increase shot exposure relative to passes or drives. From an
+outer-floor or midrange state, both `THREE_POINT` and `MIDRANGE` are available.
+Paint and restricted-rim opportunities remain single-family and bypass this
+choice.
+
+On the calibrated canonical run, all 56,634 comparable perimeter/live-dribble
+decisions expose both families. A non-shot action wins 33,286 times; among the
+23,348 selected shot actions, 10,433 select three (44.6848%) and 12,915 select
+two-point midrange (55.3152%).
+
+### Tendency audit and baseline/deviation design
+
+`three_point_preference` originates as real player `FG3A/FGA`, with an exposure
+floor and multi-season shrinkage, then becomes a logit-relative-to-that-season's
+league average latent propensity. Zero means league-average preference;
+positive and negative values are player deviations, and missing evidence is
+`None`. It was inactive because the prior `_select_shot_zone` returned the
+unchanged zone. It now enters the three-family log weight once with its natural
+coefficient of 1.0.
+
+`midrange_preference` is semantically different: real midrange FGA divided by
+restricted-area + paint-non-RA + midrange FGA. It describes how a player's
+*two-point* attempts divide toward midrange; it does not mean broad preference
+for all twos. It remains inactive here and does not control rim or floater
+frequency.
+
+The selected parameterization is:
+
+`three family log weight = era/environment baseline + player three-point latent deviation`
+
+`midrange family log weight = 0`
+
+The baseline lives in `PossessionConfig`, not player truth, so a future era
+adapter can vary environment while preserving player identity. Shooting
+abilities remain resolution-only and never enter this choice.
+
+### Small sensitivity study
+
+Calibration seeds `28000-28019`; no output other than 3PAr was targeted.
+
+| THREE baseline | 2PA | 3PA | 2PAr | 3PAr | Rim | Floater | Midrange | FGA/team | Poss/game | PTS/team | ORtg | OREB% | TOV/team | STL/team | Faults |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0.0 | 2,529 | 2,321 | 52.1443% | 47.8557% | 1.7320% | 2.7423% | 47.6701% | 121.250 | 244.25 | 114.175 | 93.490 | 24.9669% | 16.850 | 7.675 | 0 |
+| -0.1 | 2,656 | 2,211 | 54.5716% | 45.4284% | 1.7465% | 2.7327% | 50.0925% | 121.675 | 245.60 | 114.100 | 92.915 | 24.8347% | 17.000 | 7.775 | 0 |
+| **-0.2** | **2,777** | **2,063** | **57.3760%** | **42.6240%** | **1.7355%** | **2.7273%** | **52.9132%** | **121.000** | **244.00** | **112.525** | **92.234** | **24.9250%** | **16.850** | **7.675** | **0** |
+| -0.3 | 2,894 | 1,945 | 59.8057% | 40.1943% | 1.7566% | 2.6865% | 55.3627% | 120.975 | 244.05 | 111.900 | 91.703 | 24.9582% | 16.875 | 7.675 | 0 |
+| -0.4 | 3,000 | 1,837 | 62.0219% | 37.9781% | 1.7780% | 2.6669% | 57.5771% | 120.925 | 243.90 | 111.075 | 91.082 | 24.9581% | 16.825 | 7.600 | 0 |
+
+The deliberately round `-0.2` baseline is selected. It reaches the requested
+40-44% band without hyperfitting an exact 42.200% result. The monotonic grid
+also confirms that lowering the environment log weight consistently lowers
+three-point selection.
+
+### Independent validation
+
+Seeds `28100-28149`, with `-0.2` fixed and no retuning:
+
+| Measure | Result |
+|---|---:|
+| FGA / 2PA / 3PA | 12,139 / 7,018 / 5,121 |
+| 2PAr / 3PAr | 57.8137% / **42.1863%** |
+| Rim / floater / midrange / three share | 1.6805% / 3.1304% / 53.0027% / 42.1863% |
+| FGA/team-game | 121.390 |
+| True possessions/game | 245.90 |
+| PTS/team-game / ORtg | 112.180 / 91.240 |
+| OREB% | 24.4765% |
+| TOV/team-game / STL/team-game | 17.410 / 7.960 |
+| Simulation faults | 0 |
+
+### Canonical before/after
+
+Seeds `25000-25099`; “before” is checkpoint `6f4eb96` immediately after
+midrange reconnection.
+
+| Shot mix | Before | After | Change |
+|---|---:|---:|---:|
+| FGA | 24,361 | 24,249 | -112 |
+| 2PA | 8,937 | 13,920 | +4,983 |
+| 3PA | 15,424 | 10,329 | -5,095 |
+| 2PAr | 36.6857% | 57.4044% | +20.7187 pp |
+| 3PAr | 63.3143% | 42.5956% | -20.7187 pp |
+| Rim attempts/share | 405 / 1.6625% | 392 / 1.6166% | -13 / -0.0459 pp |
+| Floater attempts/share | 736 / 3.0212% | 676 / 2.7877% | -60 / -0.2335 pp |
+| Midrange attempts/share | 7,796 / 32.0020% | 12,852 / 53.0001% | +5,056 / +20.9981 pp |
+| Three attempts/share | 15,424 / 63.3143% | 10,329 / 42.5956% | -5,095 / -20.7187 pp |
+
+Release remains independent of family. Pull-up two/three changes from
+5,287/8,651 to 8,158/5,722; catch-and-shoot two/three changes from
+3,650/6,773 to 5,762/4,607.
+
+| Flow / other vector | Before | After | Change |
+|---|---:|---:|---:|
+| True possessions/game | 247.62 | 246.31 | -1.31 |
+| FGA/team-game | 121.805 | 121.245 | -0.560 |
+| Raw 3PA/team-game | 77.120 | 51.645 | -25.475 |
+| PTS/team-game | 118.920 | 110.345 | -8.575 |
+| ORtg | 96.050 | 89.598 | -6.452 |
+| OREB% | 24.0623% | 24.6902% | +0.6279 pp |
+| TOV/team-game | 17.640 | 17.990 | +0.350 |
+| STL/team-game | 8.035 | 8.180 | +0.145 |
+| FTA/FGA | 2.9514% | 2.5609% | -0.3905 pp |
+| PF/team-game | 1.760 | 1.635 | -0.125 |
+| Simulation faults | 0 | 0 | 0 |
+
+Rebound opportunities by family change from three/midrange/floater/rim
+10,232/4,669/391/118 to 6,851/7,912/377/113. Acquisition mapping, carom,
+eligibility, and boxout behavior are unchanged; this is exposure movement only.
+
+Post-calibration family-option telemetry shows 103,660 generated/perceived/
+feasible three options and the same 103,660 midrange options, plus 2,225
+floater and 1,231 rim options. The former 63.3% 3PAr was therefore primarily a
+topology imbalance; after alternatives coexist equally, the selected baseline
+and player deviation own the relative three/midrange choice.
+
+The canonical 42.5956% and independent 42.1863% results validate the first-pass
+top-level mix, but no subfamily conclusion follows. Midrange's 53.0% observed
+share, rim/floater distribution, excessive 121.2 FGA/team-game, low scoring,
+and downstream foul/rebound changes remain separate empirical and structural
+debt. They were not calibration targets here.
+
+**Classification: VALIDATED WITH FLAGS.** The top-level 2PA/3PA ratio is stable
+in calibration, independent validation, and canonical samples, while subfamily
+mix and total shot volume remain explicitly unresolved.
+
+Verification: **10/10** focused shot-mix calibration tests and **1106/1106**
+repository tests pass. Calibration work remains uncommitted and unpushed for
+review.

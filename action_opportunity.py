@@ -16,7 +16,7 @@ fixed, small set of real structural preconditions per action type
 against the CURRENT state only.
 """
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from action_intent import ActionType
 from possession_advantage import AdvantageModel
@@ -41,6 +41,7 @@ class ObjectiveOpportunity:
     actor_player_id: str
     target_player_id: Optional[str] = None
     target_zone: Optional[SpatialZone] = None
+    shot_zone_options: Tuple[SpatialZone, ...] = ()  # hierarchical family alternatives; release action remains one opportunity
     source: str = ""  # diagnostic: which structural condition produced this (e.g. "advantage:collapsed_paint")
 
 
@@ -93,16 +94,33 @@ def generate_opportunities(state: PossessionState, context: StructuralContext,
     carrier = state.ball_carrier
     control = state.ball_control.state
 
+    def _shot_zone_options() -> Tuple[SpatialZone, ...]:
+        """Structural family menu without changing action-level exposure.
+
+        From an outer-floor or midrange live state, either a three-point
+        release or a step-in/step-out midrange release is mechanically
+        available. Interior access remains owned by drive geometry.
+        """
+        if state.ball_zone in PERIMETER_ZONES:
+            return state.ball_zone, SpatialZone.MIDRANGE
+        if state.ball_zone in MIDRANGE_ZONES:
+            return SpatialZone.TOP_OF_KEY, SpatialZone.MIDRANGE
+        return (state.ball_zone,)
+
     # Live-dribble-gated actions -- a picked-up/dead dribble cannot drive again (Phase 15's own control-state rule)
     if control == DribbleState.LIVE_DRIBBLE:
         opportunities.append(ObjectiveOpportunity(_next_id(ActionType.DRIVE), ActionType.DRIVE, carrier, source="live_dribble"))
         opportunities.append(ObjectiveOpportunity(_next_id(ActionType.ISOLATION_ATTACK), ActionType.ISOLATION_ATTACK, carrier, source="live_dribble"))
-        opportunities.append(ObjectiveOpportunity(_next_id(ActionType.PULL_UP), ActionType.PULL_UP, carrier, target_zone=state.ball_zone, source="live_dribble"))
+        opportunities.append(ObjectiveOpportunity(
+            _next_id(ActionType.PULL_UP), ActionType.PULL_UP, carrier,
+            target_zone=state.ball_zone, shot_zone_options=_shot_zone_options(), source="live_dribble",
+        ))
 
     # Catch-and-shoot: only on the frame right after a reception, before any dribble has happened
     if context.just_caught_pass and control == DribbleState.LIVE_DRIBBLE:
         opportunities.append(ObjectiveOpportunity(_next_id(ActionType.CATCH_AND_SHOOT), ActionType.CATCH_AND_SHOOT,
-                                                    carrier, target_zone=state.ball_zone, source="just_caught"))
+                                                    carrier, target_zone=state.ball_zone,
+                                                    shot_zone_options=_shot_zone_options(), source="just_caught"))
 
     # Closeout attack: STRUCTURAL defensive posture (recovering/trailing), not a hidden ability -- only right after a catch
     if context.just_caught_pass and context.ball_handler_defender_id is not None:

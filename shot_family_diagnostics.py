@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Dict, Iterable, Optional, Sequence, Tuple
 
 from action_intent import ActionType, PASS_ACTIONS, SHOT_ACTIONS
-from action_opportunity import INTERIOR_ZONES
+from action_opportunity import INTERIOR_ZONES, MIDRANGE_ZONES, PERIMETER_ZONES
 from detailed_engine_benchmark import BenchmarkGame
 from detailed_game import DetailedGameResult
 from interior_shot_resolution import InteriorShotFamily
@@ -53,6 +53,11 @@ class ShotFamilyDiagnosis:
     perceived_action_opportunities: Dict[str, int]
     feasible_action_opportunities: Dict[str, int]
     selected_actions: Dict[str, int]
+    perimeter_live_family_menus: Dict[str, int]
+    two_three_coexist_decisions: int
+    coexist_three_selected: int
+    coexist_two_selected: int
+    coexist_non_shot_selected: int
     late_clock_activations: int
     late_clock_selected_shot_actions: Dict[str, int]
     late_clock_fga_by_family: Dict[str, int]
@@ -110,6 +115,16 @@ def _nested_dict(counter_by_key) -> Dict[str, Dict[str, int]]:
     return {key: dict(counter) for key, counter in counter_by_key.items()}
 
 
+def _families_for_opportunity_row(opportunity: dict, ball_zone: Optional[str]) -> Tuple[str, ...]:
+    zones = opportunity.get("shot_zone_options") or (opportunity.get("target_zone"),)
+    families = []
+    for zone in zones:
+        family = family_for_selected_shot(opportunity["action_type"], zone, ball_zone)
+        if family is not None and family not in families:
+            families.append(family)
+    return tuple(families)
+
+
 def diagnose_shot_families(items: Sequence[object]) -> ShotFamilyDiagnosis:
     results = tuple(_results(items))
     records = [record for result in results for record in result.possessions]
@@ -129,6 +144,11 @@ def diagnose_shot_families(items: Sequence[object]) -> ShotFamilyDiagnosis:
     perceived_actions = Counter()
     feasible_actions = Counter()
     selected_actions = Counter()
+    perimeter_live_menus = Counter()
+    coexist_decisions = 0
+    coexist_three = 0
+    coexist_two = 0
+    coexist_non_shot = 0
     late_selected = Counter()
     late_fga = Counter()
     drive_outcomes = Counter()
@@ -151,18 +171,19 @@ def diagnose_shot_families(items: Sequence[object]) -> ShotFamilyDiagnosis:
         actions = world.action_log
 
         for decision in world.decision_log:
-            for layer, family_counter, action_counter in (
-                (decision.get("objective_opportunities", ()), objective_families, objective_actions),
-                (decision.get("perceived_opportunities", ()), perceived_families, perceived_actions),
-                (decision.get("feasible_opportunities", ()), feasible_families, feasible_actions),
+            objective_family_set = set()
+            for layer, family_counter, action_counter, is_objective in (
+                (decision.get("objective_opportunities", ()), objective_families, objective_actions, True),
+                (decision.get("perceived_opportunities", ()), perceived_families, perceived_actions, False),
+                (decision.get("feasible_opportunities", ()), feasible_families, feasible_actions, False),
             ):
                 for opportunity in layer:
                     action_counter[opportunity["action_type"]] += 1
-                    family = family_for_selected_shot(
-                        opportunity["action_type"], opportunity.get("target_zone"), decision.get("ball_zone"),
-                    )
-                    if family is not None:
+                    families = _families_for_opportunity_row(opportunity, decision.get("ball_zone"))
+                    for family in families:
                         family_counter[family] += 1
+                    if is_objective:
+                        objective_family_set.update(families)
             selected = decision.get("selected_action_type")
             if selected is not None:
                 selected_actions[selected] += 1
@@ -172,6 +193,26 @@ def diagnose_shot_families(items: Sequence[object]) -> ShotFamilyDiagnosis:
             if selected_family is not None:
                 selected_families[selected_family] += 1
                 selected_by_release_family[selected][selected_family] += 1
+            has_three = ShotFamily.THREE_POINT in objective_family_set
+            has_two = bool(objective_family_set & {
+                ShotFamily.MIDRANGE, InteriorShotFamily.FLOATER, InteriorShotFamily.RIM,
+            })
+            action_types = {row["action_type"] for row in decision.get("objective_opportunities", ())}
+            zone_value = decision.get("ball_zone")
+            if (zone_value in {zone.value for zone in PERIMETER_ZONES | MIDRANGE_ZONES}
+                    and ActionType.DRIVE.value in action_types):
+                label = ("BOTH" if has_three and has_two else "ONLY_THREE" if has_three
+                         else "ONLY_TWO" if has_two else "NEITHER")
+                perimeter_live_menus[label] += 1
+            if has_three and has_two:
+                coexist_decisions += 1
+                if selected_family == ShotFamily.THREE_POINT:
+                    coexist_three += 1
+                elif selected_family in {ShotFamily.MIDRANGE, InteriorShotFamily.FLOATER,
+                                         InteriorShotFamily.RIM}:
+                    coexist_two += 1
+                else:
+                    coexist_non_shot += 1
             if decision.get("late_clock_filter_activated") and selected_family is not None:
                 late_selected[selected] += 1
                 if decision["step"] in shots:
@@ -260,6 +301,10 @@ def diagnose_shot_families(items: Sequence[object]) -> ShotFamilyDiagnosis:
         by_zone_attempts=dict(zone_attempts), objective_action_opportunities=dict(objective_actions),
         perceived_action_opportunities=dict(perceived_actions), feasible_action_opportunities=dict(feasible_actions),
         selected_actions=dict(selected_actions),
+        perimeter_live_family_menus=dict(perimeter_live_menus),
+        two_three_coexist_decisions=coexist_decisions,
+        coexist_three_selected=coexist_three, coexist_two_selected=coexist_two,
+        coexist_non_shot_selected=coexist_non_shot,
         late_clock_activations=sum(decision.get("late_clock_filter_activated", False)
                                    for record in records for decision in record.terminal_result.world.decision_log),
         late_clock_selected_shot_actions=dict(late_selected), late_clock_fga_by_family=dict(late_fga),

@@ -113,7 +113,7 @@ from action_intent import ActionIntent, ActionType, PASS_ACTIONS
 from action_opportunity import INTERIOR_ZONES, MIDRANGE_ZONES, PERIMETER_ZONES, StructuralContext, generate_opportunities
 from action_perception import perceive
 from action_selection import (
-    ClockContext, RoleContext, SelectionPolicy, TendencyContext,
+    ClockContext, RoleContext, SelectionPolicy, ShotFamilySelectionContext, TendencyContext,
     evaluate_clock_feasibility,
 )
 from clock_semantics import ClockTerminalCause, LiveClockAdvance, advance_live_clocks
@@ -943,6 +943,11 @@ class PossessionConfig:
     # Narrow shared pass-disruption calibration input. None preserves
     # pass_resolution.py's calibrated module constant exactly.
     pass_disruption_base_rate: Optional[float] = None
+    # Era/environment THREE-vs-MIDRANGE prior, additive in family-choice
+    # log-weight space and separate from player identity. FIRST-PASS
+    # CALIBRATED at a deliberately round -0.2 on seeds 28000-28019; a
+    # later era adapter may vary it without rewriting player tendencies.
+    three_point_family_log_weight: float = -0.2
     # ------------------------------------------------------------------
     # Structural Timing Hook -- see docs/DETAILED_ENGINE_FIRST_DIAGNOSTIC_REPORT.md's
     # own "Structural Timing Hook" section. These three fields are the ONLY place LIVE
@@ -1637,6 +1642,12 @@ def _dispatch_shot(engine: PossessionEngine, world: PossessionWorld, intent: Act
     shooter_id = intent.actor_player_id
     shooter_profile = world.profiles[shooter_id]
     zone = SpatialZone(intent.target_zone) if intent.target_zone else engine.state.ball_zone
+    # A hierarchical family choice may step from the held-ball zone to
+    # MIDRANGE or back to the outer floor. Keep the shooter's structural
+    # location (and the existing mirrored assignment location) synchronized
+    # before any miss reaches unchanged rebound eligibility.
+    world.player_zones[shooter_id] = zone
+    _sync_assigned_defender_zone(engine, world, shooter_id, zone)
     # captured BEFORE any resolver mutates engine.state -- a miss/final-missed-FT clears
     # engine.state.offense_team_id to None (Sec. `_dispatch_rebound`'s own docstring).
     offense_team_id, defense_team_id = engine.state.offense_team_id, engine.state.defense_team_id
@@ -2073,13 +2084,15 @@ def simulate_possession(
         clock_feasibility = evaluate_clock_feasibility(perceived, clock_ctx)
         policy = SelectionPolicy(rng)
         intent = policy.select(perceived, _role_context(carrier_profile), _tendency_context(carrier_profile),
-                                clock_ctx, engine.state.possession_id)
+                                clock_ctx, engine.state.possession_id,
+                                ShotFamilySelectionContext(config.three_point_family_log_weight))
         def diagnostic_opportunity_row(opportunity) -> dict:
             """Zero-RNG snapshot of an already-generated opportunity."""
             return {
                 "opportunity_id": opportunity.opportunity_id,
                 "action_type": opportunity.action_type.value,
                 "target_zone": opportunity.target_zone.value if opportunity.target_zone is not None else None,
+                "shot_zone_options": [zone.value for zone in opportunity.shot_zone_options],
                 "source": opportunity.source,
             }
         feasible_action_types = [

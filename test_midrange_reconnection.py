@@ -36,9 +36,8 @@ class TestMidrangeReconnection(unittest.TestCase):
             if found:
                 break
         self.assertIsNotNone(found)
-        self.assertEqual(found["ball_zone"], SpatialZone.MIDRANGE.value)
         self.assertEqual(found["selected_target_zone"], SpatialZone.MIDRANGE.value)
-        self.assertTrue(any(row["target_zone"] == SpatialZone.MIDRANGE.value
+        self.assertTrue(any(SpatialZone.MIDRANGE.value in row["shot_zone_options"]
                             for row in found["objective_opportunities"]
                             if row["action_type"] in {ActionType.PULL_UP.value,
                                                       ActionType.CATCH_AND_SHOOT.value}))
