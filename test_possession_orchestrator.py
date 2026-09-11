@@ -844,6 +844,7 @@ class TestShotClockAtAttemptTelemetry(unittest.TestCase):
                 return
         self.fail("expected a halfcourt-entry-origin shot attempt within 200 seeds")
 
+
     def test_shot_attempt_after_transition_entry_has_correct_stage_origin(self):
         cfg = PossessionConfig(initial_phase=PossessionPhase.TRANSITION)
         for seed in range(200):
@@ -941,6 +942,312 @@ class TestShotClockAtAttemptTelemetry(unittest.TestCase):
         for seed in range(100):
             result = _run(seed=seed, possession_id=f"fgacheck{seed}")
             self.assertLessEqual(len(result.world.shot_attempt_log), result.stats.fga)
+
+
+
+class TestInterActionTimingStructure(unittest.TestCase):
+    """Focused tests for the Inter-Action Timing Structure -- see
+    docs/DETAILED_ENGINE_FIRST_DIAGNOSTIC_REPORT.md's own "Inter-Action
+    Timing Structure" section."""
+
+    def test_no_inter_action_time_before_first_decision(self):
+        """A possession that terminates on its very first dispatched
+        action (action_count == 1) must have an EMPTY inter_action_log
+        -- inter-action time is only ever charged AFTER a non-terminal
+        dispatch, never before the first decision."""
+        found = False
+        for seed in range(300):
+            result = _run(seed=seed, possession_id=f"first{seed}")
+            if len(result.world.action_log) == 1:
+                self.assertEqual(result.world.inter_action_log, [])
+                found = True
+                break
+        self.assertTrue(found, "expected a single-action possession within 300 seeds")
+
+    def test_pass_reception_continuation_charges_inter_action_exactly_once(self):
+        """A completed SWING_PASS/KICKOUT/RESET_PASS/POCKET_PASS that
+        keeps the SAME possession alive (ball not LOOSE afterward) must
+        be followed by exactly one INTER_ACTION charge before the next
+        decision."""
+        cfg = PossessionConfig()
+        found = False
+        for seed in range(300):
+            result = _run(config=cfg, seed=seed, possession_id=f"passia{seed}")
+            for a in result.world.action_log:
+                if a["action_type"] in ("SWING_PASS", "KICKOUT", "RESET_PASS", "POCKET_PASS"):
+                    matching = [e for e in result.world.inter_action_log if e["step"] == a["step"]]
+                    if matching:
+                        self.assertEqual(len(matching), 1)
+                        self.assertAlmostEqual(matching[0]["elapsed_game_clock_seconds"], cfg.inter_action_seconds, places=6)
+                        found = True
+                        break
+            if found:
+                break
+        self.assertTrue(found, "expected a pass reception followed by an inter-action charge within 300 seeds")
+
+    def test_drive_continuation_charges_inter_action_exactly_once(self):
+        """An ordinary drive that retains live control (CLEAN_CONTROL/
+        DISRUPTED/NO_CALL_CONTACT, or FORCED_PICKUP) must be followed by
+        exactly one INTER_ACTION charge before the next decision."""
+        cfg = PossessionConfig()
+        found = False
+        for seed in range(300):
+            result = _run(config=cfg, seed=seed, possession_id=f"driveia{seed}")
+            for a in result.world.action_log:
+                if a["action_type"] == "DRIVE":
+                    matching = [e for e in result.world.inter_action_log if e["step"] == a["step"]]
+                    if matching:
+                        self.assertEqual(len(matching), 1)
+                        self.assertAlmostEqual(matching[0]["elapsed_game_clock_seconds"], cfg.inter_action_seconds, places=6)
+                        found = True
+                        break
+            if found:
+                break
+        self.assertTrue(found, "expected a live drive continuation followed by an inter-action charge within 300 seeds")
+
+    def test_terminal_made_shot_receives_no_continuation_time(self):
+        """A possession ending MADE_FG must have no INTER_ACTION entry at
+        or after the terminal action's own step."""
+        found = False
+        for seed in range(300):
+            result = _run(seed=seed, possession_id=f"madefg{seed}")
+            if result.reason == PossessionTerminalReason.MADE_FG:
+                last_step = result.world.action_log[-1]["step"]
+                self.assertFalse(any(e["step"] >= last_step for e in result.world.inter_action_log))
+                found = True
+                break
+        self.assertTrue(found, "expected a MADE_FG possession within 300 seeds")
+
+    def test_terminal_turnover_receives_no_continuation_time(self):
+        """A possession ending TURNOVER must have no INTER_ACTION entry at
+        or after the terminal action's own step."""
+        found = False
+        for seed in range(300):
+            result = _run(seed=seed, possession_id=f"tov{seed}")
+            if result.reason == PossessionTerminalReason.TURNOVER and result.world.action_log:
+                last_step = result.world.action_log[-1]["step"]
+                self.assertFalse(any(e["step"] >= last_step for e in result.world.inter_action_log))
+                found = True
+                break
+        self.assertTrue(found, "expected a TURNOVER possession within 300 seeds")
+
+    def test_terminal_defensive_rebound_receives_no_continuation_time(self):
+        """A possession ending DEFENSIVE_REBOUND (this possession ends
+        here -- no chaining in Phase 23A/23B's own single-possession
+        scope) must have no INTER_ACTION entry at or after the terminal
+        action's own step."""
+        found = False
+        for seed in range(300):
+            result = _run(seed=seed, possession_id=f"dreb{seed}")
+            if result.reason == PossessionTerminalReason.DEFENSIVE_REBOUND and result.world.action_log:
+                last_step = result.world.action_log[-1]["step"]
+                self.assertFalse(any(e["step"] >= last_step for e in result.world.inter_action_log))
+                found = True
+                break
+        self.assertTrue(found, "expected a DEFENSIVE_REBOUND possession within 300 seeds")
+
+    def test_oreb_second_chance_reset_is_not_double_charged_with_inter_action(self):
+        """The dispatch step that itself produced a real OREB (a
+        SECOND_CHANCE_RESET charge in `stage_timing_log` at that exact
+        step) must NOT also carry an INTER_ACTION charge at that same
+        step -- the reset's own re-organization time already covers the
+        very next decision."""
+        from dataclasses import replace
+        cfg = PossessionConfig()
+        profiles = _profiles()
+        for p in OFF_FIVE:
+            profiles[p] = replace(profiles[p], offensive_rebounding_shrunk_rate=0.6)
+        found = False
+        for seed in range(300):
+            result = _run(config=cfg, profiles=profiles, seed=seed, possession_id=f"orebia{seed}")
+            reset_entries = [e for e in result.world.stage_timing_log if e["stage"] == "SECOND_CHANCE_RESET"]
+            if reset_entries:
+                reset_step = reset_entries[0]["step"]
+                self.assertFalse(any(e["step"] == reset_step for e in result.world.inter_action_log))
+                found = True
+                break
+        self.assertTrue(found, "expected a real second-chance reset within 300 boosted-OREB seeds")
+
+    def test_later_continuation_after_oreb_can_receive_inter_action_time(self):
+        """A LATER live continuation -- after the immediate post-OREB
+        decision, if THAT decision also continues without another
+        rebound -- is not exempt: it receives INTER_ACTION time
+        normally, at a step strictly after the SECOND_CHANCE_RESET's own
+        step."""
+        from dataclasses import replace
+        cfg = PossessionConfig()
+        profiles = _profiles()
+        for p in OFF_FIVE:
+            profiles[p] = replace(profiles[p], offensive_rebounding_shrunk_rate=0.6)
+        found = False
+        for seed in range(400):
+            result = _run(config=cfg, profiles=profiles, seed=seed, possession_id=f"orebia2_{seed}")
+            reset_entries = [e for e in result.world.stage_timing_log if e["stage"] == "SECOND_CHANCE_RESET"]
+            if not reset_entries:
+                continue
+            reset_step = reset_entries[0]["step"]
+            later = [e for e in result.world.inter_action_log if e["step"] > reset_step]
+            if later:
+                found = True
+                break
+        self.assertTrue(found, "expected a later post-OREB continuation to receive inter-action time within 400 seeds")
+
+    def test_charge_inter_action_time_decrements_game_clock_exactly_once(self):
+        from possession_orchestrator import _charge_inter_action_time
+        engine = PossessionEngine("p1", "A", "B", season="2023-24", rng_seed=1)
+        world = PossessionWorld(team_a_id="A", team_b_id="B", team_a_five=OFF_FIVE, team_b_five=DEF_FIVE, profiles=_profiles())
+        cfg = PossessionConfig()
+        before = engine.state.game_clock_remaining
+        _charge_inter_action_time(engine, world, cfg, step=0)
+        self.assertAlmostEqual(before - engine.state.game_clock_remaining, cfg.inter_action_seconds, places=6)
+        self.assertEqual(len(world.inter_action_log), 1)
+
+    def test_charge_inter_action_time_decrements_shot_clock_exactly_once(self):
+        from possession_orchestrator import _charge_inter_action_time
+        engine = PossessionEngine("p1", "A", "B", season="2023-24", rng_seed=1)
+        world = PossessionWorld(team_a_id="A", team_b_id="B", team_a_five=OFF_FIVE, team_b_five=DEF_FIVE, profiles=_profiles())
+        cfg = PossessionConfig()
+        before = engine.state.shot_clock_remaining
+        _charge_inter_action_time(engine, world, cfg, step=0)
+        self.assertAlmostEqual(before - engine.state.shot_clock_remaining, cfg.inter_action_seconds, places=6)
+
+    def test_shot_clock_expiration_during_inter_action_prevents_next_action(self):
+        """A shot clock too short to survive one inter-action charge past
+        the first action must terminate via SHOT_CLOCK_VIOLATION, with no
+        second action ever dispatched."""
+        short_shot_clock = EraRules(era_name="test_short_shot_clock_ia", shot_clock_seconds=3.4,
+                                     oreb_shot_clock_reset_seconds=None, bonus_foul_threshold=5,
+                                     period_length_seconds=720.0, periods_per_game=4)
+        # ordinary_entry (3.0) leaves 0.4s; the first dispatched action consumes the rest of what's left
+        # via max(0, ...); if that first action's own continuation reaches the inter-action charge, the
+        # shot clock is already at/near 0 and the NEXT loop iteration's top-of-loop check must catch it.
+        cfg = PossessionConfig(era_rules=short_shot_clock)
+        for seed in range(100):
+            result = _run(config=cfg, seed=seed, possession_id=f"scia{seed}")
+            if result.reason == PossessionTerminalReason.SHOT_CLOCK_VIOLATION and len(result.world.action_log) <= 1:
+                self.assertEqual(result.engine_state.shot_clock_remaining, 0.0)
+                return
+        self.fail("expected a SHOT_CLOCK_VIOLATION with at most one dispatched action within 100 seeds")
+
+    def test_period_expiration_during_inter_action_prevents_next_action(self):
+        """A period clock too short to survive one inter-action charge
+        past the first action must terminate via PERIOD_END, with no
+        second action ever dispatched."""
+        short_game = EraRules(era_name="test_short_game_ia", shot_clock_seconds=24.0, oreb_shot_clock_reset_seconds=None,
+                               bonus_foul_threshold=5, period_length_seconds=3.4, periods_per_game=4)
+        cfg = PossessionConfig(era_rules=short_game)
+        for seed in range(100):
+            result = _run(config=cfg, seed=seed, possession_id=f"pdia{seed}")
+            if result.reason == PossessionTerminalReason.PERIOD_END and len(result.world.action_log) <= 1:
+                self.assertEqual(result.engine_state.game_clock_remaining, 0.0)
+                return
+        self.fail("expected a PERIOD_END with at most one dispatched action within 100 seeds")
+
+    def test_clocks_never_go_negative_with_inter_action_enabled(self):
+        cfg = PossessionConfig()
+        for seed in range(150):
+            result = _run(config=cfg, seed=seed, possession_id=f"neg{seed}")
+            self.assertGreaterEqual(result.engine_state.game_clock_remaining, 0.0)
+            if result.engine_state.shot_clock_remaining is not None:
+                self.assertGreaterEqual(result.engine_state.shot_clock_remaining, 0.0)
+
+    def test_drive_execution_duration_unchanged_by_inter_action_hook(self):
+        """`_dispatch_drive` called directly (outside the loop) must
+        still charge exactly `drive_action_seconds` -- the inter-action
+        charge is a LOOP-level concern, never folded into a dispatch
+        function's own execution duration."""
+        cfg = PossessionConfig()
+        engine = PossessionEngine("p1", "A", "B", season="2023-24", rng_seed=1)
+        apply_matchup_assignments(engine, OFF_FIVE, DEF_FIVE)
+        engine.inbound("1", SpatialZone.TOP_OF_KEY, PossessionPhase.HALFCOURT)
+        world = PossessionWorld(team_a_id="A", team_b_id="B", team_a_five=OFF_FIVE, team_b_five=DEF_FIVE, profiles=_profiles())
+        intent = ActionIntent(action_type=ActionType.DRIVE, actor_player_id="1", possession_id="p1")
+        import random
+        clock_before = engine.state.game_clock_remaining
+        _dispatch_drive(engine, world, intent, cfg, random.Random(1), 0)
+        elapsed = clock_before - engine.state.game_clock_remaining
+        self.assertAlmostEqual(elapsed, cfg.drive_action_seconds, places=6)
+        self.assertEqual(world.inter_action_log, [])  # _dispatch_drive never charges inter-action itself
+
+    def test_shot_execution_duration_unchanged_by_inter_action_hook(self):
+        """`_dispatch_shot` called directly must still charge exactly one
+        of the two shot-action durations -- never the inter-action
+        placeholder, and never both."""
+        from possession_orchestrator import _dispatch_shot
+        cfg = PossessionConfig()
+        engine = PossessionEngine("p1", "A", "B", season="2023-24", rng_seed=1)
+        apply_matchup_assignments(engine, OFF_FIVE, DEF_FIVE)
+        engine.inbound("1", SpatialZone.TOP_OF_KEY, PossessionPhase.HALFCOURT)
+        world = PossessionWorld(team_a_id="A", team_b_id="B", team_a_five=OFF_FIVE, team_b_five=DEF_FIVE, profiles=_profiles(),
+                                 player_zones={pid: SpatialZone.TOP_OF_KEY for pid in OFF_FIVE + DEF_FIVE})
+        intent = ActionIntent(action_type=ActionType.PULL_UP, actor_player_id="1", possession_id="p1",
+                               target_zone=SpatialZone.TOP_OF_KEY.value)
+        import random
+        clock_before = engine.state.game_clock_remaining
+        _dispatch_shot(engine, world, intent, cfg, random.Random(1), 0)
+        elapsed = clock_before - engine.state.game_clock_remaining
+        self.assertAlmostEqual(elapsed, cfg.pull_up_action_seconds, places=6)
+        self.assertEqual(world.inter_action_log, [])  # _dispatch_shot never charges inter-action itself
+
+    def test_timing_entry_placeholders_unchanged_by_the_inter_action_hook(self):
+        """Regression guard: the three PRE-EXISTING Structural Timing
+        Hook placeholders must remain exactly what they were before this
+        section -- only a NEW, additive field (`inter_action_seconds`)
+        was introduced."""
+        cfg = PossessionConfig()
+        self.assertEqual(cfg.ordinary_entry_seconds, 3.0)
+        self.assertEqual(cfg.transition_entry_seconds, 1.5)
+        self.assertEqual(cfg.second_chance_reset_seconds, 1.0)
+
+    def test_charge_inter_action_time_never_consumes_rng_or_calls_selection(self):
+        """Structural firewall: `_charge_inter_action_time` takes no `rng`
+        parameter at all (unlike every dispatch function) and its source
+        never references `SelectionPolicy`/`perceive`/`random` -- it
+        structurally CANNOT influence any probability or selection
+        weight, and is purely a clock/log side effect."""
+        import inspect
+        from possession_orchestrator import _charge_inter_action_time
+        sig = inspect.signature(_charge_inter_action_time)
+        self.assertNotIn("rng", sig.parameters)
+        # scan the executable body only (skip the docstring, which legitimately NAMES SelectionPolicy
+        # in prose to explain the doctrine boundary -- same methodology this project already uses, see
+        # detailed_engine_diagnostics.py's own TestTelemetryIsObservationalOnly tests).
+        src = inspect.getsource(_charge_inter_action_time)
+        body = src.split('"""', 2)[-1]
+        for forbidden in (".select(", "perceive(", "random."):
+            self.assertNotIn(forbidden, body)
+
+    def test_deterministic_replay_preserved_with_inter_action_timing(self):
+        def run():
+            return simulate_possession("A", "B", OFF_FIVE, DEF_FIVE, _profiles(), inbound_receiver_id="1",
+                                        config=PossessionConfig(), rng_seed=99, possession_id="det_ia")
+        first, second = run(), run()
+        self.assertEqual(first.reason, second.reason)
+        self.assertEqual(first.stats.points, second.stats.points)
+        self.assertEqual(first.world.inter_action_log, second.world.inter_action_log)
+
+    def test_diagnostics_correctly_attribute_inter_action_timing(self):
+        from detailed_engine_diagnostics import diagnose_game
+        from detailed_game import simulate_detailed_game
+        home = tuple(str(i) for i in range(1, 6))
+        away = tuple(str(i) for i in range(11, 16))
+        profiles = {}
+        for p in home:
+            profiles[p] = PlayerSimulationProfile.synthetic(p, "HOME")
+        for p in away:
+            profiles[p] = PlayerSimulationProfile.synthetic(p, "AWAY")
+        result = simulate_detailed_game("HOME", "AWAY", home, away, profiles, rng_seed=23024)
+        diag = diagnose_game(result)
+        self.assertIn("INTER_ACTION", diag.inter_action_timing)
+        raw_total = sum(
+            (e.get("elapsed_game_clock_seconds") or 0.0)
+            for r in result.possessions for e in r.terminal_result.world.inter_action_log
+            if e["stage"] == "INTER_ACTION"
+        )
+        self.assertAlmostEqual(diag.inter_action_timing["INTER_ACTION"].total_seconds, raw_total, places=6)
+        # entry-stage origin attribution (Shot-Clock-at-Attempt Diagnosis) must remain UNAFFECTED --
+        # inter_action_log is a SEPARATE log, never interleaved into stage_timing_log/stage_origin.
+        self.assertIn("HALFCOURT_ENTRY", diag.stage_timing)
 
 
 if __name__ == "__main__":

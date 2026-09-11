@@ -620,6 +620,16 @@ class PossessionWorld:
     # whistled-and-one attempts included, matching this module's own existing FGA accounting convention).
     # Never read by any simulation decision; purely an observation of state already computed elsewhere.
     shot_attempt_log: List[dict] = field(default_factory=list)
+    # DIAGNOSTIC ONLY (observability, see docs/DETAILED_ENGINE_FIRST_DIAGNOSTIC_REPORT.md's
+    # "Inter-Action Timing Structure" section) -- one entry per real LIVE inter-action-timing charge
+    # (`{"step", "stage", "elapsed_game_clock_seconds"}`, SAME shape `stage_timing_log` already uses),
+    # populated by `_charge_inter_action_time`. Kept SEPARATE from `stage_timing_log` on purpose: a
+    # `ContinuationStage` charge answers a structurally different question ("what happened BETWEEN two
+    # decisions already inside a possession") than a `PossessionStage` charge ("how did this
+    # possession/second-chance BEGIN") -- interleaving the two into one log would corrupt
+    # `_possession_stage_origin`'s own "which entry founded this possession" lookup. Never read by any
+    # simulation decision; purely an observation of clock state already computed elsewhere.
+    inter_action_log: List[dict] = field(default_factory=list)
 
     def team_id_for(self, player_id: str) -> str:
         if player_id in self.team_a_five:
@@ -817,6 +827,19 @@ class PossessionConfig:
     ordinary_entry_seconds: float = 3.0      # UNCALIBRATED PLACEHOLDER -- a new halfcourt possession's advance/organize time
     transition_entry_seconds: float = 1.5    # UNCALIBRATED PLACEHOLDER -- a new live-transition possession's advance time
     second_chance_reset_seconds: float = 1.0  # UNCALIBRATED PLACEHOLDER -- post-OREB re-organization, SAME possession
+    # ------------------------------------------------------------------
+    # Inter-Action Timing Structure -- see docs/DETAILED_ENGINE_FIRST_DIAGNOSTIC_REPORT.md's own
+    # "Inter-Action Timing Structure" section. This is a SEPARATE concept from the three ENTRY/RESET
+    # fields above: those charge once at a possession's (or second-chance's) own START; this one
+    # charges LIVE hold/probe/reposition/organize time occurring AFTER a modeled action resolves and
+    # the SAME possession continues into ANOTHER perception/selection decision -- see
+    # `ContinuationStage`/`_charge_inter_action_time`. Same `_charge_time` primitive, same single
+    # clock owner, NOT a new one.
+    #
+    # UNCALIBRATED PLACEHOLDER VALUE. NOT NBA EMPIRICAL TRUTH. A small, conservative, nonzero value
+    # chosen only to prove the mechanism -- NOT fit to any target possession-duration/shot-clock
+    # distribution (explicitly NOT solved for a specific mean-shot-clock-at-attempt target).
+    inter_action_seconds: float = 1.5  # UNCALIBRATED PLACEHOLDER -- live time between two decisions in the SAME possession
 
 
 class PossessionStage:
@@ -829,10 +852,30 @@ class PossessionStage:
     Hook" section for the full rationale. This is SETUP/ADVANCE/
     ORGANIZATION time, structurally distinct from any action's own
     EXECUTION time (ball flight, drive execution, shot execution are
-    all completely unchanged by this concept)."""
+    all completely unchanged by this concept). These three values name
+    WHERE/HOW a possession (or a second-chance within one) BEGAN --
+    `ContinuationStage` below is the separate, distinct vocabulary for
+    live time occurring BETWEEN two decisions once a possession is
+    already underway; the two are never merged into one vocabulary."""
     HALFCOURT_ENTRY = "HALFCOURT_ENTRY"          # a new possession beginning at a dead-ball, halfcourt inbound
     TRANSITION_ENTRY = "TRANSITION_ENTRY"        # a new possession beginning live, in transition
     SECOND_CHANCE_RESET = "SECOND_CHANCE_RESET"  # an offensive rebound continuing the SAME possession (SAME possession_id)
+
+
+class ContinuationStage:
+    """Plain string constants, same convention as `PossessionStage`
+    (see that class's own docstring) -- but a DISTINCT vocabulary for a
+    DISTINCT concept: live time occurring AFTER a modeled action has
+    already resolved and the SAME possession continues into ANOTHER
+    perception/selection decision (Sec. "Inter-Action Timing Structure",
+    docs/DETAILED_ENGINE_FIRST_DIAGNOSTIC_REPORT.md). `PossessionStage`
+    answers "how did this possession/second-chance BEGIN"; this answers
+    "what happened LIVE between two decisions already inside one." ONE
+    value only for V0 -- current control flow does not structurally
+    distinguish multiple kinds of inter-action gap (see the report's
+    continuation-path table); adding more here without a real, current
+    control-flow distinction would be fabricated precision."""
+    INTER_ACTION = "INTER_ACTION"  # live hold/probe/reposition/organize time between two decisions, SAME possession
 
 
 def _charge_possession_stage_time(engine: PossessionEngine, world: PossessionWorld, config: PossessionConfig,
@@ -858,6 +901,29 @@ def _charge_possession_stage_time(engine: PossessionEngine, world: PossessionWor
     clock_after = engine.state.game_clock_remaining
     elapsed = (clock_before - clock_after) if clock_before is not None and clock_after is not None else None
     world.stage_timing_log.append({"step": step, "stage": stage, "elapsed_game_clock_seconds": elapsed})
+
+
+def _charge_inter_action_time(engine: PossessionEngine, world: PossessionWorld, config: PossessionConfig,
+                               step: int) -> None:
+    """The ONE place LIVE inter-action time (Sec. "Inter-Action Timing
+    Structure") is charged. Reuses `_charge_time` verbatim -- the SAME
+    game-clock/shot-clock pairing, the SAME `max(0, ...)` floor, the
+    SAME single clock-owner this module has always had; this is a new
+    REASON to call the existing mechanism, never a new one. Logs the
+    REAL elapsed amount (post-clamp, matching `stage_timing_log`'s own
+    convention) to the dedicated, diagnostic-only
+    `world.inter_action_log` -- never `world.action_log` (this is not a
+    `SelectionPolicy`-chosen `ActionIntent` dispatch) and never
+    `world.stage_timing_log` (this is not a `PossessionStage` entry/
+    reset -- see `ContinuationStage`'s own docstring). The caller
+    (`simulate_possession`'s own loop) is solely responsible for
+    deciding WHETHER this should be charged at all for a given
+    continuation -- this function only performs the charge once called."""
+    clock_before = engine.state.game_clock_remaining
+    _charge_time(engine, config.inter_action_seconds)
+    clock_after = engine.state.game_clock_remaining
+    elapsed = (clock_before - clock_after) if clock_before is not None and clock_after is not None else None
+    world.inter_action_log.append({"step": step, "stage": ContinuationStage.INTER_ACTION, "elapsed_game_clock_seconds": elapsed})
 
 
 def _possession_stage_origin(world: PossessionWorld, step: int) -> str:
@@ -1643,6 +1709,30 @@ def simulate_possession(
         world.action_log.append({"step": step, "action_type": intent.action_type.value, "elapsed_game_clock_seconds": elapsed})
         if terminal is not None:
             return terminal
+
+        # Inter-Action Timing Structure -- charged exactly once, AFTER this dispatched action's own
+        # resolution, and BEFORE the next perception/selection decision, but ONLY when a genuinely new
+        # LIVE decision actually follows (see docs/DETAILED_ENGINE_FIRST_DIAGNOSTIC_REPORT.md's own
+        # "Inter-Action Timing Structure" section for the full continuation-path table). Two real,
+        # already-computed signals gate this -- never a per-outcome special-case list:
+        #   - `engine.state.ball_state == LOOSE` means the very NEXT loop iteration routes to the
+        #     top-of-loop LOOSE-ball branch, NOT to an ordinary perceive/select decision -- that branch
+        #     owns its OWN existing `loose_ball_action_seconds` timing, and its own immediate
+        #     continuation (e.g. the offense recovers and play continues) is a deliberately EXEMPT
+        #     "immediate" case (same category as an immediate rebound putback or terminal shot).
+        #   - `len(world.stage_timing_log) == stage_log_len_before` means THIS SAME `dispatch_action`
+        #     call did not ALSO charge a `SECOND_CHANCE_RESET` (an OREB nested inside this exact
+        #     dispatch, via `_dispatch_rebound`) -- that reset's own real re-organization time already
+        #     covers the very next decision, so charging inter-action on top would double-charge the
+        #     same live gap. A LATER continuation (the decision AFTER that one, if IT also continues
+        #     without another rebound) is NOT exempt -- by then `stage_log_len_before`/`after` are equal
+        #     again for that iteration, so it receives inter-action time normally.
+        # If this charge alone exhausts the shot clock or game clock, the loop's own EXISTING top-of-
+        # loop checks (next iteration) catch it and terminate via the real, existing
+        # `shot_clock_violation()`/`period_expiration()` methods -- no action ever dispatches past an
+        # expired clock, and no separate expiration handling is duplicated here.
+        if engine.state.ball_state != BallState.LOOSE and len(world.stage_timing_log) == stage_log_len_before:
+            _charge_inter_action_time(engine, world, config, step)
 
     raise PossessionSimulationFault(
         f"possession exceeded max_steps_per_possession={config.max_steps_per_possession} without a terminal result",

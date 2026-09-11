@@ -1350,6 +1350,294 @@ OK** (919 baseline + 14 new). Zero regressions.
 - No legacy/product file was touched: `game_engine.py`, `main.py`,
   `season.py`, `playoffs.py`, `db.py`, `models.py`, `README.md`,
   `ACCURACY.md`, `CLAUDE.md` are all untouched.
-- This diagnostic work remains **UNCOMMITTED**, on top of the pushed
-  Structural Timing Hook checkpoint (`3f4dc75`).
+- This diagnostic work was subsequently committed/pushed as `ba29753`
+  ("Add shot-clock-at-attempt diagnostics"), on top of the Structural
+  Timing Hook checkpoint (`3f4dc75`) — see the "Inter-Action Timing
+  Structure" section below for everything built on top of that clean
+  baseline.
 - No new gameplay phase was begun; no timing calibration was performed.
+
+## Inter-Action Timing Structure
+
+Built on top of the clean, verified `ba29753` baseline (shot-clock-at-
+attempt diagnostics, HEAD `3f4dc75` + that commit). Adds the SMALLEST
+structural representation of LIVE time occurring AFTER a modeled action
+resolves and the SAME possession continues into ANOTHER perception/
+selection decision — distinct from possession-ENTRY setup (Structural
+Timing Hook, prior section) and from any individual action's own
+EXECUTION duration (ball flight, drive execution, shot execution, all
+unchanged).
+
+### Continuation-path map
+
+Traced from actual `possession_orchestrator.py` control flow (every
+`return None` in a dispatch function, plus the main loop's own LOOSE-
+ball branch), not guessed from names:
+
+| Path | Continues? | Another decision follows? | Inter-action charged? | Reason |
+|---|---|---|---|---|
+| Pass `COMPLETED_CLEAN`/`COMPLETED_ADJUSTED` (SWING_PASS/KICKOUT/RESET_PASS/POCKET_PASS reception) | Yes | Yes | **Yes** | receiver has live control, not LOOSE — a genuinely new decision follows |
+| Pass `DEFLECTED_LOOSE_BALL` | Yes | No (routes to LOOSE branch) | No | ball is LOOSE — owned by the loose-ball branch's own timing/immediate-continuation semantics |
+| Pass `DEFLECTED_RETAINED_OFFENSE` | Yes | No (routes to LOOSE branch) | No | ball is LOOSE (favored-offense weighting only) — same as above |
+| Pass `BAD_PASS_TO_DEFENDER` w/ LOOSE ball | Yes (until recovered) | No (routes to LOOSE branch) | No | same as above |
+| Drive fall-through (`CLEAN_CONTROL`/`DISRUPTED`/`NO_CALL_CONTACT`) | Yes | Yes | **Yes** | driver retains live control — "a drive is never terminal by itself... selection re-runs" |
+| Drive `FORCED_PICKUP` | Yes | Yes | **Yes** | dribble now DEAD_DRIBBLE, not LOOSE — a real new decision (pass/shoot only) follows |
+| Drive `CLEAN_STRIP_LOOSE` | Yes | No (routes to LOOSE branch) | No | ball is LOOSE |
+| Drive `OFFENSIVE_CHARGE`/`DEFENSIVE_FLOOR_FOUL` | No | — | N/A | terminal (`OFFENSIVE_FOUL_TURNOVER`) or administered via `_dispatch_floor_foul` (see below) |
+| `_dispatch_floor_foul` `DEFENSIVE_FLOOR_FOUL`, not in bonus (re-inbound, offense retains ball) | Yes | Yes | **Yes** | ball re-inbounded to the fouled player, not LOOSE — a real new decision follows |
+| `_dispatch_floor_foul` `DEFENSIVE_FLOOR_FOUL`, in bonus (FT sequence) | No | — | N/A | terminal (`FINAL_FT_MADE`) or routes to `_dispatch_rebound` on a missed final FT |
+| `_dispatch_floor_foul` `OFFENSIVE_CHARGE` | No | — | N/A | always terminal (`OFFENSIVE_FOUL_TURNOVER`) |
+| Immediate shot outcomes (MADE_FG) | No | — | N/A | terminal |
+| Shooting-foul MADE (and-one) | No | — | N/A | terminal (`MADE_FG`) |
+| Shooting-foul MISSED, final FT made | No | — | N/A | terminal (`FINAL_FT_MADE`) |
+| Turnover outcomes (`CLEAN_INTERCEPTION`, `BAD_PASS_OUT_OF_BOUNDS`, `SHOT_CLOCK_VIOLATION_ON_ARRIVAL`) | No | — | N/A | terminal |
+| Loose-ball outcomes (generic loose-ball recovery, any source) | Continues only if offense recovers | Yes, but **immediate** | **No (exempt)** | the loose-ball branch owns its own existing `loose_ball_action_seconds` timing; an offense-recovered continuation is a deliberately immediate case, same category as an immediate rebound putback |
+| `_dispatch_rebound` OREB (`SECURED_OFFENSE`/`TEAM_REBOUND_OFFENSE`) | Yes (SAME possession_id) | Yes | **No (exempt for THIS step)** | `SECOND_CHANCE_RESET` already charges the re-organization cost for the immediate next decision — see the no-double-charge proof below |
+| A LATER continuation after that post-OREB decision, if it ALSO continues without another rebound | Yes | Yes | **Yes** | no nested `SECOND_CHANCE_RESET` occurred on THIS dispatch — ordinary inter-action rule applies |
+| `_dispatch_rebound` DREB | No | — | N/A | terminal (`DEFENSIVE_REBOUND`) |
+| Shot-clock violation / period expiration (top-of-loop) | No | — | N/A | terminal |
+
+### Timing type / config added
+
+- `ContinuationStage` (`possession_orchestrator.py`) — a new, SEPARATE
+  string-constant vocabulary (same convention as `PossessionStage`,
+  `DriveOutcome`, etc.), with exactly ONE value for V0:
+  `ContinuationStage.INTER_ACTION`. Current control flow does not
+  structurally distinguish multiple kinds of inter-action gap (every
+  "yes" row in the table above is driven by the SAME two real signals —
+  see below), so a second category would be fabricated precision, not a
+  real distinction.
+- `PossessionConfig.inter_action_seconds: float = 1.5` — UNCALIBRATED
+  PLACEHOLDER, NOT NBA empirical truth. A small, conservative, nonzero
+  value chosen only to prove the mechanism; explicitly NOT solved for
+  any target shot-clock-at-attempt/pace distribution. The three
+  pre-existing Structural Timing Hook placeholders
+  (`ordinary_entry_seconds=3.0`, `transition_entry_seconds=1.5`,
+  `second_chance_reset_seconds=1.0`) are UNCHANGED (regression-tested,
+  see `test_timing_entry_placeholders_unchanged_by_the_inter_action_hook`).
+- `PossessionWorld.inter_action_log` — a NEW, SEPARATE diagnostic-only
+  list (same `{"step", "stage", "elapsed_game_clock_seconds"}` shape as
+  `stage_timing_log`), populated by the new `_charge_inter_action_time`
+  helper. Deliberately kept SEPARATE from `stage_timing_log` rather than
+  merged into it: `stage_timing_log`'s own `_possession_stage_origin`
+  lookup answers "which ENTRY founded this possession" for the Shot-
+  Clock-at-Attempt Diagnosis, and interleaving inter-action entries into
+  that same log would have silently changed `stage_origin` to
+  `"INTER_ACTION"` for any shot following one, corrupting that existing,
+  already-tested diagnostic. Keeping the logs separate needed no change
+  to `_possession_stage_origin` at all — verified:
+  `test_diagnostics_correctly_attribute_inter_action_timing` asserts
+  `"HALFCOURT_ENTRY"` origin attribution is unaffected.
+
+### Where the charge is placed / clock ownership
+
+`_charge_inter_action_time(engine, world, config, step)` reuses
+`_charge_time` verbatim — same game-clock/shot-clock pairing, same
+`max(0, ...)` floor, same single clock owner this module has always had.
+It takes no `rng` parameter at all and its body calls nothing from
+`action_selection`/`action_perception` — structurally incapable of
+touching a probability or selection weight (verified:
+`test_charge_inter_action_time_never_consumes_rng_or_calls_selection`).
+
+In `simulate_possession`'s main loop, immediately after a dispatched
+action's own `action_log` entry is recorded and `terminal is None`
+(i.e., the possession continues):
+
+```
+if engine.state.ball_state != BallState.LOOSE and len(world.stage_timing_log) == stage_log_len_before:
+    _charge_inter_action_time(engine, world, config, step)
+```
+
+Two real, already-computed signals gate the charge — never a manual
+per-outcome list:
+
+1. **`engine.state.ball_state != LOOSE`** — if the ball IS loose, the
+   very next loop iteration routes to the top-of-loop LOOSE-ball branch,
+   not to an ordinary perceive/select decision; that branch owns its own
+   existing timing and its own immediate-continuation exemption.
+2. **`len(world.stage_timing_log) == stage_log_len_before`** (captured
+   before this exact `dispatch_action` call) — if a `SECOND_CHANCE_RESET`
+   was charged INSIDE this same dispatch (an OREB nested in
+   `_dispatch_rebound`), that reset's own re-organization time already
+   covers the immediate next decision; charging inter-action on top
+   would double-charge the same live gap.
+
+Because both signals are read from REAL state already computed by
+existing code (not re-derived per outcome name), the hook is
+semantically placed at the one true seam, not mechanically slapped after
+every dispatcher call.
+
+### Expiration behavior
+
+If `_charge_inter_action_time` alone exhausts the shot clock or game
+clock, no special-case handling is needed: the very same top-of-loop
+checks that already guard entry-stage expiration (`shot_clock_remaining
+<= 0.0` / `game_clock_remaining <= 0.0`) run again at the start of the
+next loop iteration and terminate via the real, existing
+`shot_clock_violation()`/`period_expiration()` methods before any further
+action is ever dispatched. Verified directly:
+`test_shot_clock_expiration_during_inter_action_prevents_next_action`,
+`test_period_expiration_during_inter_action_prevents_next_action`
+(construct a shot clock / period length that exhausts one entry-stage
+charge plus one inter-action charge, confirm at most one action was
+ever dispatched and the terminal clock reads exactly `0.0`, never
+negative).
+
+### No-OREB-double-charge proof
+
+`test_oreb_second_chance_reset_is_not_double_charged_with_inter_action`:
+at the exact `step` where a real `SECOND_CHANCE_RESET` entry appears in
+`stage_timing_log`, `inter_action_log` has NO entry at that same step.
+`test_later_continuation_after_oreb_can_receive_inter_action_time`
+confirms the complementary case: when the decision immediately following
+that OREB ALSO continues (no second rebound), a LATER `inter_action_log`
+entry does appear, at a step strictly after the reset's own step.
+
+### Exemptions (deliberately no charge)
+
+- Before the first decision of a possession (structurally impossible —
+  the charge only ever follows a completed, non-terminal dispatch).
+- Immediately after any outcome that leaves the ball LOOSE (routes to
+  the loose-ball branch instead; that branch's own immediate-recovery
+  continuation is exempt by the same "immediate" category as a terminal
+  shot or an immediate rim finish).
+- The dispatch step that itself produced a real OREB (covered by
+  `SECOND_CHANCE_RESET` instead — see the proof above).
+- Every genuinely terminal outcome (made shot, turnover, defensive
+  rebound, offensive-foul turnover, final made/missed FT ending the
+  possession, shot-clock violation, period end) — the loop returns
+  before the inter-action charge is ever reached.
+
+### Before vs. after — seed 23024 only
+
+| Metric | BEFORE (`ba29753`) | AFTER (`inter_action_seconds=1.5`) |
+|---|---|---|
+| Total possessions | 486 | 331 |
+| Mean possession duration | 5.93s | 8.70s |
+| Median possession duration | 4.50s | 6.40s |
+| Mean actions/possession | 3.11 | 3.18 |
+| Median actions/possession | 2.00 | 2.00 |
+| Total FGA | 517 | 358 |
+| Mean shot clock at FGA | 18.34 | 16.37 |
+| Median shot clock at FGA | 20.60 | 18.70 |
+| First-action FGA share | 37.1% | 36.6% |
+| `INTER_ACTION` charges | n/a | 576 charges, 863.9s total |
+
+### Before vs. after — 10-game sample (seeds 23024–23033)
+
+| Metric | BEFORE | AFTER |
+|---|---|---|
+| Mean total possessions/game | 471.4 | 340.2 |
+| Mean FGA/game | 510.9 | 367.7 |
+| Mean shot clock at FGA | 18.26 | 16.50 |
+| Mean first-action FGA share | 37.0% | 38.0% |
+| Mean turnovers/game | 113.1 | 78.3 |
+| Mean OREB/game | 156.1 | 111.0 |
+| Mean DREB/game | 171.4 | 126.6 |
+| Mean personal fouls/game | 8.5 | 6.3 |
+| Mean FTA/game | 19.3 | 14.8 |
+
+By-origin shot-clock-at-attempt (seed 23024, BEFORE → AFTER):
+
+| Origin | Mean shot clock (before → after) | First-action share (before → after) |
+|---|---|---|
+| `HALFCOURT_ENTRY` | 19.75 → 17.93 | 53.5% → 50.9% |
+| `TRANSITION_ENTRY` | 21.21 → 19.35 | 47.5% → 48.7% |
+| `SECOND_CHANCE_RESET` | 11.50 → 9.60 | 0.0% → 0.0% (structurally 0 by construction — a second-chance shot is never the possession's FIRST action) |
+
+### Answers to the required questions
+
+- **A. Which exact continuation paths now receive inter-action time?**
+  See the continuation-path map above — pass reception, ordinary drive
+  fall-through, `FORCED_PICKUP`, and the non-bonus `DEFENSIVE_FLOOR_FOUL`
+  re-inbound; plus any later (non-immediate) post-OREB continuation.
+- **B. Which are deliberately exempt?** LOOSE-ball-bound continuations
+  (deflections, strips, bad-pass-to-nobody), the immediate post-OREB
+  decision (covered by `SECOND_CHANCE_RESET`), and every terminal
+  outcome.
+- **C. Does inter-action timing materially reduce early-clock shooting
+  for multi-action possessions?** Yes — mean/median shot clock at FGA
+  dropped in every entry-origin bucket (e.g. `HALFCOURT_ENTRY` 19.75→
+  17.93, `TRANSITION_ENTRY` 21.21→19.35 seed 23024), and the `4-0`
+  late-clock bin's share of FGA grew (2/517→18/358 seed 23024).
+- **D. Does ordinary-entry FGA timing move later?** Yes (above).
+- **E. Does transition FGA timing move later?** Yes (above).
+- **F. Does second-chance timing remain structurally sane?** Yes — mean
+  shot clock at second-chance FGA moved from 11.50→9.60 (still well
+  below the 14s OREB reset ceiling, as expected since inter-action time
+  can now also elapse within an extended second-chance sequence), and
+  first-action share stayed exactly 0% (structurally guaranteed — a
+  second-chance attempt is never the possession's first modeled action).
+- **G. Does overall possession duration increase without altering
+  action-selection probability?** Yes — mean possession duration rose
+  5.93s→8.70s (seed 23024) / possessions-per-game fell 471.4→340.2
+  (10-game mean) while mean actions/possession stayed essentially flat
+  (3.11→3.18 / 2.00→2.00 median) — the SAME actions are simply taking
+  longer to occur, not different actions being chosen.
+- **H. Does first-action-shot share remain broadly unchanged, as
+  expected?** Yes — 37.1%→36.6% (seed 23024), 37.0%→38.0% (10-game
+  mean); within normal seed-to-seed noise, not forced lower.
+- **I. Does this architecture now provide enough timing structure for
+  empirical calibration?** Directionally yes for entry + inter-action +
+  execution + second-chance — a future phase now has FOUR distinct,
+  independently observable timing categories (entry/setup,
+  inter-action, action-execution, second-chance-reset) to fit against
+  real shot-clock/pace targets. Still NOT sufficient on its own to reach
+  NBA-realistic pace at these placeholder values (mean shot clock at FGA
+  is still ~16.4–16.5, well above a realistic empirical target) — that
+  is expected and explicitly out of this phase's scope (no calibration
+  was attempted).
+
+### What remains empirically uncalibrated
+
+- `inter_action_seconds` itself (1.5s placeholder).
+- All three pre-existing Structural Timing Hook placeholders
+  (`ordinary_entry_seconds`, `transition_entry_seconds`,
+  `second_chance_reset_seconds`) — unchanged this section.
+- All five action-execution durations (`drive_action_seconds`,
+  `pull_up_action_seconds`, `catch_and_shoot_action_seconds`,
+  `loose_ball_action_seconds`, and pass-family flight durations owned
+  by `pass_resolution.py`).
+- No probability, selection weight, or player-attribute value of any
+  kind — confirmed unchanged by direct diff review of
+  `possession_orchestrator.py` (no touched numeric constant outside
+  `inter_action_seconds` itself and the new diagnostic-only fields) and
+  by the structural RNG/selection firewall test on
+  `_charge_inter_action_time`.
+
+### Test counts
+
+19 new focused tests in `test_possession_orchestrator.py`
+(`TestInterActionTimingStructure`), plus 2 pre-existing tests updated
+to account for the new timing category (`test_detailed_engine_diagnostics.py`'s
+`test_action_and_loose_ball_time_fully_explains_total_elapsed`, now
+summing `inter_action_log` alongside `action_telemetry`/loose-ball/
+`stage_timing_log`; and `test_ten_game_sample_matches_known_reported_aggregate`'s
+loose possession-count bounds, widened a third time for the same
+documented, expected structural reason as the prior two widenings).
+
+Full suite: `python3 -m unittest discover -p "test_*.py"` → **952/952
+OK** (933 baseline + 19 new). Zero unexpected regressions; the two
+updated assertions both encoded the OLD (pre-inter-action) timing
+category set / pace expectation and needed updating for the SAME
+documented, intended structural reason described throughout this
+section — not a bug.
+
+## Confirmations (Inter-Action Timing Structure)
+
+- No timing ENTRY placeholder (`ordinary_entry_seconds`/
+  `transition_entry_seconds`/`second_chance_reset_seconds`), action
+  duration, probability, selection weight, or player attribute was
+  changed. Only ONE new field was added
+  (`PossessionConfig.inter_action_seconds`), plus new diagnostic-only
+  state (`PossessionWorld.inter_action_log`) and a new typed vocabulary
+  (`ContinuationStage`).
+- No legacy/product file was touched: `game_engine.py`, `main.py`,
+  `season.py`, `playoffs.py`, `db.py`, `models.py`, `README.md`,
+  `ACCURACY.md`, `CLAUDE.md` remain untouched.
+- No public engine routing was added or changed.
+- This inter-action-timing work (and the two updated pre-existing
+  assertions) remains **UNCOMMITTED and UNPUSHED**, on top of the
+  pushed `ba29753` baseline, for HQ review.
+- No empirical timing calibration was performed. No new numbered phase
+  was begun.

@@ -167,14 +167,15 @@ class TestMultiGameDiagnostics(unittest.TestCase):
         multi = diagnose_games(results)
         self.assertEqual(multi.game_count, 10)
         # Loose bounds -- not a calibration assertion, just confirming the telemetry reconstructs the same
-        # order of magnitude every run. Widened twice: once after the defender-zone staleness fix (see
-        # "Defender-Zone Staleness Correction"), and again after the Structural Timing Hook (see
-        # "Structural Timing Hook") -- possessions per game legitimately DROPPED once real, nonzero
-        # possession-stage time started consuming game clock (fewer, longer possessions fit in 48 minutes),
-        # which is that hook's own intended, demonstrated structural effect, not a bug.
-        self.assertGreater(multi.mean_total_possessions, 350)
+        # order of magnitude every run. Widened three times: once after the defender-zone staleness fix
+        # (see "Defender-Zone Staleness Correction"), again after the Structural Timing Hook (see
+        # "Structural Timing Hook"), and again after the Inter-Action Timing Structure (see that section)
+        # -- possessions per game legitimately DROPPED further once real, nonzero live inter-action time
+        # started consuming game clock between decisions within a possession (fewer, longer possessions
+        # fit in 48 minutes), which is that hook's own intended, demonstrated structural effect, not a bug.
+        self.assertGreater(multi.mean_total_possessions, 250)
         self.assertLess(multi.mean_total_possessions, 900)
-        self.assertGreater(multi.mean_oreb, 100)
+        self.assertGreater(multi.mean_oreb, 80)
 
 
 class TestTelemetryIsObservationalOnly(unittest.TestCase):
@@ -217,9 +218,10 @@ class TestClockAccounting(unittest.TestCase):
     def test_action_and_loose_ball_time_fully_explains_total_elapsed(self):
         """Every second of game clock consumed must be attributable to a
         known, already-tracked category (dispatched-action time, generic
-        loose-ball recovery time, or -- post Structural Timing Hook --
-        possession-stage-timing time) -- confirms no clock is being
-        silently consumed/lost by an unaccounted-for code path."""
+        loose-ball recovery time, possession-stage-timing time -- Structural
+        Timing Hook -- or inter-action time -- Inter-Action Timing
+        Structure) -- confirms no clock is being silently consumed/lost by
+        an unaccounted-for code path."""
         result = _game()
         diag = diagnose_game(result)
         action_seconds = sum(t.total_seconds for t in diag.action_telemetry.values())
@@ -230,9 +232,14 @@ class TestClockAccounting(unittest.TestCase):
             e.get("elapsed_game_clock_seconds") or 0.0
             for r in result.possessions for e in r.terminal_result.world.stage_timing_log
         )
+        inter_action_seconds = sum(
+            e.get("elapsed_game_clock_seconds") or 0.0
+            for r in result.possessions for e in r.terminal_result.world.inter_action_log
+        )
         total_elapsed = sum(r.start_game_clock - r.end_game_clock for r in result.possessions)
         # small floating-point tolerance only -- not a calibration fudge factor
-        self.assertAlmostEqual(action_seconds + loose_ball_seconds + stage_timing_seconds, total_elapsed, delta=1.0)
+        self.assertAlmostEqual(action_seconds + loose_ball_seconds + stage_timing_seconds + inter_action_seconds,
+                                total_elapsed, delta=1.0)
 
     def test_floor_foul_branch_now_charges_the_same_drive_time_as_any_other_drive_outcome(self):
         """Regression test for the fixed clock-bookkeeping bug (see the

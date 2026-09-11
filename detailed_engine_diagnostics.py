@@ -137,6 +137,13 @@ class PossessionDiagnostics:
     # `world.stage_timing_log`. Kept SEPARATE from `action_telemetry` on purpose -- setup time is not a
     # dispatched `ActionIntent`.
     stage_timing: Dict[str, ActionTelemetry] = field(default_factory=dict)
+    # Inter-Action Timing Structure (see docs/DETAILED_ENGINE_FIRST_DIAGNOSTIC_REPORT.md) -- keyed by
+    # `ContinuationStage` value (`INTER_ACTION`), read from `world.inter_action_log`. Kept SEPARATE
+    # from `stage_timing` on purpose -- an inter-action charge answers a structurally different
+    # question ("what happened LIVE between two decisions already inside this possession") than an
+    # entry/reset charge ("how did this possession/second-chance BEGIN"); see `ContinuationStage`'s
+    # own docstring in `possession_orchestrator.py`.
+    inter_action_timing: Dict[str, ActionTelemetry] = field(default_factory=dict)
     fga: int = 0
     fgm: int = 0
     misses: int = 0
@@ -176,6 +183,8 @@ def diagnose_possession(record: PossessionRecord) -> PossessionDiagnostics:
     _accumulate_action_telemetry(world.action_log, action_telemetry)
     stage_timing: Dict[str, ActionTelemetry] = {}
     _accumulate_action_telemetry(world.stage_timing_log, stage_timing, key="stage")
+    inter_action_timing: Dict[str, ActionTelemetry] = {}
+    _accumulate_action_telemetry(world.inter_action_log, inter_action_timing, key="stage")
 
     shot_entries = _shot_trace_entries(trace)
     fga = fgm = fg3a = fg3m = blocked = 0
@@ -215,7 +224,8 @@ def diagnose_possession(record: PossessionRecord) -> PossessionDiagnostics:
         elapsed_game_clock_seconds=elapsed, step_count=terminal.steps_taken,
         action_count=len(world.action_log), terminal_reason=terminal.reason,
         restart_type=record.restart_context.restart_type,
-        action_telemetry=action_telemetry, stage_timing=stage_timing, fga=fga, fgm=fgm, misses=misses, fg3a=fg3a, fg3m=fg3m,
+        action_telemetry=action_telemetry, stage_timing=stage_timing, inter_action_timing=inter_action_timing,
+        fga=fga, fgm=fgm, misses=misses, fg3a=fg3a, fg3m=fg3m,
         blocked=blocked, shot_family_counts=shot_family_counts,
         rebound_opportunities=len(rebound_entries), oreb=deltas.oreb, dreb=deltas.dreb,
         second_chance_count=deltas.oreb, turnover_subtype=_classify_turnover_subtype(record),
@@ -252,6 +262,7 @@ class GameDiagnostics:
     max_step_count: int
     action_telemetry: Dict[str, ActionTelemetry]
     stage_timing: Dict[str, ActionTelemetry]  # Structural Timing Hook -- HALFCOURT_ENTRY/TRANSITION_ENTRY/SECOND_CHANCE_RESET
+    inter_action_timing: Dict[str, ActionTelemetry]  # Inter-Action Timing Structure -- INTER_ACTION
     fga: int
     fgm: int
     misses: int
@@ -290,6 +301,7 @@ def diagnose_game(result: DetailedGameResult) -> GameDiagnostics:
     step_counts: List[int] = []
     action_telemetry: Dict[str, ActionTelemetry] = {}
     stage_timing: Dict[str, ActionTelemetry] = {}
+    inter_action_timing: Dict[str, ActionTelemetry] = {}
     fga = fgm = fg3a = fg3m = blocked = 0
     shot_family_counts: Dict[str, int] = {}
     rebound_opportunities = oreb = dreb = 0
@@ -313,6 +325,10 @@ def diagnose_game(result: DetailedGameResult) -> GameDiagnostics:
             bucket.total_seconds += telem.total_seconds
         for name, telem in d.stage_timing.items():
             bucket = stage_timing.setdefault(name, ActionTelemetry(action_type=name))
+            bucket.count += telem.count
+            bucket.total_seconds += telem.total_seconds
+        for name, telem in d.inter_action_timing.items():
+            bucket = inter_action_timing.setdefault(name, ActionTelemetry(action_type=name))
             bucket.count += telem.count
             bucket.total_seconds += telem.total_seconds
         fga += d.fga
@@ -353,7 +369,8 @@ def diagnose_game(result: DetailedGameResult) -> GameDiagnostics:
         median_actions_per_possession=statistics.median(action_counts) if action_counts else 0.0,
         max_actions_per_possession=max(action_counts) if action_counts else 0,
         max_step_count=max(step_counts) if step_counts else 0,
-        action_telemetry=action_telemetry, stage_timing=stage_timing, fga=fga, fgm=fgm, misses=misses, fg3a=fg3a, fg3m=fg3m, blocked=blocked,
+        action_telemetry=action_telemetry, stage_timing=stage_timing, inter_action_timing=inter_action_timing,
+        fga=fga, fgm=fgm, misses=misses, fg3a=fg3a, fg3m=fg3m, blocked=blocked,
         shot_family_counts=shot_family_counts, rebound_opportunities=rebound_opportunities, oreb=oreb, dreb=dreb,
         oreb_share=(oreb / total_reb) if total_reb > 0 else None,
         rebound_opportunities_per_miss=(rebound_opportunities / misses) if misses > 0 else None,
