@@ -760,6 +760,7 @@ class PossessionConfig:
     # original behavior (a fresh period clock and HALFCOURT start).
     initial_game_clock_seconds: Optional[float] = None
     initial_phase: PossessionPhase = PossessionPhase.HALFCOURT
+    is_overtime: bool = False  # structural game context; routes Phase 21B's existing OT bonus threshold
 
 
 def _require(value: Optional[float], what: str) -> float:
@@ -968,7 +969,7 @@ def _dispatch_rebound(engine: PossessionEngine, world: PossessionWorld, rng: ran
 # ---------------------------------------------------------------------
 # 10. Floor-foul handoff (Phase 21A detection -> Phase 21B administration).
 # ---------------------------------------------------------------------
-def _dispatch_floor_foul(engine: PossessionEngine, world: PossessionWorld, rng: random.Random,
+def _dispatch_floor_foul(engine: PossessionEngine, world: PossessionWorld, config: PossessionConfig, rng: random.Random,
                           steps: int, on_ball_outcome: str, offender_id: str, fouled_player_id: str) -> Optional[PossessionTerminalResult]:
     """`on_ball_outcome` is a Phase 21A `OnBallContactOutcome` string
     (`OFFENSIVE_CHARGE`/`DEFENSIVE_FLOOR_FOUL`) already classified by
@@ -992,6 +993,7 @@ def _dispatch_floor_foul(engine: PossessionEngine, world: PossessionWorld, rng: 
         engine, world.foul_state, foul_event_id, offender_id=offender_id, fouled_player_id=fouled_player_id,
         foul_class=on_ball_outcome, offender_team_id=offender_team_id, fouled_team_id=fouled_team_id,
         rng=rng, possession_consequence_already_applied=True, free_throw_rate=free_throw_rate,
+        is_overtime=config.is_overtime,
     )
     world.stats.add_personal_foul(offender_id)
     # Reconciliation fix: `administer_floor_foul` (Phase 21B) itself logs no event -- an OFFENSIVE_CHARGE's
@@ -1064,9 +1066,9 @@ def _dispatch_drive(engine: PossessionEngine, world: PossessionWorld, intent: Ac
         world.log_trace(step=steps, action="ON_BALL_PRESSURE", outcome=pressure_outcome, driver=driver_id, defender=defender_id)
 
         if pressure_outcome == OnBallContactOutcome.OFFENSIVE_CHARGE:
-            return _dispatch_floor_foul(engine, world, rng, steps, OFFENSIVE_CHARGE, driver_id, defender_id)
+            return _dispatch_floor_foul(engine, world, config, rng, steps, OFFENSIVE_CHARGE, driver_id, defender_id)
         if pressure_outcome == OnBallContactOutcome.DEFENSIVE_FLOOR_FOUL:
-            return _dispatch_floor_foul(engine, world, rng, steps, DEFENSIVE_FLOOR_FOUL, defender_id, driver_id)
+            return _dispatch_floor_foul(engine, world, config, rng, steps, DEFENSIVE_FLOOR_FOUL, defender_id, driver_id)
         if pressure_outcome == OnBallContactOutcome.FORCED_PICKUP:
             _charge_time(engine, config.drive_action_seconds)
             return None  # dribble is now DEAD_DRIBBLE -- selection re-runs, DRIVE no longer offered

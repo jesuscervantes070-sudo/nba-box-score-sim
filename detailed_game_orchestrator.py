@@ -97,13 +97,13 @@ class DetailedGameState:
     def team_fouls_by_team(self) -> Dict[str, int]:
         return dict(self.foul_state.team_fouls)
 
-    def in_bonus(self, team_id: str, rules: EraRules) -> bool:
+    def in_bonus(self, team_id: str, rules: EraRules, is_overtime: bool = False) -> bool:
         """Whether ``team_id`` has committed enough qualifying fouls.
 
         This is derived from Phase 21B's persisted category-aware counter and
         threshold helper; Phase 23B never detects or reclassifies a foul.
         """
-        threshold = effective_bonus_foul_threshold(rules, is_overtime=False)
+        threshold = effective_bonus_foul_threshold(rules, is_overtime=is_overtime)
         return threshold is not None and self.foul_state.team_foul_count(team_id) >= threshold
 
 
