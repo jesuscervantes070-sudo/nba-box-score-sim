@@ -486,3 +486,323 @@ unaddressed by design.
   anywhere in this task — confirmed by source diff review: the only
   new code is `_sync_assigned_defender_zone` (a pure dict write with no
   RNG, no skill read) and its four call sites.
+
+**Checkpoint note:** the defender-zone fix above was subsequently
+committed (`7fc98de` "Fix defender zone synchronization") and pushed to
+`origin/codex/empirical-player-modeling`, on top of the two earlier
+checkpoint commits (`aa7e327`, `b2d6432`). All BEFORE/AFTER measurements
+above are preserved exactly as reported. The section below is a
+follow-up diagnostic pass built on that pushed baseline; it changes NO
+simulation behavior (only `test_detailed_engine_diagnostics.py` gained
+3 new tests) and remains uncommitted.
+
+---
+
+# Timing / Pace Root-Cause Diagnosis
+
+Purely diagnostic. **No duration, probability, or action-selection
+weight was changed anywhere in this section's work.** Built on the
+pushed defender-zone-fix baseline (`7fc98de`); all measurements below
+use the SAME seed 23024 and 23024–23033 sample as every prior
+measurement in this report, post-zone-fix.
+
+## C. Clock ownership map
+
+| Action / transition | Clock owner | Duration source | Typical seconds | Random/fixed | Can be 0? | Notes |
+|---|---|---|---|---|---|---|
+| DRIVE (ordinary outcome) | `possession_orchestrator._charge_time` | `PossessionConfig.drive_action_seconds` | 2.5 | Fixed | No (min with remaining clock via `max(0, ...)`) | Charged for every `resolve_drive` outcome AND for `FORCED_PICKUP`/`CLEAN_STRIP_LOOSE` pressure outcomes |
+| DRIVE → floor-foul branch (`OFFENSIVE_CHARGE`/`DEFENSIVE_FLOOR_FOUL`) | *(none)* | — | **0** | — | **Always 0** | **Literal bug** (Sec. J) — `_dispatch_floor_foul` never calls `_charge_time` |
+| PULL_UP | `_charge_time` | `pull_up_action_seconds` | 1.5 | Fixed | No | Same duration whether made, missed, or blocked |
+| CATCH_AND_SHOOT | `_charge_time` | `catch_and_shoot_action_seconds` | 1.0 | Fixed | No | Same duration whether made, missed, or blocked |
+| Shooting-foul branch (`_dispatch_shooting_foul`) | `_charge_time` | same `action_seconds` as the shot that triggered it | 1.0–1.5 | Fixed | No | Charges the SHOT's own duration; the whistle/FT sequence itself adds none (see FT row) |
+| SWING_PASS / KICKOUT / RESET_PASS / POCKET_PASS | `pass_resolution.resolve_pass` (NOT `_charge_time`) | `FLIGHT_DURATION_SECONDS[family]` | 0.4 (DIRECT), 0.6 (KICKOUT), 0.9 (SKIP) | Fixed per family | No | Ball-FLIGHT time only (Sec. H) — verified no double-charge (`test_pass_dispatch_never_calls_charge_time`) |
+| Free throws (shooting-foul or floor-foul bonus) | *(none — deliberately)* | — | 0 | — | Always 0 | **Correct, intentional real-basketball behavior** — a whistle stops the game clock; FT attempts are dead-ball time by rule, not a bug |
+| Rebound resolution (`_dispatch_rebound`) | *(none)* | — | 0 | — | Always 0 | **Not currently represented** at all — the scramble/box-out itself consumes no modeled time |
+| Loose-ball recovery | `_charge_time` (top-of-loop) | `loose_ball_action_seconds` | 0.5 | Fixed | No | Only for the GENERIC (non-shot-adjacent) loose-ball path |
+| Inbound (`engine.inbound`) | *(none — `dt=0.0` default, never overridden)* | — | 0 | — | Always 0 | Correct for a dead ball; but ALSO used for the live first-touch of a NEW possession, where 0 elapsed time also means "bringing the ball up/organizing" is unmodeled (Sec. I) |
+| Transition start (`RestartType.LIVE_TRANSITION`) | *(none)* | — | 0 | — | Always 0 | Same `engine.inbound(..., dt=0.0)` call as a dead-ball restart; no distinct transition-advancement time |
+| Possession initialization (`simulate_possession`'s own setup) | *(none)* | — | 0 | — | Always 0 | Clock is only ever SET (carried over from the prior possession), never decremented, during setup |
+| Dead-ball turnover via a charge (`engine.dead_ball_turnover`) | *(none, inherits the 0-charge floor-foul branch)* | — | 0 | — | Always 0 | Same literal bug as the floor-foul row above |
+| Dead-ball turnover via a bad pass (`BAD_PASS_OUT_OF_BOUNDS`) | `resolve_pass` | `FLIGHT_DURATION_SECONDS[family]` | 0.4–0.9 | Fixed | No | Charged normally — the pass itself still flew before going out of bounds |
+| Made basket → next possession | *(none additional)* | — | 0 | — | Always 0 | Correct — the shot's own duration already accounts for the possession; the administrative handoff to the next possession is real dead-ball time |
+
+**Shot-clock vs. game-clock consistency**: both are decremented
+TOGETHER, in the SAME `_charge_time` call and the SAME `resolve_pass`
+flight-time decrement — verified by direct source read (both fields are
+set in one `replace()` call in each of the two decrement sites) and by
+the existing, already-exercised `DetailedGameInvariantError` checks in
+`detailed_game_orchestrator.apply_possession_result` (game clock
+monotonically non-increasing, never negative, across 7,698+ possessions
+in the 10-game sample with zero violations). **No desync bug found.**
+
+## D. Action timing distribution (seed 23024, post-zone-fix)
+
+| Action | Count | % of actions | Mean sec | Total sec | % of game clock (2,880s) |
+|---|---|---|---|---|---|
+| DRIVE | 476 | 18.9% | 2.500 | 1,190.0 | 41.3% |
+| PULL_UP | 536 | 21.3% | 1.500 | 804.0 | 27.9% |
+| CATCH_AND_SHOOT | 321 | 12.7% | 0.994 | 319.2 | 11.1% |
+| SWING_PASS | 612 | 24.3% | 0.400 | 244.5 | 8.5% |
+| RESET_PASS | 573 | 22.8% | 0.400 | 229.2 | 8.0% |
+| **Action total** | **2,518** | **100%** | — | **2,786.9** | **96.8%** |
+| Generic loose-ball recovery | 187 | *(not a dispatched action)* | 0.5 | 93.5 | 3.2% |
+| **Grand total** | | | | **2,880.4** | **100.1%*** |
+
+*The 0.4s excess over the true 2,880.0s is pure floating-point summation
+error across thousands of additions — confirmed exact reconciliation
+(`sum(elapsed) == 2880.0` to 6 decimal places) via
+`test_possession_elapsed_seconds_reconcile_with_total_period_length`.
+
+10-game sample (seeds 23024–23033) action mix is nearly identical in
+proportion: DRIVE 19.8%/2.495s, PULL_UP 20.4%/1.499s, CATCH_AND_SHOOT
+13.1%/0.999s, SWING_PASS 23.4%/0.400s, RESET_PASS 23.3%/0.400s.
+
+## E. Possession action-count distribution
+
+| Actions | Seed 23024 | 10-game sample |
+|---|---|---|
+| 1 | 274 (34.5%) | 2,675 (34.7%) |
+| 2 | 156 (19.6%) | 1,424 (18.5%) |
+| 3 | 108 (13.6%) | 1,036 (13.5%) |
+| 4+ | 256 (32.2%) | 2,563 (33.3%) |
+| Mean | 3.171 | 3.243 |
+| Median | 2 | 2 |
+| p90 | 7 | 7 |
+
+## F. First-action termination breakdown (seed 23024)
+
+274 of 794 possessions (34.5%) end on the very first dispatched action.
+Broken down by the actual action type dispatched:
+
+| First action type | Count | % of 1-action possessions |
+|---|---|---|
+| PULL_UP | 117 | 42.7% |
+| CATCH_AND_SHOOT | 94 | 34.3% |
+| SWING_PASS | 31 | 11.3% |
+| RESET_PASS | 28 | 10.2% |
+| DRIVE | 4 | 1.5% |
+
+By terminal reason: MADE_FG 106, DEFENSIVE_REBOUND 104 (an immediate
+shot that missed and was immediately rebounded by the defense),
+TURNOVER 63 (an immediate pass interception/bad pass), PERIOD_END 1.
+The 4 DRIVE-first cases are a stripped/loose ball recovered by the
+defense within the SAME dispatched action (a real, structurally
+distinct path — `CLEAN_STRIP_LOOSE` → generic loose-ball recovery →
+`DEFENSE_RECOVERED`, all counted as one `action_log` entry since only
+one `ActionIntent` was ever selected).
+
+**Classification**: PULL_UP/CATCH_AND_SHOOT together are 77% of
+one-action possessions. These are NOT illegitimate basketball events in
+isolation (a real NBA possession can legitimately be a single
+catch-and-shoot) — the problem is architectural, not eventful:
+`SelectionPolicy` is free to choose a fully terminal shot action as the
+VERY FIRST decision after inbound, with zero prior possession
+development modeled at all. This is best classified as **mostly
+category C (too few actions) and D (missing initialization/setup
+time) combined — NOT primarily category A** (individual action
+durations, while short, are a secondary contributor: even a much longer
+`PULL_UP` duration would not by itself prevent a possession from
+legitimately consisting of exactly one action).
+
+## G. Full 2,880-second clock accounting (seed 23024, one complete regulation game)
+
+| Category | Total seconds | % of game clock |
+|---|---|---|
+| Drives | 1,190.0 | 41.3% |
+| Shot actions (PULL_UP + CATCH_AND_SHOOT, including the shooting-foul branch's own shot duration) | 1,123.2 | 39.0% |
+| Passes (SWING_PASS + RESET_PASS ball-flight time) | 473.7 | 16.4% |
+| Generic loose-ball recovery | 93.5 | 3.2% |
+| Rebound resolution | 0.0 | 0.0% |
+| Free throws | 0.0 | 0.0% (correct — dead-ball time) |
+| Floor-foul branch | 0.0 | 0.0% (0 occurrences this seed; would be 0 even if occurred — literal bug, Sec. J) |
+| Inbound / possession setup / transition advancement | 0.0 | 0.0% (unmodeled, Sec. I) |
+| **Total** | **2,880.4*** | **100%** |
+
+*Reconciles to the true 2,880.0s within floating-point summation error
+(verified: `test_action_and_loose_ball_time_fully_explains_total_elapsed`).
+**Every second of consumed game clock is fully attributable to a known,
+already-tracked category — there is no "unclassified" or silently-lost
+time.**
+
+## H. Exact meaning of the current ~0.4-second pass duration
+
+Confirmed by direct source read of `pass_resolution.py`:
+`FLIGHT_DURATION_SECONDS` is explicitly documented in that module as
+"coarse, real, flight-duration-class placeholders" — **BALL FLIGHT TIME
+ONLY** (the physical time the ball is in the air between release and
+reception), NOT the entire time from one offensive decision to the
+next. There is currently **no separate representation anywhere** for
+the decision/setup/hold/dribble time between a reception and the next
+selected action — the very next `StructuralContext`/opportunity
+generation happens immediately upon reception with zero elapsed time
+beyond the pass's own flight. Per instruction, this value was **not
+modified** — increasing it to represent total offensive possession time
+would conflate two conceptually distinct things this resolver was
+deliberately built to keep separate (per `pass_resolution.py`'s own
+module docstring, ball flight is real, physically-grounded modeling;
+inflating it to also carry setup/decision time would not be).
+
+## I. Missing game-clock-consuming basketball phases
+
+| Phase | Classification | Currently modeled? |
+|---|---|---|
+| Bringing the ball up after an inbound | GAME CLOCK SHOULD RUN | **NOT CURRENTLY REPRESENTED** |
+| Crossing half court | GAME CLOCK SHOULD RUN | **NOT CURRENTLY REPRESENTED** |
+| Offense organizing / initial halfcourt setup | GAME CLOCK SHOULD RUN | **NOT CURRENTLY REPRESENTED** |
+| Transition advancement | GAME CLOCK SHOULD RUN | **NOT CURRENTLY REPRESENTED** (same 0-time inbound call as a dead-ball restart) |
+| Catch/hold before the next selection (decision time) | GAME CLOCK SHOULD RUN | **NOT CURRENTLY REPRESENTED** — folded into nothing; the pass's own flight time is the only thing charged around a reception |
+| Dribble/setup time between modeled actions (e.g. between two DRIVE/PASS dispatches by the same player) | GAME CLOCK SHOULD RUN | **NOT CURRENTLY REPRESENTED** |
+| Reset after an OREB (the "second chance" re-organization) | CONTEXT DEPENDENT (a putback attempt should cost little; a reset-and-restart should cost more) | **NOT CURRENTLY REPRESENTED** — an OREB continuation goes straight into the next `StructuralContext` build with zero elapsed time |
+| Dead-ball administration (ball retrieval, walking to the inbound spot, referee administration) | **GAME CLOCK SHOULD NOT RUN** (correct real-basketball rule) | Correctly modeled as zero (this is NOT a gap) |
+| Free-throw attempts themselves | **GAME CLOCK SHOULD NOT RUN** (correct real-basketball rule — clock is dead on a whistle) | Correctly modeled as zero (this is NOT a gap) |
+
+The clear, dominant pattern: every phase where the ball is genuinely
+LIVE and players are actively moving/deciding is currently
+**unmodeled** (zero time), while every phase where the real rule is
+"clock legitimately stops" is already CORRECTLY zero. This is not a
+"blindly add duration everywhere" finding — it is specifically the
+LIVE, pre-decision phases that are missing.
+
+## J. Literal clock bug discovered
+
+**A drive that routes into the floor-foul branch
+(`OnBallContactOutcome.OFFENSIVE_CHARGE` / `DEFENSIVE_FLOOR_FOUL`)
+charges exactly ZERO elapsed game-clock seconds for the entire drive
+sequence**, while every OTHER drive outcome
+(`CLEAN_CONTROL`/`DISRUPTED`/`NO_CALL_CONTACT`/`FORCED_PICKUP`/
+`CLEAN_STRIP_LOOSE`) correctly charges `drive_action_seconds` (2.5s).
+Confirmed by direct source read: `_dispatch_drive` returns directly
+from `_dispatch_floor_foul(...)` at both charge/floor-foul branches
+(lines calling `_dispatch_floor_foul`) BEFORE ever reaching the
+`_charge_time(engine, config.drive_action_seconds)` call later in the
+function; `_dispatch_floor_foul` itself never calls `_charge_time`
+either. Demonstrated directly:
+`test_floor_foul_branch_currently_charges_zero_elapsed_time` (with
+`force_on_ball_contact_established=True`, since the default `False`
+config never reaches this branch at all). **This bug has ZERO
+measurable effect on any number reported anywhere in this report** —
+default autonomous play never exercises the floor-foul branch — so it
+is reported here as a literal finding, per instruction, and **NOT
+fixed** in this task (fixing it is not required for correct measurement
+of the default-config pace diagnosis).
+
+## K. Primary demonstrated cause(s) of 3–4 second possessions
+
+1. **Possessions contain too few actions (category C), and there is no
+   modeled cost for the possession-development phases that would
+   normally precede the first live decision (category D).** 34.5–34.7%
+   of possessions terminate on their very first dispatched action;
+   median actions per possession is 2 (vs. what a real NBA possession —
+   which typically involves an advance, a catch, at least one reset or
+   probing action — would show). This is the DOMINANT, directly measured
+   cause.
+2. **Individual action durations are short by explicit design**
+   (category A), particularly passes (0.4s, ball-flight only, correctly
+   scoped — Sec. H) — a real but SECONDARY contributor, since these
+   durations are honest about what they represent (flight time, not
+   total decision time) rather than being wrong for their own stated
+   purpose.
+3. **No elapsed time exists between the inbound/reception and the next
+   live decision (category B)** — this is the SAME underlying gap as
+   (1) and (D), restated at the mechanism level: there is currently no
+   code path that charges ANY time for "the ball is live and a player
+   is holding/organizing/advancing it" outside of the four modeled
+   action types.
+4. **Category E (terminal transitions omitting elapsed time) was
+   specifically investigated and NOT found to be a material cause** —
+   every terminal transition (MADE_FG, DEFENSIVE_REBOUND, TURNOVER,
+   FINAL_FT_MADE, PERIOD_END, SHOT_CLOCK_VIOLATION) correctly inherits
+   whatever time the triggering action already charged; the FULL
+   2,880-second reconciliation (Sec. G) shows no unaccounted-for gap.
+
+**In short: the 3–4 second average possession is real, structural, and
+caused primarily by too few modeled actions combined with a completely
+unmodeled "live but undecided" phase — not primarily by any individual
+action's duration being wrong for what it represents.**
+
+## L. Recommended smallest timing architecture correction
+
+**Option C (possession-stage timing: advance/setup → action
+decision/execution → continuation) is recommended over A, B, or D**,
+evaluated on semantics, not merely on ability to hit 14.6s:
+
+- **Option A (increase existing action durations)** — REJECTED as the
+  primary fix. Passes represent ball flight only (Sec. H); inflating
+  that value to also carry setup/decision time would make the resolver
+  represent two different physical quantities under one name, which is
+  conceptually wrong per the task's own framing and this module's own
+  documented scope.
+- **Option B (separate action execution time from inter-action/setup
+  time)** — a real, valid partial mechanism, but by itself doesn't
+  address the STRUCTURAL fact that a possession can currently have
+  ZERO actions worth of "setup" before an immediately-terminal shot; it
+  would need to be paired with something like Option C's own staging
+  anyway.
+- **Option C (possession-stage timing)** — the best semantic fit: an
+  explicit "advance/setup" stage (a real, coarse, uncalibrated cost
+  representing bringing the ball up + crossing half-court + initial
+  organization) would run ONCE per possession (or once per
+  live-transition-vs-dead-ball-restart, since these are legitimately
+  different in real basketball — a transition possession should cost
+  LESS setup time than a half-court dead-ball inbound), BEFORE the
+  first `SelectionPolicy` decision is ever reached — closing the
+  demonstrated category-C/D gap directly, without touching what any
+  existing action-duration value represents.
+- **Option D (another simpler model)** — no simpler model was
+  identified this pass that addresses the SAME root cause without
+  effectively re-deriving Option C under a different name.
+
+**This is NOT implemented in this task** — it is a structural fix
+recommendation only, requiring HQ review (per instruction, "propose the
+smallest clean timing model. Do not implement it yet").
+
+## M. Structural fix needed now vs. empirical value needed later
+
+**STRUCTURAL FIX NEEDED NOW** (architecture, not data-dependent):
+- Add a real "advance/setup" stage/hook to the possession loop (Option
+  C) — the MECHANISM can be built with a placeholder, explicitly
+  flagged, UNCALIBRATED value, exactly like every other duration in
+  this project.
+- Fix the literal floor-foul zero-duration bug (Sec. J) — a pure
+  bookkeeping correction, not a calibration question, whenever the
+  floor-foul branch's timing is next touched.
+
+**EMPIRICAL VALUE NEEDED LATER** (requires real data, explicitly NOT
+researched this task — data dependency only, per instruction):
+- The actual real-world SECONDS a possession's advance/setup phase
+  should cost, likely derivable from NBA play-by-play event timestamps
+  (time between an inbound/rebound event and the first shot/pass
+  event), public tracking-data-derived possession-duration
+  distributions, or a similar source — NOT browsed/researched this
+  task.
+- Whether/how much that cost should differ between a live-transition
+  restart and a dead-ball halfcourt restart (real NBA transition
+  possessions are measurably faster on average) — an empirical
+  question, not assumed here.
+- Any recalibration of the EXISTING action durations themselves once a
+  real total-possession-duration target distribution is available to
+  fit against — explicitly out of scope for this diagnostic task.
+
+## N. Tests
+
+`python3 -m unittest test_detailed_engine_diagnostics -v` → **19/19 OK**
+(16 prior + 3 new in `TestClockAccounting`):
+`test_possession_elapsed_seconds_reconcile_with_total_period_length`,
+`test_action_and_loose_ball_time_fully_explains_total_elapsed`,
+`test_floor_foul_branch_currently_charges_zero_elapsed_time` (documents
+the Sec. J bug without fixing it). Full suite:
+`python3 -m unittest discover -p "test_*.py"` → **907/907 OK** (904
+baseline + 3 new). Zero regressions.
+
+## O. Confirmations
+
+- No timing, probability, or calibration constant was changed anywhere
+  in this diagnostic pass — verified: `git diff --stat` shows only
+  `test_detailed_engine_diagnostics.py` modified (58 insertions, tests
+  only); no source module was touched.
+- No legacy/product file was touched: `game_engine.py`, `main.py`,
+  `season.py`, `playoffs.py`, `db.py`, `models.py`, `README.md`,
+  `ACCURACY.md`, `CLAUDE.md` are all untouched.
+- This diagnostic work remains **UNCOMMITTED**, on top of the pushed
+  defender-zone-fix checkpoint (`7fc98de`).
+- No new gameplay phase was begun.
