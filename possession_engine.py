@@ -141,6 +141,16 @@ class PossessionEngine:
         self._require_shot_in_flight()
         self.state = self.state.with_ball_carrier(rebounder_id, BallState.HELD)
         self.state = replace(self.state, phase=PossessionPhase.DEAD_BALL)
+        # Advantage hygiene fix (see docs -- "Advantage Hygiene Fix" section): the OFFENSIVE-rebound
+        # siblings of this method (`resolve_shot_missed_offensive_rebound`, `secure_offensive_rebound_from_loose`,
+        # `credit_team_rebound`'s OFFENSE branch) all explicitly clear `self.advantage` on their own
+        # possession-context transition; this defensive-control-secured transition had NOT, even though
+        # defensive control is an equally real context change. Currently BEHAVIORALLY INERT under every
+        # existing orchestration path -- this possession always terminates immediately after (the caller
+        # constructs a brand-new `PossessionEngine(advantage=None)` for the next possession regardless,
+        # confirmed by direct source read of `simulate_possession`) -- this is a defensive-programming/
+        # explicitness fix, not a behavior change.
+        self.advantage = None
         self._log(EventType.SHOT_RESOLVED, dt, primary=shooter_id, meta={"made": False})
         self._log(EventType.DEFENSIVE_REBOUND, 0.0, primary=rebounder_id)
 
@@ -230,6 +240,9 @@ class PossessionEngine:
         self.state = self.state.with_ball_carrier(rebounder_id, BallState.HELD)
         self.state = replace(self.state, phase=PossessionPhase.TRANSITION,
                               offense_team_id=new_offense_team_id, defense_team_id=new_defense_team_id)
+        # Advantage hygiene fix -- see `resolve_shot_missed_defensive_rebound`'s own identical comment
+        # above (same rule, same reasoning, applied at this Phase 19 LOOSE-guarded entry point).
+        self.advantage = None
         self._log(EventType.DEFENSIVE_REBOUND, dt, primary=rebounder_id)
 
     def credit_team_rebound(self, rebounding_side: str, new_offense_team_id: Optional[str] = None,
@@ -254,6 +267,10 @@ class PossessionEngine:
             self.state = replace(self.state, ball_state=BallState.DEAD, ball_carrier=None, ball_control=None,
                                   phase=PossessionPhase.DEAD_BALL,
                                   offense_team_id=new_offense_team_id, defense_team_id=new_defense_team_id)
+            # Advantage hygiene fix -- see `resolve_shot_missed_defensive_rebound`'s own identical
+            # comment above (same rule: a defensive-control-secured team rebound is an equally real
+            # context change as the OFFENSE branch three lines above, which already clears this).
+            self.advantage = None
         else:
             raise ValueError(f"rebounding_side must be 'OFFENSE' or 'DEFENSE', got {rebounding_side!r}")
         self._log(EventType.OUT_OF_BOUNDS, dt)

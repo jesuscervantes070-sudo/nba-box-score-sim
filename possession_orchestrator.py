@@ -967,6 +967,17 @@ class PossessionConfig:
     ordinary_entry_seconds: float = 9.0      # FIRST-PASS CALIBRATED (was 3.0 UNCALIBRATED) -- a new halfcourt possession's advance/organize time
     transition_entry_seconds: float = 1.5    # UNCALIBRATED PLACEHOLDER (unchanged this pass) -- a new live-transition possession's advance time
     second_chance_reset_seconds: float = 1.0  # UNCALIBRATED PLACEHOLDER (unchanged this pass) -- post-OREB re-organization, SAME possession
+    # STRUCTURAL TYPE ONLY, CURRENTLY INERT -- see `PossessionStage.CONTROLLED_ADVANCE_ENTRY`'s own
+    # comment and the architecture-review task's "Add Controlled-Advance Structural Type" section.
+    # UNCALIBRATED. Deliberately NOT chosen from the 197.6-possession pace target (this project's own
+    # explicit instruction: do not target-fit a timing constant) -- set equal to `ordinary_entry_seconds`
+    # ONLY as an inert starting point (a controlled advance is conceptually closer to an organized,
+    # settled-defense entry than to a genuine fast break), pending a FUTURE, SEPARATE, disciplined
+    # sensitivity study, exactly like the one `ordinary_entry_seconds`/`inter_action_seconds` already
+    # went through. NO current code path ever reads this field -- confirmed:
+    # `_charge_possession_stage_time`'s own `seconds_by_stage` dict does not map
+    # `CONTROLLED_ADVANCE_ENTRY` to it, and no call site ever passes that stage constant.
+    controlled_advance_entry_seconds: float = 9.0  # UNCALIBRATED, INERT -- not yet wired to any stage-charge call site
     # ------------------------------------------------------------------
     # Inter-Action Timing Structure -- see docs/DETAILED_ENGINE_FIRST_DIAGNOSTIC_REPORT.md's own
     # "Inter-Action Timing Structure" section. This is a SEPARATE concept from the three ENTRY/RESET
@@ -1005,6 +1016,18 @@ class PossessionStage:
     HALFCOURT_ENTRY = "HALFCOURT_ENTRY"          # a new possession beginning at a dead-ball, halfcourt inbound
     TRANSITION_ENTRY = "TRANSITION_ENTRY"        # a new possession beginning live, in transition
     SECOND_CHANCE_RESET = "SECOND_CHANCE_RESET"  # an offensive rebound continuing the SAME possession (SAME possession_id)
+    # STRUCTURAL TYPE ONLY -- see the architecture-review task's "Add Controlled-Advance Structural
+    # Type" section. Represents a LIVE possession change (not a dead-ball inbound) where the
+    # observational transition classifier (`transition_state.build_transition_diagnostic`) would find
+    # no meaningful structural transition advantage -- the new offense has the ball live but must
+    # still advance/organize, distinct from both a genuine fast-break TRANSITION_ENTRY and a dead-ball
+    # HALFCOURT_ENTRY. CURRENTLY INERT: no `PossessionConfig` field maps this stage to a value in
+    # `_charge_possession_stage_time`'s own `seconds_by_stage` dict, and NO current call site ever
+    # passes this constant to that function -- `simulate_possession`'s own entry-stage charge (see its
+    # own "Structural Timing Hook" section) still selects only HALFCOURT_ENTRY/TRANSITION_ENTRY, exactly
+    # as before this addition. Activating this stage (routing SOME live restarts through it) is an
+    # explicit, SEPARATE, NOT-YET-MADE decision -- see docs' "Recommended next decision" section.
+    CONTROLLED_ADVANCE_ENTRY = "CONTROLLED_ADVANCE_ENTRY"
 
 
 class ContinuationStage:

@@ -212,6 +212,56 @@ class TestSecondChanceContext(unittest.TestCase):
         self.assertEqual(e.state.ball_state, BallState.PASS_IN_FLIGHT)
 
 
+class TestAdvantageHygieneOnDefensiveControl(unittest.TestCase):
+    """Advantage hygiene fix -- see docs' "Advantage Hygiene Fix" section.
+    Every method that transitions the engine into a real, new possession-
+    control context (offensive rebound already covered above; defensive
+    control below) must explicitly clear `self.advantage` rather than
+    silently carrying the OLD offense's own advantage forward -- even
+    though, under every current orchestration path, the possession
+    terminates immediately after any of these and a brand-new engine
+    (with `advantage=None`) is constructed for the next possession
+    regardless (confirmed: the full suite is unaffected by this fix)."""
+
+    def test_resolve_shot_missed_defensive_rebound_clears_advantage(self):
+        e = _engine()
+        e.advantage = SpatialMagnitudeAdvantage(magnitudes={SpatialZone.PAINT: 0.9})
+        e.inbound("1", SpatialZone.TOP_OF_KEY, PossessionPhase.HALFCOURT)
+        e.begin_shot(SpatialZone.PAINT, dt=1.0)
+        e.resolve_shot_missed_defensive_rebound("1", "11", dt=0.0)
+        self.assertIsNone(e.advantage)
+
+    def test_secure_defensive_rebound_from_loose_clears_advantage(self):
+        e = _engine()
+        e.advantage = SpatialMagnitudeAdvantage(magnitudes={SpatialZone.PAINT: 0.9})
+        e.inbound("1", SpatialZone.TOP_OF_KEY, PossessionPhase.HALFCOURT)
+        e.begin_shot(SpatialZone.PAINT, dt=1.0)
+        e.resolve_shot_missed_pending_rebound("1", dt=0.0)
+        self.assertEqual(e.state.ball_state, BallState.LOOSE)
+        e.secure_defensive_rebound_from_loose("11", "TEAM_B", "TEAM_A", dt=0.0)
+        self.assertIsNone(e.advantage)
+
+    def test_credit_team_rebound_defense_branch_clears_advantage(self):
+        e = _engine()
+        e.advantage = SpatialMagnitudeAdvantage(magnitudes={SpatialZone.PAINT: 0.9})
+        e.inbound("1", SpatialZone.TOP_OF_KEY, PossessionPhase.HALFCOURT)
+        e.begin_shot(SpatialZone.PAINT, dt=1.0)
+        e.resolve_shot_missed_pending_rebound("1", dt=0.0)
+        e.credit_team_rebound("DEFENSE", new_offense_team_id="TEAM_B", new_defense_team_id="TEAM_A", dt=0.0)
+        self.assertIsNone(e.advantage)
+
+    def test_credit_team_rebound_offense_branch_still_clears_advantage(self):
+        """Regression guard: the OFFENSE branch already cleared advantage
+        before this fix -- confirm it still does (unchanged)."""
+        e = _engine()
+        e.advantage = SpatialMagnitudeAdvantage(magnitudes={SpatialZone.PAINT: 0.9})
+        e.inbound("1", SpatialZone.TOP_OF_KEY, PossessionPhase.HALFCOURT)
+        e.begin_shot(SpatialZone.PAINT, dt=1.0)
+        e.resolve_shot_missed_pending_rebound("1", dt=0.0)
+        e.credit_team_rebound("OFFENSE", dt=0.0)
+        self.assertIsNone(e.advantage)
+
+
 class TestTransitionToHalfcourt(unittest.TestCase):
     def test_transition_phase_can_move_to_halfcourt(self):
         e = _engine()

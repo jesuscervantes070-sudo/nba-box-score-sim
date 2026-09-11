@@ -8,8 +8,8 @@ from possession_engine import PossessionEngine
 from possession_state import BallState, PossessionPhase, SpatialZone
 from transition_state import (
     AHEAD_OF_BALL, BEHIND_BALL, DEAD_BALL_INBOUND, LIVE_TRANSITION_CAPABLE, NEAR_BALL,
-    FloorPlayer, PossessionChangeSource, TransitionState, classify_source,
-    initialize_transition_state, relational_tag,
+    FloorPlayer, PossessionChangeSource, TransitionState, _COURT_FLIP_MAP, classify_source,
+    flip_zone_to_new_offense_frame, initialize_transition_state, relational_tag,
 )
 
 
@@ -234,6 +234,95 @@ class TestPlayerIdOnly(unittest.TestCase):
         e = _engine()
         with self.assertRaises(TypeError):
             initialize_transition_state(e, PossessionChangeSource.DEFENSIVE_REBOUND, "B", "A", "LeBron James", SpatialZone.RESTRICTED_RIM)
+
+
+class TestCourtFlipTransform(unittest.TestCase):
+    """Focused tests for `flip_zone_to_new_offense_frame` -- see that
+    function's own module-level comment block for the full derivation.
+    Every one of the 9 `SpatialZone` members is tested explicitly, per
+    this task's own instruction -- no loop-over-all-members shortcut
+    that could silently skip a value."""
+
+    def test_restricted_rim_flips_to_backcourt(self):
+        self.assertEqual(flip_zone_to_new_offense_frame(SpatialZone.RESTRICTED_RIM), SpatialZone.BACKCOURT)
+
+    def test_paint_flips_to_backcourt(self):
+        self.assertEqual(flip_zone_to_new_offense_frame(SpatialZone.PAINT), SpatialZone.BACKCOURT)
+
+    def test_midrange_flips_to_backcourt(self):
+        self.assertEqual(flip_zone_to_new_offense_frame(SpatialZone.MIDRANGE), SpatialZone.BACKCOURT)
+
+    def test_left_wing_flips_to_backcourt(self):
+        self.assertEqual(flip_zone_to_new_offense_frame(SpatialZone.LEFT_WING), SpatialZone.BACKCOURT)
+
+    def test_right_wing_flips_to_backcourt(self):
+        self.assertEqual(flip_zone_to_new_offense_frame(SpatialZone.RIGHT_WING), SpatialZone.BACKCOURT)
+
+    def test_left_corner_flips_to_backcourt(self):
+        self.assertEqual(flip_zone_to_new_offense_frame(SpatialZone.LEFT_CORNER), SpatialZone.BACKCOURT)
+
+    def test_right_corner_flips_to_backcourt(self):
+        self.assertEqual(flip_zone_to_new_offense_frame(SpatialZone.RIGHT_CORNER), SpatialZone.BACKCOURT)
+
+    def test_top_of_key_flips_to_backcourt(self):
+        self.assertEqual(flip_zone_to_new_offense_frame(SpatialZone.TOP_OF_KEY), SpatialZone.BACKCOURT)
+
+    def test_backcourt_flips_to_backcourt_the_one_fixed_point(self):
+        """Documented as the ONE zone this transform cannot re-derive
+        real information for -- see the module's own "REVERSE direction
+        is GENUINELY AMBIGUOUS" comment. A conservative fixed point, not
+        a guessed frontcourt zone."""
+        self.assertEqual(flip_zone_to_new_offense_frame(SpatialZone.BACKCOURT), SpatialZone.BACKCOURT)
+
+    def test_every_spatial_zone_member_is_covered_explicitly(self):
+        """Regression guard: if a future phase adds a new `SpatialZone`
+        member, this transform must fail loudly (KeyError), never
+        silently default it -- confirms the map has no fallback branch
+        and currently covers exactly the 9 known members."""
+        self.assertEqual(set(SpatialZone), set(_COURT_FLIP_MAP.keys()))
+        for zone in SpatialZone:
+            flip_zone_to_new_offense_frame(zone)  # must not raise for any current member
+
+    def test_flip_is_idempotent_for_every_zone(self):
+        """flip(flip(zone)) == flip(zone) holds for ALL 9 zones -- this
+        IS the true, general invariant of this design (a many-to-one
+        projection onto a single fixed point), distinct from a full
+        involution (flip(flip(zone)) == zone), which this task's own
+        instructions anticipate may not hold everywhere."""
+        for zone in SpatialZone:
+            once = flip_zone_to_new_offense_frame(zone)
+            twice = flip_zone_to_new_offense_frame(once)
+            self.assertEqual(twice, once)
+
+    def test_flip_flip_equals_original_only_for_the_orientation_neutral_zone(self):
+        """flip(flip(zone)) == zone holds ONLY for BACKCOURT (the one
+        zone this review found to be genuinely orientation-neutral,
+        i.e. a fixed point) -- documented explicitly as NOT holding for
+        the other 8 zones, rather than silently only testing the case
+        that happens to pass."""
+        holds_for = {SpatialZone.BACKCOURT}
+        for zone in SpatialZone:
+            round_tripped = flip_zone_to_new_offense_frame(flip_zone_to_new_offense_frame(zone))
+            if zone in holds_for:
+                self.assertEqual(round_tripped, zone)
+            else:
+                self.assertNotEqual(round_tripped, zone)
+
+    def test_flip_consumes_no_rng_and_is_a_pure_function(self):
+        import inspect as _inspect
+        sig = _inspect.signature(flip_zone_to_new_offense_frame)
+        self.assertNotIn("rng", sig.parameters)
+        # deterministic: same input, same output, called repeatedly
+        for _ in range(5):
+            self.assertEqual(flip_zone_to_new_offense_frame(SpatialZone.PAINT), SpatialZone.BACKCOURT)
+
+    def test_matches_this_modules_own_documented_dreb_example(self):
+        """Directly verifies the exact scenario `initialize_transition_state`'s
+        own docstring describes: a rebound secured at the shooting
+        team's basket (old-offense-relative RESTRICTED_RIM) must become
+        BACKCOURT for the new offense -- not RESTRICTED_RIM."""
+        self.assertEqual(flip_zone_to_new_offense_frame(SpatialZone.RESTRICTED_RIM), SpatialZone.BACKCOURT)
+        self.assertNotEqual(flip_zone_to_new_offense_frame(SpatialZone.RESTRICTED_RIM), SpatialZone.RESTRICTED_RIM)
 
 
 if __name__ == "__main__":

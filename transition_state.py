@@ -101,6 +101,97 @@ NEAR_BALL = "NEAR_BALL"            # same coarse rank as the ball
 # already being at the new offense's attacking basket, which is
 # physically wrong immediately after a rebound at the other end).
 
+# ---------------------------------------------------------------------
+# COURT-FLIP / ZONE-REORIENTATION TRANSFORM (Task: "Court-Flip / Zone-
+# Relabeling Transform"). Reinterprets a zone that was tracked RELATIVE
+# TO THE OLD OFFENSE'S OWN ATTACKING RIM (e.g. `world.player_zones` as
+# tracked by `possession_orchestrator.py` for the possession that JUST
+# ENDED) as the equivalent zone RELATIVE TO THE NEW OFFENSE'S OWN
+# ATTACKING RIM (this module's own established convention, see the
+# caller-convention comment immediately above).
+#
+# ============================ WHY THIS IS NOT A SIMPLE BIJECTION (source-audited, not assumed) ============================
+# This project's 9-zone topology (`SpatialZone`) is DELIBERATELY
+# ASYMMETRIC, not two mirrored half-courts: 8 zones
+# (RESTRICTED_RIM/PAINT/MIDRANGE/LEFT_WING/RIGHT_WING/LEFT_CORNER/
+# RIGHT_CORNER/TOP_OF_KEY) describe VARYING DEPTH WITHIN the currently-
+# attacking team's OWN frontcourt, and exactly ONE zone (`BACKCOURT`)
+# is the sole, single-resolution catch-all for "not yet in my
+# frontcourt at all" (confirmed by direct source read: `INTERIOR_ZONES`
+# `|` `PERIMETER_ZONES` in `action_opportunity.py` together cover
+# exactly those same 8 zones, and `BACKCOURT` is a member of neither;
+# `default_v0_zone_placement`'s own `_V0_PERIMETER_CYCLE` never assigns
+# it to any player either -- confirmed no current gameplay path ever
+# places a real player/ball at `BACKCOURT` today). A physical spot deep
+# in the OLD offense's frontcourt is, for the NEW offense, deep in
+# THEIR OWN defensive end -- but the topology has no finer resolution
+# there than the single `BACKCOURT` label (there is no "how deep in my
+# own end" distinction to preserve, because the model never built one
+# for that side of the floor). The FORWARD direction (any of the 8
+# reachable zones -> the new offense's frame) is therefore well-defined
+# and UNAMBIGUOUS: it is always `BACKCOURT` -- this matches this
+# module's OWN pre-existing documented example immediately above
+# ("the new offense's own ball_zone should normally be supplied as
+# BACKCOURT... NOT RESTRICTED_RIM").
+#
+# The REVERSE direction (`BACKCOURT` -> a specific new-offense-relative
+# frontcourt zone) is GENUINELY AMBIGUOUS and is deliberately NOT
+# invented: "the old offense's own backcourt" carries no information
+# about where in the new offense's frontcourt that physical spot falls.
+# Per this task's own instruction to report rather than force a
+# fabricated answer here, `flip(BACKCOURT)` returns `BACKCOURT` itself
+# -- a conservative "no re-derivable information, stay at maximum
+# uncertainty" fixed point, never a guessed frontcourt zone. This means
+# `flip` is a many-to-one PROJECTION, not a true involution:
+# `flip(flip(zone)) == zone` holds ONLY for `zone == BACKCOURT`
+# (trivially, since it is a fixed point) -- it does NOT hold for the
+# other 8 zones, because they are deliberately, honestly collapsed to
+# `BACKCOURT` and cannot be recovered. `flip(flip(zone)) == flip(zone)`
+# (idempotence) DOES hold for every zone -- see the focused tests.
+#
+# ============================ LEFT/RIGHT AXIS (deliberately NOT transformed) ============================
+# Whether "left"/"right" zone labels are camera/scorer's-table-relative
+# (fixed) or attack-direction-relative (would swap when the attacking
+# team's own facing direction reverses) is NOT resolved anywhere else
+# in this codebase -- no existing code exercises a left/right swap
+# today to establish a precedent either way, and `ball_side()`'s own
+# docstring only documents it as deriving STRONG/WEAK side relative to
+# THAT SAME possession's own ball zone, never as a claim about a fixed
+# external camera frame. This transform deliberately does NOT guess:
+# every rank-2 zone (MIDRANGE/LEFT_WING/RIGHT_WING/LEFT_CORNER/
+# RIGHT_CORNER) collapses to `BACKCOURT` under the same forward rule as
+# every other non-BACKCOURT zone (see above) -- so this ambiguity is
+# CURRENTLY INERT for the transform's own output (there is no rank-2-
+# to-rank-2 identity mapping in this design for the ambiguity to even
+# apply to). Flagged for a FUTURE phase that might need a genuine
+# rank-preserving (not collapsing) transform, not resolved here.
+_UNORIENTED_ZONE = SpatialZone.BACKCOURT  # the one zone this transform cannot re-derive information for
+
+
+def flip_zone_to_new_offense_frame(zone: SpatialZone) -> SpatialZone:
+    """Reinterprets `zone` (tracked relative to the OLD offense's own
+    attacking rim) as the equivalent zone relative to the NEW offense's
+    own attacking rim. Deterministic, no RNG, total (never raises) --
+    see the module-level comment block immediately above for the full
+    derivation and the documented, deliberate non-bijection. Every one
+    of the 9 `SpatialZone` members is covered explicitly, not via a
+    fallback/default branch, so a future new zone value fails loudly
+    (`KeyError`) rather than being silently misclassified."""
+    return _COURT_FLIP_MAP[zone]
+
+
+_COURT_FLIP_MAP: Dict[SpatialZone, SpatialZone] = {
+    SpatialZone.RESTRICTED_RIM: _UNORIENTED_ZONE,
+    SpatialZone.PAINT: _UNORIENTED_ZONE,
+    SpatialZone.MIDRANGE: _UNORIENTED_ZONE,
+    SpatialZone.LEFT_WING: _UNORIENTED_ZONE,
+    SpatialZone.RIGHT_WING: _UNORIENTED_ZONE,
+    SpatialZone.LEFT_CORNER: _UNORIENTED_ZONE,
+    SpatialZone.RIGHT_CORNER: _UNORIENTED_ZONE,
+    SpatialZone.TOP_OF_KEY: _UNORIENTED_ZONE,
+    SpatialZone.BACKCOURT: _UNORIENTED_ZONE,  # the one genuine fixed point -- see module comment
+}
+
 
 def relational_tag(player_zone: SpatialZone, ball_zone: SpatialZone) -> str:
     player_rank = _RIM_DISTANCE_RANK.get(player_zone, 3)
@@ -236,3 +327,122 @@ def initialize_transition_state(engine: PossessionEngine, source: str, new_offen
                 meta={"source": source, "classification": classification,
                       "defenders_back": new_state.defenders_back_count, "offense_ahead": new_state.offense_ahead_count})
     return new_state
+
+
+# ---------------------------------------------------------------------
+# OBSERVATIONAL TRANSITION CLASSIFIER (diagnostic only -- see the task's
+# own "Build An Observational Transition Classifier" section). Reports
+# what structural information ALREADY EXISTS at a live possession
+# change, using ONLY this module's own existing, already-audited
+# machinery (`classify_source`, `TransitionState`'s own
+# `offense_ahead_count`/`defenders_back_count`/`relational_tags`
+# properties, `_derive_fresh_advantage`) plus the court-flip transform
+# above. NEVER consulted by any simulation decision: no caller in
+# `detailed_game_orchestrator.py`/`possession_orchestrator.py` reads
+# `TransitionDiagnostic` to choose `restart_type`, `PossessionStage`,
+# timing, the action menu, assignments, or any probability -- it is
+# attached to `RestartContext` purely for later analysis (Phases 7/8 of
+# the task), same "diagnostic-only, never consulted" convention every
+# other diagnostic log in this project already follows
+# (`world.decision_log`, `world.clock_charge_log`, etc.). Consumes ZERO
+# RNG -- every input is already-computed, already-logged state.
+# ---------------------------------------------------------------------
+from action_opportunity import INTERIOR_ZONES, PERIMETER_ZONES
+
+
+@dataclass(frozen=True)
+class TransitionDiagnostic:
+    """DIAGNOSTIC ONLY. One instance per LIVE (or CONTEXT_DEPENDENT)
+    possession-change source -- `None` for DEAD_BALL_INBOUND sources
+    (no live geometry exists to inspect for those). Every field is
+    read from, or derived via already-existing functions over, state
+    `possession_orchestrator.py`'s dispatch code already computed
+    (`world.player_zones`, `world.rebound_opportunity_log`) -- nothing
+    here is a new simulation input."""
+    source: str
+    source_taxonomy: str  # classify_source(source): LIVE_TRANSITION_CAPABLE | DEAD_BALL_INBOUND | CONTEXT_DEPENDENT
+    old_offense_team_id: str
+    new_offense_team_id: str
+    ball_carrier_id: str
+    prior_zones: Tuple[FloorPlayer, ...]                  # old-offense-relative, as tracked at possession end; side is OFFENSE/DEFENSE relative to the OLD (ending) possession
+    new_offense_relative_zones: Tuple[FloorPlayer, ...]   # same players, zone flipped via flip_zone_to_new_offense_frame, side relative to the NEW possession
+    old_offense_interior_count: int
+    old_offense_perimeter_count: int
+    offense_ahead_count: int
+    defenders_back_count: int
+    fresh_advantage_would_be_present: bool
+    fresh_compromised_zones: Tuple[SpatialZone, ...]
+    prior_shot_family: Optional[str]
+    prior_release_zone: Optional[SpatialZone]
+
+
+def build_transition_diagnostic(source: str, world, new_offense_team_id: str,
+                                 new_defense_team_id: str, ball_carrier_id: str) -> Optional[TransitionDiagnostic]:
+    """`world` is the ENDING possession's own `PossessionWorld` (duck-
+    typed here, not imported at module level, to avoid any risk of a
+    circular import with `possession_orchestrator.py` -- that module
+    does not import this one today, and this function does not need to
+    force a dependency either way). Returns `None` for a DEAD_BALL_INBOUND
+    source -- consistent with `initialize_transition_state`'s own
+    "dead-ball sources begin structurally neutral" rule; there is no
+    live geometry to report for those. Consumes ZERO RNG; every value
+    is read from, or derived deterministically via already-existing
+    pure functions over, `world`'s own already-populated diagnostic
+    state."""
+    taxonomy = classify_source(source)
+    if taxonomy == DEAD_BALL_INBOUND:
+        return None
+
+    old_offense_team_id = world.team_a_id
+    old_offense_five = world.team_a_five
+
+    prior_zones: List[FloorPlayer] = []
+    new_offense_relative_zones: List[FloorPlayer] = []
+    for pid in world.all_ten():
+        zone = world.player_zones.get(pid, SpatialZone.TOP_OF_KEY)
+        old_side = "OFFENSE" if pid in old_offense_five else "DEFENSE"
+        prior_zones.append(FloorPlayer(player_id=pid, zone=zone, side=old_side))
+        new_side = "DEFENSE" if old_side == "OFFENSE" else "OFFENSE"  # the old offense is now the new defense
+        new_offense_relative_zones.append(
+            FloorPlayer(player_id=pid, zone=flip_zone_to_new_offense_frame(zone), side=new_side)
+        )
+    prior_zones = tuple(prior_zones)
+    new_offense_relative_zones = tuple(new_offense_relative_zones)
+
+    old_offense_interior_count = sum(1 for p in prior_zones if p.side == "OFFENSE" and p.zone in INTERIOR_ZONES)
+    old_offense_perimeter_count = sum(1 for p in prior_zones if p.side == "OFFENSE" and p.zone in PERIMETER_ZONES)
+
+    # Reuses TransitionState's OWN existing offense_ahead_count/defenders_back_count properties
+    # verbatim -- ball_zone=BACKCOURT matches this module's own documented convention (see the
+    # court-flip transform's own comment block) for a live possession change originating at the
+    # OLD offense's own attacking end.
+    probe_state = TransitionState(
+        source=source, new_offense_team_id=new_offense_team_id, new_defense_team_id=new_defense_team_id,
+        ball_carrier_id=ball_carrier_id, ball_zone=SpatialZone.BACKCOURT,
+        player_zones=new_offense_relative_zones,
+    )
+    fresh_advantage = _derive_fresh_advantage(new_offense_relative_zones, SpatialZone.BACKCOURT)
+    fresh_compromised_zones = tuple(area.zone for area in fresh_advantage.compromised_areas()) if fresh_advantage is not None else ()
+
+    prior_shot_family = None
+    prior_release_zone = None
+    rebound_log = getattr(world, "rebound_opportunity_log", ())
+    if rebound_log:
+        last_rebound = rebound_log[-1]
+        prior_shot_family = last_rebound.get("shot_family")
+        raw_zone = last_rebound.get("rebound_zone")
+        prior_release_zone = SpatialZone(raw_zone) if raw_zone is not None else None
+
+    return TransitionDiagnostic(
+        source=source, source_taxonomy=taxonomy,
+        old_offense_team_id=old_offense_team_id, new_offense_team_id=new_offense_team_id,
+        ball_carrier_id=ball_carrier_id,
+        prior_zones=prior_zones, new_offense_relative_zones=new_offense_relative_zones,
+        old_offense_interior_count=old_offense_interior_count,
+        old_offense_perimeter_count=old_offense_perimeter_count,
+        offense_ahead_count=probe_state.offense_ahead_count,
+        defenders_back_count=probe_state.defenders_back_count,
+        fresh_advantage_would_be_present=fresh_advantage is not None,
+        fresh_compromised_zones=fresh_compromised_zones,
+        prior_shot_family=prior_shot_family, prior_release_zone=prior_release_zone,
+    )

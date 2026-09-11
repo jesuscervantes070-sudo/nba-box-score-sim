@@ -374,5 +374,180 @@ class TestReplayFaultsAndFirewalls(unittest.TestCase):
                 self.assertNotIn("detailed_game_orchestrator", handle.read())
 
 
+class TestTransitionDiagnosticWiring(unittest.TestCase):
+    """Focused tests for the transition-classification architecture-review
+    task's Phase 2/4/6/13: preserved ending-possession context, reused
+    Phase 20A machinery, and the observational classifier's firewall
+    (never affects restart_type/timing/matchups/RNG)."""
+
+    def test_defensive_rebound_live_restart_carries_a_diagnostic(self):
+        with patch.object(game, "simulate_possession", side_effect=scripted_runner([
+            {"reason": PossessionTerminalReason.DEFENSIVE_REBOUND, "live_carrier": AWAY[2]},
+            {"reason": PossessionTerminalReason.MADE_FG},
+        ])):
+            result = game.simulate_possessions(HOME, AWAY, profiles(), initial_state(), 2, 1)
+        diagnostic = result.possessions[1].restart_context.transition_diagnostic
+        self.assertIsNotNone(diagnostic)
+        self.assertEqual(diagnostic.source, PossessionChangeSource.DEFENSIVE_REBOUND)
+        self.assertEqual(diagnostic.source_taxonomy, "LIVE_TRANSITION_CAPABLE")
+        self.assertEqual(diagnostic.ball_carrier_id, AWAY[2])
+        self.assertEqual(len(diagnostic.prior_zones), 10)
+        self.assertEqual(len(diagnostic.new_offense_relative_zones), 10)
+
+    def test_live_turnover_restart_carries_a_diagnostic(self):
+        with patch.object(game, "simulate_possession", side_effect=scripted_runner([
+            {"reason": PossessionTerminalReason.TURNOVER, "live_carrier": AWAY[1]},
+            {"reason": PossessionTerminalReason.MADE_FG},
+        ])):
+            result = game.simulate_possessions(HOME, AWAY, profiles(), initial_state(), 2, 1)
+        diagnostic = result.possessions[1].restart_context.transition_diagnostic
+        self.assertIsNotNone(diagnostic)
+        self.assertEqual(diagnostic.source_taxonomy, "LIVE_TRANSITION_CAPABLE")
+
+    def test_dead_ball_restart_has_no_diagnostic(self):
+        with patch.object(game, "simulate_possession", side_effect=scripted_runner([
+            {"reason": PossessionTerminalReason.MADE_FG},
+            {"reason": PossessionTerminalReason.MADE_FG},
+        ])):
+            result = game.simulate_possessions(HOME, AWAY, profiles(), initial_state(), 2, 1)
+        self.assertIsNone(result.possessions[1].restart_context.transition_diagnostic)
+
+    def test_ending_world_zones_survive_the_handoff(self):
+        """Task's own "ending-world zone handoff" check -- a real,
+        non-default `player_zones` snapshot on the ending possession's
+        world must show up, correctly attributed, in the diagnostic."""
+        from transition_state import build_transition_diagnostic
+        world = PossessionWorld(
+            team_a_id="HOME", team_b_id="AWAY", team_a_five=HOME, team_b_five=AWAY,
+            profiles=profiles(),
+            player_zones={
+                HOME[0]: SpatialZone.RESTRICTED_RIM, HOME[1]: SpatialZone.PAINT,
+                HOME[2]: SpatialZone.LEFT_WING, HOME[3]: SpatialZone.RIGHT_CORNER,
+                HOME[4]: SpatialZone.TOP_OF_KEY,
+                AWAY[0]: SpatialZone.RESTRICTED_RIM, AWAY[1]: SpatialZone.PAINT,
+                AWAY[2]: SpatialZone.LEFT_WING, AWAY[3]: SpatialZone.RIGHT_CORNER,
+                AWAY[4]: SpatialZone.TOP_OF_KEY,
+            },
+        )
+        diagnostic = build_transition_diagnostic(
+            PossessionChangeSource.DEFENSIVE_REBOUND, world, "AWAY", "HOME", AWAY[0],
+        )
+        self.assertIsNotNone(diagnostic)
+        prior_by_id = {p.player_id: p.zone for p in diagnostic.prior_zones}
+        self.assertEqual(prior_by_id[HOME[0]], SpatialZone.RESTRICTED_RIM)
+        self.assertEqual(prior_by_id[HOME[1]], SpatialZone.PAINT)
+        # HOME was the OLD offense and committed 2 players (RESTRICTED_RIM + PAINT) to the interior
+        self.assertEqual(diagnostic.old_offense_interior_count, 2)
+        self.assertEqual(diagnostic.old_offense_perimeter_count, 3)
+        # every new-offense-relative zone must be the flipped value, per the court-flip transform
+        from transition_state import flip_zone_to_new_offense_frame
+        new_by_id = {p.player_id: p.zone for p in diagnostic.new_offense_relative_zones}
+        for pid, old_zone in prior_by_id.items():
+            self.assertEqual(new_by_id[pid], flip_zone_to_new_offense_frame(old_zone))
+
+    def test_fresh_advantage_is_derived_only_from_current_geometry(self):
+        """`build_transition_diagnostic` never reads `engine.advantage` at
+        all -- its signature has no such parameter, so a fresh
+        compromised-zone set can only ever come from the CURRENT
+        `player_zones` it was given, never a carried-over old value."""
+        from transition_state import build_transition_diagnostic
+        import inspect as _inspect
+        sig = _inspect.signature(build_transition_diagnostic)
+        self.assertNotIn("advantage", sig.parameters)
+        self.assertNotIn("engine", sig.parameters)
+
+    def test_transition_diagnostic_consumes_zero_rng(self):
+        from transition_state import build_transition_diagnostic
+        import inspect as _inspect
+        sig = _inspect.signature(build_transition_diagnostic)
+        self.assertNotIn("rng", sig.parameters)
+        src = _inspect.getsource(build_transition_diagnostic)
+        self.assertNotIn("random.", src)
+
+    def test_transition_diagnostic_cannot_affect_restart_decision(self):
+        """The decisive firewall proof: monkeypatching
+        `build_transition_diagnostic` to return a deliberately different,
+        garbage value must NOT change `restart_type`/`ball_carrier_id`/
+        `ball_zone`/`source` -- those are all computed independently,
+        before the diagnostic call, and only ever fed the diagnostic's
+        result via the `transition_diagnostic=` kwarg."""
+        def fake_diagnostic(*args, **kwargs):
+            return "NOT_A_REAL_DIAGNOSTIC_OBJECT"
+
+        specs = [
+            {"reason": PossessionTerminalReason.DEFENSIVE_REBOUND, "live_carrier": AWAY[2]},
+            {"reason": PossessionTerminalReason.MADE_FG},
+        ]
+        with patch.object(game, "simulate_possession", side_effect=scripted_runner(specs)):
+            baseline = game.simulate_possessions(HOME, AWAY, profiles(), initial_state(), 2, 1)
+        with patch.object(game, "simulate_possession", side_effect=scripted_runner(specs)), \
+             patch.object(game, "build_transition_diagnostic", side_effect=fake_diagnostic):
+            patched = game.simulate_possessions(HOME, AWAY, profiles(), initial_state(), 2, 1)
+
+        b_ctx, p_ctx = baseline.possessions[1].restart_context, patched.possessions[1].restart_context
+        self.assertEqual(b_ctx.restart_type, p_ctx.restart_type)
+        self.assertEqual(b_ctx.ball_carrier_id, p_ctx.ball_carrier_id)
+        self.assertEqual(b_ctx.ball_zone, p_ctx.ball_zone)
+        self.assertEqual(b_ctx.source, p_ctx.source)
+        self.assertEqual(p_ctx.transition_diagnostic, "NOT_A_REAL_DIAGNOSTIC_OBJECT")  # the patch DID take effect
+        self.assertNotEqual(b_ctx.transition_diagnostic, p_ctx.transition_diagnostic)  # yet nothing else moved
+
+    def test_controlled_advance_stage_exists_but_is_inert(self):
+        """The new `PossessionStage.CONTROLLED_ADVANCE_ENTRY` constant and
+        `PossessionConfig.controlled_advance_entry_seconds` field exist,
+        but no current call site ever activates the stage -- confirmed
+        by both a direct call (must raise, matching the SAME behavior an
+        unknown stage always has) and a source-level firewall scan."""
+        import inspect as _inspect
+        from possession_orchestrator import PossessionStage, PossessionConfig, _charge_possession_stage_time
+        self.assertEqual(PossessionStage.CONTROLLED_ADVANCE_ENTRY, "CONTROLLED_ADVANCE_ENTRY")
+        self.assertEqual(PossessionConfig().controlled_advance_entry_seconds, 9.0)
+
+        import possession_orchestrator as po
+        src = _inspect.getsource(po)
+        # the ONLY appearances of the new stage constant are its own definition/comment and the
+        # config field's own comment -- never passed as an argument to _charge_possession_stage_time
+        # or PossessionStage.CONTROLLED_ADVANCE_ENTRY used as a live dispatch argument anywhere.
+        self.assertNotIn("_charge_possession_stage_time(engine, world, config, PossessionStage.CONTROLLED_ADVANCE_ENTRY",
+                          src)
+
+        engine = PossessionEngine("p1", "HOME", "AWAY", season="2023-24", rng_seed=1)
+        world = PossessionWorld(team_a_id="HOME", team_b_id="AWAY", team_a_five=HOME, team_b_five=AWAY, profiles=profiles())
+        with self.assertRaises(ValueError):
+            _charge_possession_stage_time(engine, world, PossessionConfig(), PossessionStage.CONTROLLED_ADVANCE_ENTRY, step=0)
+
+    def test_canonical_seed_bit_identical_with_and_without_diagnostic_computation(self):
+        """The strongest available proof of Phase 11's own requirement:
+        stubbing `build_transition_diagnostic` to a no-op (`None`, same
+        as a dead-ball restart) must produce a BIT-IDENTICAL full-game
+        outcome to the real, wired diagnostic -- confirming the new
+        computation is truly inert with respect to score, possessions,
+        events, and (by extension) the shared RNG stream every possession
+        draws its own seed from."""
+        from detailed_game import simulate_detailed_game
+
+        real = simulate_detailed_game("HOME", "AWAY", HOME, AWAY, profiles(), rng_seed=4242)
+
+        def noop_diagnostic(*args, **kwargs):
+            return None
+
+        with patch.object(game, "build_transition_diagnostic", side_effect=noop_diagnostic):
+            stubbed = simulate_detailed_game("HOME", "AWAY", HOME, AWAY, profiles(), rng_seed=4242)
+
+        self.assertEqual(real.final_home_score, stubbed.final_home_score)
+        self.assertEqual(real.final_away_score, stubbed.final_away_score)
+        self.assertEqual(real.total_possessions, stubbed.total_possessions)
+        self.assertEqual(real.termination_reason, stubbed.termination_reason)
+        self.assertEqual(len(real.events), len(stubbed.events))
+        self.assertEqual(real.provisional_summary, stubbed.provisional_summary)
+        # and, for at least one live-transition possession, the diagnostic really was present in the
+        # "real" run and really was suppressed in the "stubbed" run -- proving this is a genuine A/B,
+        # not a vacuous comparison where the diagnostic never actually fired either way.
+        real_diag_present = any(r.restart_context.transition_diagnostic is not None for r in real.possessions)
+        stubbed_diag_present = any(r.restart_context.transition_diagnostic is not None for r in stubbed.possessions)
+        self.assertTrue(real_diag_present, "expected at least one live-transition restart in this seed's real run")
+        self.assertFalse(stubbed_diag_present)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -35,7 +35,7 @@ from possession_orchestrator import (
 )
 from possession_rules import EraRules, get_era_rules
 from possession_state import BallState, PossessionPhase, SpatialZone, _assert_player_id
-from transition_state import PossessionChangeSource
+from transition_state import PossessionChangeSource, TransitionDiagnostic, build_transition_diagnostic
 
 
 class DetailedGameInvariantError(RuntimeError):
@@ -70,12 +70,25 @@ class RestartContext:
     V0 reconstructs coarse geometry and matchups for every possession.
     Live turnovers/rebounds preserve the real carrier and transition
     classification, but start at TOP_OF_KEY because Phase 23A deliberately
-    gates transition advancement and has no safe court-orientation transform.
+    gates transition advancement -- `restart_type`/`ball_carrier_id`/
+    `ball_zone` remain UNCHANGED by this addition; ordinary orchestration
+    still ignores `transition_diagnostic` entirely.
+
+    `transition_diagnostic`: DIAGNOSTIC ONLY (see `transition_state.py`'s
+    own "Observational Transition Classifier" section) -- a
+    `transition_state.TransitionDiagnostic` snapshot of the structural
+    state available at this restart, or `None` for a DEAD_BALL_INBOUND
+    source. NEVER consulted by any simulation decision anywhere in this
+    module or `possession_orchestrator.py` -- confirmed by test
+    (`test_transition_diagnostic_cannot_affect_simulation_decisions`).
+    A future, SEPARATE, explicit change would be required to ever let
+    this field influence `restart_type`/timing/matchups.
     """
     restart_type: str
     source: str
     ball_carrier_id: Optional[str] = None
     ball_zone: SpatialZone = SpatialZone.TOP_OF_KEY
+    transition_diagnostic: Optional["TransitionDiagnostic"] = None
 
 
 @dataclass(frozen=True)
@@ -319,8 +332,11 @@ def next_restart_context(result: PossessionTerminalResult,
     live_control = carrier in next_five and result.engine_state.ball_state == BallState.HELD
 
     if result.reason == PossessionTerminalReason.DEFENSIVE_REBOUND and live_control:
-        return RestartContext(RestartType.LIVE_TRANSITION, PossessionChangeSource.DEFENSIVE_REBOUND,
-                              carrier, SpatialZone.TOP_OF_KEY)
+        source = PossessionChangeSource.DEFENSIVE_REBOUND
+        diagnostic = build_transition_diagnostic(source, result.world, new_state.current_offense_team_id,
+                                                  new_state.current_defense_team_id, carrier)
+        return RestartContext(RestartType.LIVE_TRANSITION, source,
+                              carrier, SpatialZone.TOP_OF_KEY, transition_diagnostic=diagnostic)
     if result.reason == PossessionTerminalReason.TURNOVER and live_control:
         source = PossessionChangeSource.LIVE_STEAL
         for event in result.events:
@@ -330,8 +346,10 @@ def next_restart_context(result: PossessionTerminalResult,
             elif event.event_type == EventType.PASS_RESOLVED \
                     and event.metadata.get("outcome") == "BAD_PASS_TO_DEFENDER":
                 source = PossessionChangeSource.LIVE_BAD_PASS_INTERCEPTION
+        diagnostic = build_transition_diagnostic(source, result.world, new_state.current_offense_team_id,
+                                                  new_state.current_defense_team_id, carrier)
         return RestartContext(RestartType.LIVE_TRANSITION, source,
-                              carrier, SpatialZone.TOP_OF_KEY)
+                              carrier, SpatialZone.TOP_OF_KEY, transition_diagnostic=diagnostic)
     if result.reason in (PossessionTerminalReason.MADE_FG, PossessionTerminalReason.FINAL_FT_MADE):
         source = PossessionChangeSource.MADE_BASKET_INBOUND
     else:
