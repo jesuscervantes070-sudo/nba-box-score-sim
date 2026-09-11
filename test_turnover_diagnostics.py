@@ -33,9 +33,9 @@ class TestTurnoverDiagnosis(unittest.TestCase):
 
     def test_engine_accounting_is_exactly_once_and_shot_clock_is_explicitly_separate(self):
         assert_turnover_reconciliation(self.diagnosis)
-        self.assertEqual(self.diagnosis.engine_accounted_turnovers, 4920)
-        self.assertEqual(self.diagnosis.player_charged_turnovers, 4718)
-        self.assertEqual(self.diagnosis.categories[TurnoverCategory.SHOT_CLOCK_VIOLATION].engine_accounted_turnovers, 202)
+        self.assertEqual(self.diagnosis.engine_accounted_turnovers, 4868)
+        self.assertEqual(self.diagnosis.player_charged_turnovers, 4679)
+        self.assertEqual(self.diagnosis.categories[TurnoverCategory.SHOT_CLOCK_VIOLATION].engine_accounted_turnovers, 189)
 
     def test_steals_are_consistent_with_current_clean_interception_semantics(self):
         steals = sum(o.steal_credited for o in self.diagnosis.observations)

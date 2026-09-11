@@ -43,7 +43,8 @@ class TestReboundDiagnostics(unittest.TestCase):
     def test_shot_family_classification_covers_every_opportunity(self):
         self.assertEqual(sum(stats.opportunities for stats in self.diagnosis.by_family.values()),
                          self.diagnosis.rebound_opportunities)
-        self.assertEqual(set(self.diagnosis.by_family), {"RIM", "FLOATER", "THREE_POINT"})
+        self.assertEqual(set(self.diagnosis.by_family),
+                         {"RIM", "FLOATER", "MIDRANGE", "THREE_POINT"})
 
     def test_oreb_dreb_outcomes_reconcile_to_stats_and_events(self):
         self.assertEqual(self.diagnosis.offensive_rebounds,

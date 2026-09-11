@@ -103,7 +103,7 @@ class PossessionEngine:
         `ball_zone` does so as a side effect of a shot/inbound). Used by
         drive_resolution.py to move the ball zone WITHOUT changing
         carrier/ball-state -- coarse, structural (still one of the
-        provisional 8 zones), never a continuous XY coordinate."""
+        provisional coarse zones), never a continuous XY coordinate."""
         self.state = replace(self.state, ball_zone=new_zone)
 
     # --------------------------- shooting ---------------------------

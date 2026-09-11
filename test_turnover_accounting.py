@@ -107,13 +107,13 @@ class TestTurnoverAccountingReconciliation(unittest.TestCase):
                                                     tuple(str(i) for i in range(11, 16)))
             team_total += home.turnovers + away.turnovers
             player_total += home.player_turnovers + away.player_turnovers
-        # Rebound acquisition changes continuation/flip state and therefore
-        # the later deterministic RNG trajectory; these pin the new accepted
-        # acquisition baseline without changing turnover logic.
-        self.assertEqual(team_total, 4920)
-        self.assertEqual(player_total, 4718)
+        # Structural shot-family reachability changes continuation/flip state
+        # and therefore the later deterministic RNG trajectory; these pin the
+        # reconnection baseline without changing turnover logic.
+        self.assertEqual(team_total, 4868)
+        self.assertEqual(player_total, 4679)
 
-    def test_basketball_output_digest_matches_rebound_acquisition_baseline(self):
+    def test_basketball_output_digest_matches_midrange_reconnection_baseline(self):
         payload = []
         for game in self.games:
             result = game.result
@@ -144,7 +144,7 @@ class TestTurnoverAccountingReconciliation(unittest.TestCase):
                             "ot": result.overtime_periods, "rows": rows})
         digest = hashlib.sha256(json.dumps(payload, sort_keys=True,
                                            separators=(",", ":")).encode()).hexdigest()
-        self.assertEqual(digest, "bccf75ca7e98679edc3fdbcc91cde58eb80d5f939a5d024afdeb7b36002da06a")
+        self.assertEqual(digest, "bc67d315199c1c10f0c2f70a6d5322df90399db8c2ff9eb37ec5afda7802978c")
 
 
 if __name__ == "__main__":

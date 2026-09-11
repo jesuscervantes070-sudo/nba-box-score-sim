@@ -73,12 +73,13 @@ SOURCE_CLASSIFICATION = {
 }
 
 # A real, coarse "distance from the defended rim" ranking over the
-# existing 8-zone topology -- reused, not replaced. Used ONLY to derive
+# existing coarse-zone topology -- reused, not replaced. Used ONLY to derive
 # the relational ahead/behind-ball tags below; no continuous coordinate
 # is introduced.
 _RIM_DISTANCE_RANK = {
     SpatialZone.RESTRICTED_RIM: 0,
     SpatialZone.PAINT: 1,
+    SpatialZone.MIDRANGE: 2,
     SpatialZone.LEFT_CORNER: 2, SpatialZone.RIGHT_CORNER: 2,
     SpatialZone.LEFT_WING: 2, SpatialZone.RIGHT_WING: 2,
     SpatialZone.TOP_OF_KEY: 3,

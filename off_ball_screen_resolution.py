@@ -14,7 +14,7 @@ already own.
 This project's current state representation has NO continuous
 coordinates, screen angle, body orientation, defender pathing, or
 over/under-screen navigation concept (confirmed by direct inspection of
-`possession_state.py` -- eight coarse `SpatialZone`s, a `ball_zone`, four
+`possession_state.py` -- coarse `SpatialZone`s, a `ball_zone`, four
 coarse `DefensivePosture` values, and defender->offender pointer
 `assignments`, nothing finer). A "screen quality" or "screen navigation"
 RATING would therefore have to be invented wholesale with no supporting

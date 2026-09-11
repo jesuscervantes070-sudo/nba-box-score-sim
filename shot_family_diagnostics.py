@@ -45,6 +45,9 @@ class ShotFamilyDiagnosis:
     by_family: Dict[str, ShotFamilyStats]
     by_action_attempts: Dict[str, int]
     by_action_makes: Dict[str, int]
+    selected_shot_actions_by_release_family: Dict[str, Dict[str, int]]
+    fga_by_release_family: Dict[str, Dict[str, int]]
+    makes_by_release_family: Dict[str, Dict[str, int]]
     by_zone_attempts: Dict[str, int]
     objective_action_opportunities: Dict[str, int]
     perceived_action_opportunities: Dict[str, int]
@@ -98,6 +101,8 @@ def family_for_selected_shot(action_type: Optional[str], target_zone: Optional[s
         return InteriorShotFamily.RIM
     if zone == "PAINT":
         return InteriorShotFamily.FLOATER
+    if zone == "MIDRANGE":
+        return ShotFamily.MIDRANGE
     return ShotFamily.THREE_POINT
 
 
@@ -112,6 +117,9 @@ def diagnose_shot_families(items: Sequence[object]) -> ShotFamilyDiagnosis:
     family_makes = Counter()
     action_attempts = Counter()
     action_makes = Counter()
+    selected_by_release_family = defaultdict(Counter)
+    fga_by_release_family = defaultdict(Counter)
+    makes_by_release_family = defaultdict(Counter)
     zone_attempts = Counter()
     objective_families = Counter()
     perceived_families = Counter()
@@ -163,6 +171,7 @@ def diagnose_shot_families(items: Sequence[object]) -> ShotFamilyDiagnosis:
             )
             if selected_family is not None:
                 selected_families[selected_family] += 1
+                selected_by_release_family[selected][selected_family] += 1
             if decision.get("late_clock_filter_activated") and selected_family is not None:
                 late_selected[selected] += 1
                 if decision["step"] in shots:
@@ -177,6 +186,8 @@ def diagnose_shot_families(items: Sequence[object]) -> ShotFamilyDiagnosis:
             zone = decision.get("selected_target_zone") or decision.get("ball_zone", "UNKNOWN")
             action_attempts[action] += 1
             action_makes[action] += bool(shot["made"])
+            fga_by_release_family[action][family] += 1
+            makes_by_release_family[action][family] += bool(shot["made"])
             zone_attempts[zone] += 1
 
         for trace in world.trace:
@@ -234,13 +245,18 @@ def diagnose_shot_families(items: Sequence[object]) -> ShotFamilyDiagnosis:
         mismatches.append(f"StatDelta FGA {fga} != shot log {sum(family_attempts.values())}")
     if three_pa != family_attempts[ShotFamily.THREE_POINT]:
         mismatches.append(f"StatDelta 3PA {three_pa} != THREE_POINT log {family_attempts[ShotFamily.THREE_POINT]}")
-    interior_attempts = family_attempts[InteriorShotFamily.RIM] + family_attempts[InteriorShotFamily.FLOATER]
-    if fga - three_pa != interior_attempts:
-        mismatches.append(f"StatDelta 2PA {fga-three_pa} != interior log {interior_attempts}")
+    two_point_attempts = (family_attempts[InteriorShotFamily.RIM]
+                          + family_attempts[InteriorShotFamily.FLOATER]
+                          + family_attempts[ShotFamily.MIDRANGE])
+    if fga - three_pa != two_point_attempts:
+        mismatches.append(f"StatDelta 2PA {fga-three_pa} != two-point shot log {two_point_attempts}")
 
     return ShotFamilyDiagnosis(
         games=len(results), possessions=len(records), fga=fga, two_pa=fga-three_pa, three_pa=three_pa,
         by_family=by_family, by_action_attempts=dict(action_attempts), by_action_makes=dict(action_makes),
+        selected_shot_actions_by_release_family=_nested_dict(selected_by_release_family),
+        fga_by_release_family=_nested_dict(fga_by_release_family),
+        makes_by_release_family=_nested_dict(makes_by_release_family),
         by_zone_attempts=dict(zone_attempts), objective_action_opportunities=dict(objective_actions),
         perceived_action_opportunities=dict(perceived_actions), feasible_action_opportunities=dict(feasible_actions),
         selected_actions=dict(selected_actions),

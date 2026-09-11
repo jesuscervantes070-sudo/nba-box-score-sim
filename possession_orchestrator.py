@@ -110,7 +110,7 @@ from dataclasses import dataclass, field, replace
 from typing import Dict, List, Optional, Tuple
 
 from action_intent import ActionIntent, ActionType, PASS_ACTIONS
-from action_opportunity import INTERIOR_ZONES, PERIMETER_ZONES, StructuralContext, generate_opportunities
+from action_opportunity import INTERIOR_ZONES, MIDRANGE_ZONES, PERIMETER_ZONES, StructuralContext, generate_opportunities
 from action_perception import perceive
 from action_selection import (
     ClockContext, RoleContext, SelectionPolicy, TendencyContext,
@@ -273,6 +273,7 @@ class PlayerSimulationProfile:
     # Used DIRECTLY as ShotResolutionContext.shooter_base_rate / InteriorShotContext.shooter_base_rate -- no
     # adapter-side rating conversion, no additional z-score.
     three_point_shrunk_rate: Optional[float] = None
+    midrange_shrunk_rate: Optional[float] = None
     rim_finishing_shrunk_rate: Optional[float] = None
     floater_short_mid_shrunk_rate: Optional[float] = None
     free_throw_shrunk_rate: Optional[float] = None
@@ -332,7 +333,8 @@ class PlayerSimulationProfile:
         a FUTURE adapter following the construction contract above, not
         by this helper."""
         defaults = dict(
-            three_point_shrunk_rate=0.36, rim_finishing_shrunk_rate=0.62, floater_short_mid_shrunk_rate=0.40,
+            three_point_shrunk_rate=0.36, midrange_shrunk_rate=0.42,
+            rim_finishing_shrunk_rate=0.62, floater_short_mid_shrunk_rate=0.40,
             free_throw_shrunk_rate=0.78, rim_access_creation_shrunk_rate=0.5, poa_containment_shrunk_rate=0.0,
             rim_protection_suppression_rate=0.0, passing_accuracy_ast_pct=0.18, ball_security_error_rate=0.0086,
             defensive_playmaking_per36=1.5, offensive_rebounding_shrunk_rate=0.08, defensive_rebounding_shrunk_rate=0.15,
@@ -777,16 +779,16 @@ def _sync_assigned_defender_zone(engine: PossessionEngine, world: PossessionWorl
 # pass/rebound eligibility) have SOMETHING coarse and deterministic to
 # read at possession start.
 # ---------------------------------------------------------------------
-_V0_PERIMETER_CYCLE: Tuple[SpatialZone, ...] = (
+_V0_SPACING_CYCLE: Tuple[SpatialZone, ...] = (
     SpatialZone.LEFT_WING, SpatialZone.RIGHT_WING, SpatialZone.LEFT_CORNER,
-    SpatialZone.RIGHT_CORNER, SpatialZone.TOP_OF_KEY,
+    SpatialZone.MIDRANGE, SpatialZone.RIGHT_CORNER, SpatialZone.TOP_OF_KEY,
 )
 
 
 def default_v0_zone_placement(offensive_five: Tuple[str, ...], ball_handler_id: str,
                                ball_zone: SpatialZone) -> Dict[str, SpatialZone]:
     """Ball handler at `ball_zone`; the other four offensive players
-    cycle deterministically through the five coarse perimeter zones in
+    cycle deterministically through the coarse off-ball spacing zones in
     lineup order (skipping duplication of the ball handler's own zone
     only incidentally -- this is a placement CYCLE, not a spacing
     optimizer). Explicit and swappable: a caller may instead supply its
@@ -795,7 +797,7 @@ def default_v0_zone_placement(offensive_five: Tuple[str, ...], ball_handler_id: 
     zones = {ball_handler_id: ball_zone}
     others = [p for p in offensive_five if p != ball_handler_id]
     for i, pid in enumerate(others):
-        zones[pid] = _V0_PERIMETER_CYCLE[i % len(_V0_PERIMETER_CYCLE)]
+        zones[pid] = _V0_SPACING_CYCLE[i % len(_V0_SPACING_CYCLE)]
     return zones
 
 
@@ -838,6 +840,7 @@ def build_structural_context(engine: PossessionEngine, world: PossessionWorld) -
       roller_id / screen_active -> always None / False -- Phase 22A's off-ball screen primitive remains
                                      caller-triggered; V0 never fabricates a live screen (per explicit instruction)
       nearest_teammate_id     -> _nearest_teammate_id (coarse zone topology, see above)
+      nearest_teammate_zone   -> that same teammate's existing world.player_zones location
     """
     carrier = engine.state.ball_carrier
     teammates = tuple(p for p in world.offense_five(engine) if p != carrier)
@@ -845,10 +848,12 @@ def build_structural_context(engine: PossessionEngine, world: PossessionWorld) -
                             if world.player_zones.get(p) in PERIMETER_ZONES}
     defender_id = _primary_defender(engine, carrier) if carrier else None
     just_caught = world.just_caught_pass_player_id == carrier
+    nearest_id = _nearest_teammate_id(engine, world, carrier) if carrier else None
     return StructuralContext(
         teammate_ids=list(teammates), perimeter_receiver_ids=perimeter_receivers,
         roller_id=None, screen_active=False,
-        nearest_teammate_id=_nearest_teammate_id(engine, world, carrier) if carrier else None,
+        nearest_teammate_id=nearest_id,
+        nearest_teammate_zone=world.player_zones.get(nearest_id) if nearest_id else None,
         just_caught_pass=just_caught, ball_handler_defender_id=defender_id,
     )
 
@@ -1644,13 +1649,17 @@ def _dispatch_shot(engine: PossessionEngine, world: PossessionWorld, intent: Act
     posture = engine.state.assignments[defender_id].posture if defender_id else DefensivePosture.SQUARE
     action_seconds = config.catch_and_shoot_action_seconds if intent.action_type == ActionType.CATCH_AND_SHOOT else config.pull_up_action_seconds
 
-    is_interior = zone in INTERIOR_ZONES
-    # V0 simplification, explicitly documented (Sec. report): ALL perimeter-zone shots are dispatched as
-    # THREE_POINT (this project's 8-zone topology does not distinguish a mid-range release point from a
-    # beyond-the-arc one within the same coarse PERIMETER_ZONES set) -- `midrange`/`midrange_preference`
-    # remain real, unused-by-V0-dispatch profile fields, not deleted, for a future finer-grained phase.
-    shot_family_interior = InteriorShotFamily.RIM if zone == SpatialZone.RESTRICTED_RIM else InteriorShotFamily.FLOATER
-    shot_family = shot_family_interior if is_interior else PerimeterShotFamily.THREE_POINT
+    if zone == SpatialZone.RESTRICTED_RIM:
+        shot_family = InteriorShotFamily.RIM
+    elif zone == SpatialZone.PAINT:
+        shot_family = InteriorShotFamily.FLOATER
+    elif zone in MIDRANGE_ZONES:
+        shot_family = PerimeterShotFamily.MIDRANGE
+    elif zone in PERIMETER_ZONES or zone == SpatialZone.BACKCOURT:
+        shot_family = PerimeterShotFamily.THREE_POINT
+    else:  # defense in depth if the spatial enum later grows without an explicit basketball meaning here
+        raise UnsupportedActionError(f"no shot-family dispatch is defined for zone {zone.value}")
+    is_interior = shot_family in {InteriorShotFamily.RIM, InteriorShotFamily.FLOATER}
 
     eligible_defenders = []
     if defender_id is not None:
@@ -1677,9 +1686,12 @@ def _dispatch_shot(engine: PossessionEngine, world: PossessionWorld, intent: Act
         )
         make_probability = unblocked_make_probability(interior_ctx)
     else:
-        base_rate = _require(shooter_profile.three_point_shrunk_rate, f"{shooter_id}'s three_point_shrunk_rate")
+        if shot_family == PerimeterShotFamily.MIDRANGE:
+            base_rate = _require(shooter_profile.midrange_shrunk_rate, f"{shooter_id}'s midrange_shrunk_rate")
+        else:
+            base_rate = _require(shooter_profile.three_point_shrunk_rate, f"{shooter_id}'s three_point_shrunk_rate")
         release_mode = ReleaseMode.CATCH_AND_SHOOT if intent.action_type == ActionType.CATCH_AND_SHOOT else ReleaseMode.PULL_UP
-        perimeter_ctx = ShotResolutionContext(shot_family=ShotFamily.THREE_POINT, shooter_base_rate=base_rate,
+        perimeter_ctx = ShotResolutionContext(shot_family=shot_family, shooter_base_rate=base_rate,
                                                contest_bucket=ContestBucket.OPEN, release_mode=release_mode,
                                                defender_posture=posture, shot_clock_remaining=engine.state.shot_clock_remaining)
         make_probability = shot_make_probability(perimeter_ctx)
@@ -1712,14 +1724,16 @@ def _dispatch_shot(engine: PossessionEngine, world: PossessionWorld, intent: Act
         _charge_time(engine, action_seconds, world, "SHOT_EXECUTION", steps,
                      shot_clock_stops_segment=False)
         world.stats.fga += 1
-        world.stats.fg3a += 1
+        if shot_family == PerimeterShotFamily.THREE_POINT:
+            world.stats.fg3a += 1
         world.log_trace(step=steps, action=intent.action_type.value, shot_family=shot_family, outcome=result.outcome,
                          shooter=shooter_id, zone=zone.value)
         _log_shot_attempt(world, steps, engine.state.possession_id, offense_team_id, shot_family,
                            game_clock_at_attempt, shot_clock_at_attempt, made=(result.outcome == ShotOutcome.MADE))
         if result.outcome == ShotOutcome.MADE:
             world.stats.fgm += 1
-            world.stats.fg3m += 1
+            if shot_family == PerimeterShotFamily.THREE_POINT:
+                world.stats.fg3m += 1
             world.stats.points += result.points
             return _terminal(PossessionTerminalReason.MADE_FG, engine, world, steps)
         return _dispatch_rebound(engine, world, config, rng, ReboundSource.MISSED_FG, shot_family, steps,

@@ -47,7 +47,7 @@ from action_intent import (
     ActionIntent, ActionType, CREATION_ACTIONS, DurationClass, PASS_ACTIONS,
     SHOT_ACTIONS, TERMINAL_ACTIONS,
 )
-from action_opportunity import INTERIOR_ZONES, PERIMETER_ZONES
+from action_opportunity import INTERIOR_ZONES, MIDRANGE_ZONES, PERIMETER_ZONES
 from action_perception import PerceivedOpportunity
 from clock_semantics import CLOCK_EPSILON_SECONDS
 from possession_state import SpatialZone
@@ -225,7 +225,8 @@ def _select_shot_zone(action_type: ActionType, default_zone: Optional[SpatialZon
     resolution-phase work, out of scope here."""
     if action_type not in SHOT_ACTIONS or default_zone is None:
         return default_zone
-    if default_zone not in PERIMETER_ZONES and default_zone not in INTERIOR_ZONES:
+    if (default_zone not in PERIMETER_ZONES and default_zone not in MIDRANGE_ZONES
+            and default_zone not in INTERIOR_ZONES):
         return default_zone
     three_pt = tendency.three_point_preference or 0.0
     midrange = tendency.midrange_preference or 0.0

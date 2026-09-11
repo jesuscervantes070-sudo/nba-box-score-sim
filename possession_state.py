@@ -83,7 +83,7 @@ class PlayerBallControl:
 # --------------------------- spatial topology ---------------------------
 
 class SpatialZone(Enum):
-    """Coarse topology -- 8 zones, deliberately chosen to align with
+    """Coarse topology -- 9 zones, deliberately chosen to align with
     the already-empirically-validated Phase 5 shot-zone taxonomy
     (restricted area / paint-non-RA / midrange / corner3 / above-break3)
     rather than inventing a new, disconnected one, plus BACKCOURT for
@@ -102,13 +102,15 @@ class SpatialZone(Enum):
     RIGHT_WING = "RIGHT_WING"
     LEFT_CORNER = "LEFT_CORNER"
     RIGHT_CORNER = "RIGHT_CORNER"
+    MIDRANGE = "MIDRANGE"
     PAINT = "PAINT"
     RESTRICTED_RIM = "RESTRICTED_RIM"
 
 
 _LEFT_ZONES = frozenset({SpatialZone.LEFT_WING, SpatialZone.LEFT_CORNER})
 _RIGHT_ZONES = frozenset({SpatialZone.RIGHT_WING, SpatialZone.RIGHT_CORNER})
-_CENTRAL_ZONES = frozenset({SpatialZone.TOP_OF_KEY, SpatialZone.PAINT, SpatialZone.RESTRICTED_RIM, SpatialZone.BACKCOURT})
+_CENTRAL_ZONES = frozenset({SpatialZone.TOP_OF_KEY, SpatialZone.MIDRANGE, SpatialZone.PAINT,
+                            SpatialZone.RESTRICTED_RIM, SpatialZone.BACKCOURT})
 
 
 def ball_side(zone: SpatialZone) -> str:

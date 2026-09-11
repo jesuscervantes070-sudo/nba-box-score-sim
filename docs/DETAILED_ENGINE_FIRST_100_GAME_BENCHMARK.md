@@ -2019,3 +2019,132 @@ box-score accounting error.
 Verification: **6/6** focused shot-family diagnostic tests and **1084/1084**
 repository tests pass. All shot-family diagnostic work remains uncommitted and
 unpushed for review.
+
+## Midrange Shot-Family Reconnection
+
+The accepted root-cause diagnostic was checkpointed as `a16511e` before this
+implementation. That diagnostic proved that the autonomous engine had an
+orphaned empirical `midrange` estimator and an already-tested
+`ShotFamily.MIDRANGE` resolver, but no simulation-profile field, spatial zone,
+ordinary opportunity path, or dispatch branch connecting them.
+
+### Minimal profile and spatial plumbing
+
+`PlayerSimulationProfile` now carries `midrange_shrunk_rate` beside the other
+native, already-shrunk shot-zone make rates. It remains optional: a future real
+adapter must pass the existing `ShotZoneEstimationResult.shrunk_rate` from the
+same `as_of_season` cutoff and retain its provenance; missing evidence remains
+`None` and fails explicitly if a midrange shot needs it. It is never converted
+through a 0-99 rating and is never inferred from three-point skill or tendency.
+
+No pre-existing project-standard synthetic midrange fixture existed. The
+synthetic-only helper therefore uses an explicit `0.42` make-rate placeholder,
+the same simple value already exercised by the low-level midrange resolver
+tests. It is not fitted to FG%, 3PAr, or any benchmark output.
+
+The coarse topology gains only `SpatialZone.MIDRANGE`, centrally classified and
+ranked between paint and the outer floor for relational transition geometry.
+One ordinary off-ball synthetic placement occupies it. Swing/reset
+opportunities now carry their selected receiver's already-existing coarse zone,
+so a completed ordinary pass moves the ball to that real structural location
+instead of silently retaining the passer's origin. Rim and paint drive outcomes
+are unchanged.
+
+### Autonomous path and family/release separation
+
+The smallest observed path, requiring no test hook or direct resolver call, is:
+
+`ordinary possession -> off-ball player at MIDRANGE -> RESET_PASS selected ->
+completed reception at MIDRANGE -> normal shot opportunity generated/perceived
+-> PULL_UP selected -> ShotFamily.MIDRANGE resolver -> 2PA accounting`.
+
+Canonical seed `25000` produces exactly that path in period-one possession
+three. The midrange decision contains both `PULL_UP` and `CATCH_AND_SHOOT`
+opportunities at `MIDRANGE`; selection chose pull-up in that instance.
+
+Dispatch is now explicit: restricted rim -> `RIM`, paint -> `FLOATER`, midrange
+-> `MIDRANGE`, and named perimeter/backcourt zones -> `THREE_POINT`. There is no
+remaining catch-all rule that makes every non-interior zone a three. Release
+mode remains an independent axis: both pull-up and catch-and-shoot produced
+both midrange and three-point attempts in the canonical sample.
+
+Neither `three_point_preference` nor `midrange_preference` was activated. The
+structural family is fixed by the selected opportunity's location; make ability
+is consulted only afterward by resolution.
+
+### Canonical 100-game before/after
+
+Seeds `25000-25099`; “before” is checkpoint `a16511e`. No output below was a
+calibration target.
+
+| Shot mix | Before | After | Change |
+|---|---:|---:|---:|
+| FGA | 24,370 | 24,361 | -9 |
+| 2PA | 1,888 | 8,937 | +7,049 |
+| 3PA | 22,482 | 15,424 | -7,058 |
+| 3PAr | 92.2528% | 63.3143% | -28.9385 pp |
+| Rim attempts / share | 646 / 2.6508% | 405 / 1.6625% | -241 / -0.9883 pp |
+| Floater attempts / share | 1,242 / 5.0964% | 736 / 3.0212% | -506 / -2.0752 pp |
+| Midrange attempts / share | 0 / 0% | 7,796 / 32.0020% | +7,796 / +32.0020 pp |
+| Three attempts / share | 22,482 / 92.2528% | 15,424 / 63.3143% | -7,058 / -28.9385 pp |
+
+Midrange opportunity telemetry reconciles at every layer: 33,945 generated,
+33,945 perceived, 33,945 clock-feasible, 7,832 selected, and 7,796 counted FGA.
+The 36 selected attempts not counted as FGA were missed shooting fouls under the
+existing accounting convention.
+
+| Release/family | Before FGA | After selected | After FGA | After makes | After FG% |
+|---|---:|---:|---:|---:|---:|
+| Pull-up midrange | 0 | 4,331 | 4,306 | 1,716 | 39.8514% |
+| Catch-and-shoot midrange | 0 | 3,501 | 3,490 | 1,418 | 40.6304% |
+| Pull-up three | 12,593 | 8,752 | 8,651 | 2,816 | 32.5512% |
+| Catch-and-shoot three | 9,889 | 6,826 | 6,773 | 2,407 | 35.5382% |
+
+Accounting reconciles exactly: all 7,796 midrange attempts are included in
+`FGA - 3PA`; all 15,424 threes equal StatDelta 3PA; rim/floater remain 2PA.
+Midrange makes use the existing resolver's two-point value and existing
+midrange contest/clock treatment. Shooting-foul and and-one paths already treat
+every non-three family as a two and required no rule change.
+
+### Flow, rebound exposure, and remaining debt
+
+| Flow / other vector | Before | After | Change |
+|---|---:|---:|---:|
+| True possessions/game | 247.86 | 247.62 | -0.24 |
+| FGA/team-game | 121.850 | 121.805 | -0.045 |
+| PTS/team-game | 128.975 | 118.920 | -10.055 |
+| ORtg | 104.071 | 96.050 | -8.021 |
+| TOV/team-game | 17.935 | 17.640 | -0.295 |
+| STL/team-game | 8.135 | 8.035 | -0.100 |
+| FTA/FGA | 3.8695% | 2.9514% | -0.9181 pp |
+| PF/team-game | 2.205 | 1.760 | -0.445 |
+
+| Family | Before misses | After misses | Before rebound opportunities | After rebound opportunities |
+|---|---:|---:|---:|---:|
+| Three | 14,791 | 10,201 | 14,840 | 10,232 |
+| Midrange | 0 | 4,662 | 0 | 4,669 |
+| Floater | 697 | 391 | 699 | 391 |
+| Rim | 207 | 116 | 209 | 118 |
+
+Overall rebound opportunities changed from 15,748 to 15,410 and OREB% from
+24.1681% to 24.0623%. The accepted acquisition references, side baselines,
+boxout terms, carom rule, and exact-zone eligibility were not changed; new
+midrange misses simply flow through them. The family redistribution therefore
+changes exposure without constituting rebound recalibration.
+
+This is structural reconnection, not shot-mix calibration. The resulting
+63.3143% 3PAr remains far above the 42.2% NBA reference; the neutral synthetic
+placement, pass topology, midrange/three opportunity frequency, and inactive
+family preferences remain later calibration debt. The lower interior share and
+downstream scoring/foul changes are observed consequences, not tuned outcomes.
+
+**Classification: RECONNECTED WITH FLAGS.** Genuine midrange attempts are now
+reachable through normal autonomous possession flow, use native midrange
+ability in the existing resolver, count as 2PA, and remain independent of
+pull-up versus catch-and-shoot release mode. The synthetic `0.42` ability and
+single-slot V0 placement remain explicit uncalibrated scaffolding.
+
+Verification: **12/12** focused reconnection tests, **18/18** combined
+reconnection/shot-family diagnostics, **301/301** related subsystem tests, and
+**1096/1096** repository tests pass. This implementation remains uncommitted
+and unpushed for review.

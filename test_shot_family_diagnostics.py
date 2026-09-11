@@ -19,16 +19,18 @@ class TestShotFamilyDiagnostics(unittest.TestCase):
 
     def test_complete_supported_family_enumeration(self):
         self.assertEqual(set(self.diagnosis.by_family), {
-            ShotFamily.THREE_POINT, InteriorShotFamily.FLOATER, InteriorShotFamily.RIM,
+            ShotFamily.THREE_POINT, ShotFamily.MIDRANGE,
+            InteriorShotFamily.FLOATER, InteriorShotFamily.RIM,
         })
 
-    def test_midrange_is_structurally_unreachable(self):
-        self.assertNotIn("MIDRANGE", {zone.value for zone in SpatialZone})
-        self.assertNotIn(ShotFamily.MIDRANGE, self.diagnosis.by_family)
+    def test_midrange_is_structurally_reachable(self):
+        self.assertIn("MIDRANGE", {zone.value for zone in SpatialZone})
+        self.assertIn(ShotFamily.MIDRANGE, self.diagnosis.by_family)
+        self.assertGreater(self.diagnosis.by_family[ShotFamily.MIDRANGE].attempts, 0)
         for action in (ActionType.PULL_UP.value, ActionType.CATCH_AND_SHOOT.value):
-            for zone in SpatialZone:
-                self.assertNotEqual(family_for_selected_shot(action, zone.value, zone.value),
-                                    ShotFamily.MIDRANGE)
+            self.assertEqual(family_for_selected_shot(action, SpatialZone.MIDRANGE.value,
+                                                      SpatialZone.MIDRANGE.value),
+                             ShotFamily.MIDRANGE)
 
     def test_shot_family_accounting_reconciles(self):
         self.assertEqual(self.diagnosis.accounting_mismatches, ())
@@ -54,7 +56,8 @@ class TestShotFamilyDiagnostics(unittest.TestCase):
         self.assertLessEqual(self.diagnosis.late_clock_fga,
                              self.diagnosis.late_clock_activations)
         self.assertTrue(set(self.diagnosis.late_clock_fga_by_family) <= {
-            ShotFamily.THREE_POINT, InteriorShotFamily.FLOATER, InteriorShotFamily.RIM,
+            ShotFamily.THREE_POINT, ShotFamily.MIDRANGE,
+            InteriorShotFamily.FLOATER, InteriorShotFamily.RIM,
         })
 
     def test_diagnostics_are_deterministic_and_non_interfering(self):

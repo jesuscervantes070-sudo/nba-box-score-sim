@@ -26,6 +26,7 @@ from possession_state import (
 
 PERIMETER_ZONES = frozenset({SpatialZone.TOP_OF_KEY, SpatialZone.LEFT_WING, SpatialZone.RIGHT_WING,
                               SpatialZone.LEFT_CORNER, SpatialZone.RIGHT_CORNER})
+MIDRANGE_ZONES = frozenset({SpatialZone.MIDRANGE})
 INTERIOR_ZONES = frozenset({SpatialZone.PAINT, SpatialZone.RESTRICTED_RIM})
 
 
@@ -57,6 +58,7 @@ class StructuralContext:
     roller_id: Optional[str] = None            # a teammate currently rolling/popping in a live PnR action, if any
     screen_active: bool = False                # a live on-ball screen/DHO is currently engaged
     nearest_teammate_id: Optional[str] = None  # for the "obvious safety reset/swing" case
+    nearest_teammate_zone: Optional[SpatialZone] = None  # receiver's actual coarse location; None preserves caller compatibility
     just_caught_pass: bool = False             # True only on the frame immediately after a reception -- gates CATCH_AND_SHOOT/CLOSEOUT_ATTACK
     ball_handler_defender_id: Optional[str] = None  # the real defender currently assigned to the ball handler, if known
 
@@ -112,9 +114,11 @@ def generate_opportunities(state: PossessionState, context: StructuralContext,
     # Passing menu -- always includes an obvious, low-perception-cost swing/reset when a teammate exists
     if context.nearest_teammate_id is not None:
         opportunities.append(ObjectiveOpportunity(_next_id(ActionType.SWING_PASS), ActionType.SWING_PASS,
-                                                    carrier, target_player_id=context.nearest_teammate_id, source="nearest_teammate"))
+                                                    carrier, target_player_id=context.nearest_teammate_id,
+                                                    target_zone=context.nearest_teammate_zone, source="nearest_teammate"))
         opportunities.append(ObjectiveOpportunity(_next_id(ActionType.RESET_PASS), ActionType.RESET_PASS,
-                                                    carrier, target_player_id=context.nearest_teammate_id, source="safety_valve"))
+                                                    carrier, target_player_id=context.nearest_teammate_id,
+                                                    target_zone=context.nearest_teammate_zone, source="safety_valve"))
 
     # Kickout: requires BOTH a viable perimeter receiver AND an objective compromised interior area (advantage interface) --
     # multiple compromised areas can each independently license a kickout to a DIFFERENT receiver, not just one global check.

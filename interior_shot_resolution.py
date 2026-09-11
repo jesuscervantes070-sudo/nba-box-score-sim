@@ -72,7 +72,7 @@ class InteriorShotFamily:
 
 
 # Interior zones this module operates on -- reused from possession_state's
-# existing 8-zone topology, no new zone introduced.
+# existing coarse-zone topology; this interior resolver still owns only paint/rim.
 _INTERIOR_ZONE_BY_FAMILY = {InteriorShotFamily.RIM: SpatialZone.RESTRICTED_RIM,
                             InteriorShotFamily.FLOATER: SpatialZone.PAINT}
 
