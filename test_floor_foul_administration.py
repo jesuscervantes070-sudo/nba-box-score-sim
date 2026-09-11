@@ -233,10 +233,19 @@ class TestPhase18CFirewall(unittest.TestCase):
         self.assertNotIn("resolve_contact_and_whistle", src)
         self.assertNotIn("resolve_shooting_foul_shot", src)
 
-    def test_18c_bonus_hook_reused_not_reimplemented(self):
+    def test_bonus_check_has_one_shared_definition_not_reimplemented_per_caller(self):
+        """Phase 21B correction ("Correct NBA penalty-state foul administration"): the bonus/
+        penalty check is no longer Phase 18C's own `shooting_foul_team_bonus_check` reused
+        verbatim (that hook has no final-two-minute-exception concept and cannot express it) --
+        it is `is_team_in_penalty`, defined exactly once in THIS module and consulted by both
+        `administer_floor_foul` (this module) and
+        `detailed_game_orchestrator.DetailedGameState.in_bonus` (never re-derived there)."""
         import floor_foul_administration as mod
-        src = inspect.getsource(mod)
-        self.assertIn("shooting_foul_team_bonus_check", src)
+        src = inspect.getsource(mod.administer_floor_foul)
+        self.assertIn("is_team_in_penalty", src)
+        self.assertNotIn("shooting_foul_team_bonus_check", src)
+        import detailed_game_orchestrator as dgo
+        self.assertIn("is_team_in_penalty", inspect.getsource(dgo.DetailedGameState.in_bonus))
 
 
 class TestEraRulesVariation(unittest.TestCase):
@@ -444,6 +453,148 @@ class TestTeamFoulLedgerAndReset(unittest.TestCase):
         reset_state = state.reset_team_fouls()
         self.assertEqual(reset_state.team_foul_count("TEAM_B"), 0)
         self.assertEqual(state.team_foul_count("TEAM_B"), 1)  # original untouched -- immutable replace()
+
+
+class TestPenaltyStateAndFinalTwoMinuteException(unittest.TestCase):
+    """Focused tests for "Correct NBA penalty-state foul administration" (Phase 21B correction).
+    `OUTSIDE_WINDOW`/`INSIDE_WINDOW` clocks are deliberately far from the 120s boundary itself --
+    these tests exercise the real STATE MACHINE (quota reached vs. not, exception used vs. not),
+    not a boundary-value micro-test."""
+
+    OUTSIDE_WINDOW = 300.0  # well above FINAL_TWO_MINUTES_SECONDS -- ordinary quota-only behavior
+    INSIDE_WINDOW = 90.0    # well below it -- the final-two-minute exception can apply
+
+    def _foul(self, e, state, team_id, event_id, clock, is_overtime=False):
+        return administer_floor_foul(
+            e, state, foul_event_id=event_id, offender_id="9", fouled_player_id="1",
+            foul_class=DEFENSIVE_FLOOR_FOUL, offender_team_id=team_id, fouled_team_id="TEAM_A",
+            rng=random.Random(1), clock_remaining_seconds=clock, is_overtime=is_overtime,
+            free_throw_rate=0.8,  # only consulted if this specific foul turns out to be in the bonus
+        )
+
+    def test_a_regulation_fouls_one_through_four_before_two_minutes_are_non_penalty(self):
+        e = _engine()
+        state = FoulAdministrationState()
+        for i in range(4):
+            state, result = self._foul(e, state, "TEAM_B", f"reg{i}", self.OUTSIDE_WINDOW)
+            self.assertFalse(result.in_bonus, f"foul #{i + 1}")
+            self.assertEqual(state.team_foul_count("TEAM_B"), i + 1)
+
+    def test_b_regulation_fifth_common_foul_is_penalty(self):
+        e = _engine()
+        state = FoulAdministrationState()
+        for i in range(4):
+            state, _ = self._foul(e, state, "TEAM_B", f"reg{i}", self.OUTSIDE_WINDOW)
+        state, result = self._foul(e, state, "TEAM_B", "reg4", self.OUTSIDE_WINDOW)
+        self.assertTrue(result.in_bonus)
+        self.assertEqual(state.team_foul_count("TEAM_B"), 5)
+
+    def test_c_team_below_quota_entering_final_two_minutes_gets_one_penalty_free_foul(self):
+        e = _engine()
+        state = FoulAdministrationState()
+        state, result = self._foul(e, state, "TEAM_B", "f2m_1", self.INSIDE_WINDOW)
+        self.assertFalse(result.in_bonus)
+        self.assertIn("TEAM_B", state.final_two_minute_exception_used)
+
+    def test_d_next_final_two_minute_common_foul_triggers_penalty(self):
+        e = _engine()
+        state = FoulAdministrationState()
+        state, first = self._foul(e, state, "TEAM_B", "f2m_1", self.INSIDE_WINDOW)
+        self.assertFalse(first.in_bonus)
+        state, second = self._foul(e, state, "TEAM_B", "f2m_2", self.INSIDE_WINDOW)
+        self.assertTrue(second.in_bonus)
+        # still below the ordinary regulation quota of 5 (only the team's 2nd foul) --
+        # the penalty here comes ONLY from the exhausted exception, not the ordinary count.
+        self.assertEqual(state.team_foul_count("TEAM_B"), 2)
+
+    def test_e_team_already_in_penalty_before_two_minutes_remains_in_penalty(self):
+        e = _engine()
+        state = FoulAdministrationState()
+        for i in range(5):  # reach the ordinary quota well before the final two minutes
+            state, _ = self._foul(e, state, "TEAM_B", f"reg{i}", self.OUTSIDE_WINDOW)
+        self.assertEqual(state.team_foul_count("TEAM_B"), 5)
+        state, result = self._foul(e, state, "TEAM_B", "f2m_later", self.INSIDE_WINDOW)
+        self.assertTrue(result.in_bonus)
+        # the exception was never consulted/consumed -- this team was already in penalty on its own
+        self.assertNotIn("TEAM_B", state.final_two_minute_exception_used)
+
+    def test_f_ot_fouls_one_through_three_are_non_penalty(self):
+        e = _engine()
+        state = FoulAdministrationState()
+        for i in range(3):
+            state, result = self._foul(e, state, "TEAM_B", f"ot{i}", self.OUTSIDE_WINDOW, is_overtime=True)
+            self.assertFalse(result.in_bonus, f"OT foul #{i + 1}")
+        self.assertEqual(state.team_foul_count("TEAM_B"), 3)
+
+    def test_g_ot_fourth_foul_is_penalty_not_the_regulation_fifth(self):
+        e = _engine()
+        state = FoulAdministrationState()
+        for i in range(3):
+            state, _ = self._foul(e, state, "TEAM_B", f"ot{i}", self.OUTSIDE_WINDOW, is_overtime=True)
+        state, result = self._foul(e, state, "TEAM_B", "ot3", self.OUTSIDE_WINDOW, is_overtime=True)
+        self.assertTrue(result.in_bonus)
+        self.assertEqual(state.team_foul_count("TEAM_B"), 4)  # NOT 5 -- the OT quota is 3, not regulation's 4
+
+    def test_h_ot_final_two_minute_exception_then_penalty(self):
+        e = _engine()
+        state = FoulAdministrationState()
+        state, _ = self._foul(e, state, "TEAM_B", "ot_pre", self.OUTSIDE_WINDOW, is_overtime=True)
+        self.assertEqual(state.team_foul_count("TEAM_B"), 1)  # below the OT quota of 3
+        state, first = self._foul(e, state, "TEAM_B", "ot_f2m_1", self.INSIDE_WINDOW, is_overtime=True)
+        self.assertFalse(first.in_bonus)  # the one forgiven OT final-two-minute foul
+        self.assertIn("TEAM_B", state.final_two_minute_exception_used)
+        state, second = self._foul(e, state, "TEAM_B", "ot_f2m_2", self.INSIDE_WINDOW, is_overtime=True)
+        self.assertTrue(second.in_bonus)  # still only 3 OT fouls, below the OT quota of 3+1 -- penalty from the exception, not the count
+        self.assertEqual(state.team_foul_count("TEAM_B"), 3)
+
+    def test_i_quarter_reset_clears_team_fouls_and_the_exception_flag(self):
+        e = _engine()
+        state = FoulAdministrationState()
+        state, _ = self._foul(e, state, "TEAM_B", "f2m_1", self.INSIDE_WINDOW)
+        self.assertIn("TEAM_B", state.final_two_minute_exception_used)
+        reset_state = state.reset_team_fouls()
+        self.assertEqual(reset_state.team_foul_count("TEAM_B"), 0)
+        self.assertNotIn("TEAM_B", reset_state.final_two_minute_exception_used)
+        # a fresh period: the SAME team gets a new exception, not permanently exhausted
+        e2 = _engine()
+        reset_state, result = self._foul(e2, reset_state, "TEAM_B", "newperiod_1", self.INSIDE_WINDOW)
+        self.assertFalse(result.in_bonus)
+
+    def test_j_ot_period_reset_uses_the_same_mechanism(self):
+        e = _engine()
+        state = FoulAdministrationState()
+        state, _ = self._foul(e, state, "TEAM_B", "ot_f2m_1", self.INSIDE_WINDOW, is_overtime=True)
+        self.assertIn("TEAM_B", state.final_two_minute_exception_used)
+        reset_state = state.reset_team_fouls()  # same real period-boundary hook -- no separate OT reset method
+        self.assertEqual(reset_state.team_foul_count("TEAM_B"), 0)
+        self.assertNotIn("TEAM_B", reset_state.final_two_minute_exception_used)
+
+    def test_k_player_personal_fouls_are_not_reset_by_the_period_boundary(self):
+        e = _engine()
+        state = FoulAdministrationState()
+        for i in range(3):
+            state, _ = self._foul(e, state, "TEAM_B", f"pf{i}", self.OUTSIDE_WINDOW)
+        self.assertEqual(state.personal_fouls.count_for("9"), 3)
+        reset_state = state.reset_team_fouls()
+        self.assertEqual(reset_state.personal_fouls.count_for("9"), 3)  # unchanged -- carries across periods/OT
+
+    def test_l_offensive_charge_still_never_creates_bonus_fts_even_while_already_in_penalty(self):
+        """Stronger than the existing `test_charge_never_increments_team_fouls` -- proves the
+        exclusion holds even when the OFFENDING team is already deep in the penalty from OTHER
+        players' defensive fouls, not just from a fresh zero count."""
+        e = _engine()
+        state = FoulAdministrationState()
+        for i in range(6):  # put TEAM_B (the offense here) deep in the penalty
+            state, _ = self._foul(e, state, "TEAM_B", f"pre{i}", self.OUTSIDE_WINDOW)
+        self.assertEqual(state.team_foul_count("TEAM_B"), 6)
+        state, result = administer_floor_foul(
+            e, state, foul_event_id="charge", offender_id="1", fouled_player_id="9",
+            foul_class=OFFENSIVE_CHARGE, offender_team_id="TEAM_B", fouled_team_id="TEAM_A",
+            rng=random.Random(1), clock_remaining_seconds=self.OUTSIDE_WINDOW,
+        )
+        self.assertFalse(result.in_bonus)
+        self.assertIsNone(result.free_throw_sequence)
+        self.assertEqual(state.team_foul_count("TEAM_B"), 6)  # unchanged by the charge
 
 
 if __name__ == "__main__":

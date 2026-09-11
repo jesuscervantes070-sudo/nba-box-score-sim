@@ -1770,5 +1770,72 @@ class TestInteriorShotBlockInvariants(unittest.TestCase):
         self.assertEqual(before, after)
 
 
+class TestMissedShootingFoulFgaAccounting(unittest.TestCase):
+    """"Correct NBA penalty-state foul administration" -- audit items M/N/O/P/Q. Real NBA
+    box-score semantics: a MISSED shot for which free throws are awarded is NOT recorded as an
+    official FGA/FGM -- only a MADE shot (and-one or not) ever is. These tests verify the
+    existing engine/event/stat accounting ALREADY matches that rule (confirmed by direct source
+    read of `_dispatch_shooting_foul`'s own `made:`-gated FGA/FGM increment) -- no fix was
+    needed, these are verification tests, not regression guards for a bug."""
+
+    def _dispatch(self, shot_family, make_probability, free_throw_shrunk_rate=0.8):
+        import random
+        from possession_orchestrator import PerimeterShotFamily, _dispatch_shooting_foul
+        profiles = _profiles(**{p: {"free_throw_shrunk_rate": free_throw_shrunk_rate} for p in OFF_FIVE})
+        engine = PossessionEngine("p1", "A", "B", season="2023-24", rng_seed=0)
+        apply_matchup_assignments(engine, OFF_FIVE, DEF_FIVE)
+        engine.inbound("1", SpatialZone.TOP_OF_KEY, PossessionPhase.HALFCOURT)
+        world = PossessionWorld(team_a_id="A", team_b_id="B", team_a_five=OFF_FIVE, team_b_five=DEF_FIVE,
+                                 profiles=profiles)
+        result = _dispatch_shooting_foul(
+            engine, world, PossessionConfig(), random.Random(0), 0, shooter_id="1", fouler_id="11",
+            shot_family=shot_family, make_probability=make_probability, zone=SpatialZone.TOP_OF_KEY,
+            action_seconds=1.0, offense_team_id="A", defense_team_id="B",
+        )
+        return world, result
+
+    def test_m_missed_2pt_shooting_foul_creates_two_fta_and_zero_fga(self):
+        from possession_orchestrator import PerimeterShotFamily
+        world, result = self._dispatch(PerimeterShotFamily.MIDRANGE, make_probability=0.0)
+        self.assertEqual(world.stats.fga, 0)
+        self.assertEqual(world.stats.fgm, 0)
+        self.assertEqual(world.stats.fta, 2)
+        self.assertEqual(world.foul_state.personal_fouls.counts.get("11"), 1)
+
+    def test_n_missed_3pt_shooting_foul_creates_three_fta_and_zero_fga(self):
+        from possession_orchestrator import PerimeterShotFamily
+        world, result = self._dispatch(PerimeterShotFamily.THREE_POINT, make_probability=0.0)
+        self.assertEqual(world.stats.fga, 0)
+        self.assertEqual(world.stats.fgm, 0)
+        self.assertEqual(world.stats.fta, 3)
+        self.assertEqual(world.stats.fg3a, 0)  # a missed-and-whistled 3PA is not a real FGA/3PA either
+
+    def test_o_made_and_one_still_creates_fgm_fga_plus_one_fta(self):
+        """Already verified end-to-end by TestAndOneMissedBonusFreeThrowContinuation's own
+        test_made_fg_plus_foul_plus_made_bonus_ft -- re-confirmed directly here at the
+        MIDRANGE/2PT level (that test uses THREE_POINT) for full shot-family coverage."""
+        from possession_orchestrator import PerimeterShotFamily
+        world, result = self._dispatch(PerimeterShotFamily.MIDRANGE, make_probability=1.0)
+        self.assertEqual(world.stats.fga, 1)
+        self.assertEqual(world.stats.fgm, 1)
+        self.assertEqual(world.stats.fta, 1)
+
+    def test_q_non_final_missed_ft_never_creates_a_rebound_handoff(self):
+        """Integration-level confirmation of foul_resolution.py's own
+        test_non_final_missed_ft_does_not_create_rebound_handoff, at the full-dispatch level: a
+        missed 2PT shooting foul awards 2 FTs -- if the FIRST of those 2 is missed, the sequence
+        is not yet complete, so no rebound/dead-ball handoff may occur on that attempt alone."""
+        from possession_orchestrator import PerimeterShotFamily
+        # free_throw_shrunk_rate=0.0 -> both attempts of the 2-shot trip miss; only the SECOND
+        # (final) miss may legally create a rebound -- verified by the final world/engine state.
+        world, result = self._dispatch(PerimeterShotFamily.MIDRANGE, make_probability=0.0,
+                                        free_throw_shrunk_rate=0.0)
+        self.assertEqual(world.stats.fta, 2)
+        self.assertEqual(world.stats.ftm, 0)
+        # the sequence completing on the 2nd (final) miss is what creates the rebound dispatch --
+        # confirmed by the earlier and-one fix's own identical LOOSE-state check.
+        self.assertEqual(len(world.rebound_opportunity_log), 1)  # exactly once, from the FINAL miss only
+
+
 if __name__ == "__main__":
     unittest.main()

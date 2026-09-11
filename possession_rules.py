@@ -57,8 +57,11 @@ class EraRules:
     # `bonus_foul_threshold` cannot correctly represent OT. `None` (the default) means "no distinct OT
     # threshold configured for this era" -- callers needing OT-aware bonus evaluation fall back to
     # `bonus_foul_threshold` explicitly (see `floor_foul_administration.effective_bonus_foul_threshold`),
-    # never silently treated as 0 (missing != zero). Like `bonus_foul_threshold`, this is an interface hook,
-    # not an empirically verified per-era table -- not set on any of the three named constants below.
+    # never silently treated as 0 (missing != zero). Like `bonus_foul_threshold`, this is an interface hook;
+    # now set to the real, current-NBA OT quota (4 -- first 3 non-penalty, 4th+ a penalty) on all three
+    # named constants below (Phase 21B correction) -- same "shared placeholder, not an independently
+    # verified per-era table" posture as `bonus_foul_threshold` itself, not a historically-verified
+    # per-era OT rule.
     overtime_bonus_foul_threshold: Optional[int] = None
 
 
@@ -71,16 +74,19 @@ PRE_SHOT_CLOCK_ERA = EraRules(
     era_name="pre_shot_clock (before 1954-55)",
     shot_clock_seconds=None, oreb_shot_clock_reset_seconds=None,
     bonus_foul_threshold=5, period_length_seconds=12 * 60.0, periods_per_game=4,
+    overtime_bonus_foul_threshold=4,  # real, current-NBA OT quota: first 3 non-penalty, 4th+ a penalty -- see floor_foul_administration.py's own module docstring
 )
 CLASSIC_24_RESET_ERA = EraRules(
     era_name="classic_24s_full_reset (1954-55 through 2017-18)",
     shot_clock_seconds=24.0, oreb_shot_clock_reset_seconds=None,  # None -> full reset to 24.0, the real rule for this whole span
     bonus_foul_threshold=5, period_length_seconds=12 * 60.0, periods_per_game=4,
+    overtime_bonus_foul_threshold=4,  # real, current-NBA OT quota: first 3 non-penalty, 4th+ a penalty -- see floor_foul_administration.py's own module docstring
 )
 MODERN_14_RESET_ERA = EraRules(
     era_name="modern_14s_oreb_reset (2018-19+)",
     shot_clock_seconds=24.0, oreb_shot_clock_reset_seconds=14.0,  # real rule change, verified: only on a live-ball OREB with >14s not already remaining
     bonus_foul_threshold=5, period_length_seconds=12 * 60.0, periods_per_game=4,
+    overtime_bonus_foul_threshold=4,  # real, current-NBA OT quota: first 3 non-penalty, 4th+ a penalty -- see floor_foul_administration.py's own module docstring
 )
 
 

@@ -61,16 +61,41 @@ reusing the identical rule logic either way, never a second copy of it.
 Real current-NBA team-foul limits are NOT the same number reset every
 period: regulation allows the first 4 team fouls in a period without
 penalty (the 5th+ qualifying common foul is a penalty); overtime allows
-only the first 3. `EraRules.overtime_bonus_foul_threshold` (Phase 21B
-addition, `possession_rules.py`) represents this as a real, DISTINCT,
-rules-supplied number rather than "the same regulation threshold with
-the count merely reset" -- `is_overtime` is a caller-supplied STRUCTURAL
-fact (this module has no period/clock state of its own to derive it
-from, same convention as Phase 21A's caller-supplied `contact_established`).
-The real "final two minutes, one extra non-penalty foul" exception is
-explicitly NOT implemented this phase -- it needs period/game-clock
-orchestration state this project does not yet track anywhere (flagged,
-not fabricated; see report's deferred-mechanics section).
+only the first 3, with the 4th+ a penalty. `EraRules.overtime_bonus_foul_threshold`
+(Phase 21B addition, `possession_rules.py`) represents this as a real,
+DISTINCT, rules-supplied number rather than "the same regulation
+threshold with the count merely reset" -- `is_overtime` is a
+caller-supplied STRUCTURAL fact (this module has no period/clock state
+of its own to derive it from, same convention as Phase 21A's
+caller-supplied `contact_established`). Every era constant in
+`possession_rules.py` now sets a real, distinct OT value (4).
+
+============================ FINAL-TWO-MINUTE EXCEPTION (Phase 21B correction) ============================
+A real, explicit state machine, not a naive `team_fouls >= quota - 1`
+clock check: `FoulAdministrationState.final_two_minute_exception_used`
+is a per-team, per-PERIOD flag (reset at the same period boundary as
+`team_fouls` -- see `reset_team_fouls`). `is_team_in_penalty` is the
+ONE shared definition of "is this team in the penalty right now,"
+consulted by BOTH this module's own `administer_floor_foul` (passed the
+POST-increment state, for "does THIS just-committed foul draw bonus
+FTs") and `detailed_game_orchestrator.DetailedGameState.in_bonus` (passed
+its own current, unmodified state, for a general query) -- never
+duplicated. Semantics, evaluated using team_id's CURRENT qualifying-foul
+count against the applicable (regulation/OT) threshold:
+  - count already >= threshold: ALWAYS in penalty, clock irrelevant
+    (the ordinary quota was already exceeded before the final two
+    minutes even began, or independent of them).
+  - count < threshold AND the game clock is NOT inside the final two
+    minutes (`FINAL_TWO_MINUTES_SECONDS`): NOT in penalty (the ordinary
+    rule).
+  - count < threshold AND the clock IS inside the final two minutes:
+    the FIRST such qualifying foul in this window is forgiven (NOT in
+    penalty) -- this sets `final_two_minute_exception_used` for that
+    team for the rest of the period; every SUBSEQUENT qualifying foul in
+    that period, even though the ordinary numeric quota may still not be
+    technically exhausted, IS a penalty from then on (the "one allowed
+    foul" is consumed). This is a real, explicit per-period exception
+    flag -- not a second, looser quota.
 """
 import random
 from dataclasses import dataclass, field, replace
@@ -81,11 +106,13 @@ from foul_resolution import (
     PersonalFoulTracker,
     apply_free_throw_attempt_to_engine,
     resolve_free_throw_attempt,
-    shooting_foul_team_bonus_check,
 )
 from possession_engine import PossessionEngine
 from possession_rules import EraRules
 from possession_state import BallState, _assert_player_id
+
+# The real, current-NBA "final two minutes" window -- a clock value, not a possession/action count.
+FINAL_TWO_MINUTES_SECONDS = 120.0
 
 OFFENSIVE_CHARGE = "OFFENSIVE_CHARGE"
 DEFENSIVE_FLOOR_FOUL = "DEFENSIVE_FLOOR_FOUL"
@@ -125,10 +152,19 @@ class FoulAdministrationState:
     foul/charge never does -- see module docstring). A future
     period-boundary orchestration layer resets it (`reset_team_fouls`);
     this module does not itself know when a period ends.
+    `final_two_minute_exception_used` is the real, per-team, per-PERIOD
+    flag for the final-two-minute exception (see module docstring) --
+    reset at the SAME period boundary as `team_fouls` (same
+    `reset_team_fouls` call), since it is definitionally scoped to "this
+    period's" final two minutes, never carried across a period boundary.
     `administered_event_ids` is the idempotence ledger (see
-    `administer_floor_foul`)."""
+    `administer_floor_foul`). Player personal fouls (`personal_fouls`)
+    are DELIBERATELY NEVER touched by `reset_team_fouls` -- a real NBA
+    personal foul carries across quarters/OT (foul-out tracking), unlike
+    the team-foul/bonus ledger, which is strictly per-period."""
     personal_fouls: PersonalFoulTracker = field(default_factory=PersonalFoulTracker)
     team_fouls: Dict[str, int] = field(default_factory=dict)
+    final_two_minute_exception_used: FrozenSet[str] = field(default_factory=frozenset)
     administered_event_ids: FrozenSet[str] = field(default_factory=frozenset)
 
     def team_foul_count(self, team_id: str) -> int:
@@ -139,13 +175,43 @@ class FoulAdministrationState:
         new_team_fouls[team_id] = new_team_fouls.get(team_id, 0) + 1
         return replace(self, team_fouls=new_team_fouls)
 
+    def _with_final_two_minute_exception_used(self, team_id: str) -> "FoulAdministrationState":
+        return replace(self, final_two_minute_exception_used=self.final_two_minute_exception_used | {team_id})
+
     def reset_team_fouls(self) -> "FoulAdministrationState":
         """A real, minimal period-boundary hook -- NOT invoked anywhere
         in this module itself (this module has no concept of when a
         period ends); exists so a future game-orchestration layer has
         somewhere real to put "team fouls reset each period" without
-        this module inventing period-tracking of its own."""
-        return replace(self, team_fouls={})
+        this module inventing period-tracking of its own. Also resets
+        `final_two_minute_exception_used` (same per-period scope, see
+        class docstring) -- player `personal_fouls` are UNCHANGED (carry
+        across periods/OT, a real, separate NBA rule)."""
+        return replace(self, team_fouls={}, final_two_minute_exception_used=frozenset())
+
+
+def is_team_in_penalty(state: "FoulAdministrationState", team_id: str, clock_remaining_seconds: Optional[float],
+                        era_rules: EraRules, is_overtime: bool) -> bool:
+    """THE single shared definition of "is `team_id` in the penalty right now" -- consulted by
+    both `administer_floor_foul` (passed the POST-increment state, to decide whether the
+    just-committed foul itself draws bonus free throws) and
+    `detailed_game_orchestrator.DetailedGameState.in_bonus` (passed its own current, unmodified
+    state, for a general query) -- never duplicated. See module docstring's own
+    "FINAL-TWO-MINUTE EXCEPTION" section for the exact real-rule semantics this implements.
+    `clock_remaining_seconds=None` (missing != zero) is treated as "cannot determine whether the
+    final two minutes have started" -- conservatively falls back to the ordinary, clock-independent
+    quota check, never guessing a clock value."""
+    threshold = effective_bonus_foul_threshold(era_rules, is_overtime)
+    if threshold is None:
+        return False  # era has no bonus rule configured at all -- missing != zero, never a fabricated penalty
+    count = state.team_foul_count(team_id)
+    if count >= threshold:
+        return True  # the ordinary quota is already exceeded -- always in penalty, clock irrelevant
+    if clock_remaining_seconds is None or clock_remaining_seconds > FINAL_TWO_MINUTES_SECONDS:
+        return False  # below quota, and not (or not verifiably) inside the final two minutes -- ordinary rule
+    # below the ordinary quota AND inside the final two minutes: the one allowed exception foul is
+    # forgiven exactly once per period -- every qualifying foul after that is a penalty from here on.
+    return team_id in state.final_two_minute_exception_used
 
 
 @dataclass
@@ -258,11 +324,13 @@ def administer_floor_foul(
     possession_consequence_already_applied: bool = False,
     free_throw_rate: Optional[float] = None,
     is_overtime: bool = False,
+    clock_remaining_seconds: Optional[float] = None,
 ) -> Tuple[FoulAdministrationState, FoulAdministrationResult]:
     """The single entry point. Consumes an ALREADY-DETECTED foul
     (`foul_class` -- typically a Phase 21A `FoulPacket.foul_class`,
     unchanged) and administers personal foul, CATEGORY-AWARE team foul,
-    era-aware regulation/OT bonus, and (only in the bonus, only for a
+    era-aware regulation/OT bonus (including the real final-two-minute
+    exception, see module docstring), and (only in the bonus, only for a
     defensive floor foul) real free throws. Never rerolls whether a foul
     happened; never reads a shot family, contact/whistle concept, or
     anything else that would make this a second detection engine.
@@ -272,6 +340,13 @@ def administer_floor_foul(
     through `effective_bonus_foul_threshold` -- a real, distinct OT
     number when the era configures one, not merely the regulation
     threshold with the count reset (module docstring).
+
+    `clock_remaining_seconds` is the real PERIOD clock remaining at the
+    moment of THIS foul (`None` -- missing != zero -- means "unknown,"
+    which conservatively falls back to the ordinary, clock-independent
+    quota check; see `is_team_in_penalty`). Required for the
+    final-two-minute exception to ever apply; omitting it never fabricates
+    a clock value, it simply keeps ordinary quota-only behavior.
 
     IDEMPOTENCE: `foul_event_id` is the caller-supplied, per-real-foul
     unique key (e.g. an event/possession-scoped identifier the caller
@@ -309,15 +384,16 @@ def administer_floor_foul(
         team_foul_team_id = offender_team_id
         team_foul_count_after = new_state.team_foul_count(offender_team_id)
 
-        threshold = effective_bonus_foul_threshold(engine.era_rules, is_overtime)
-        if not is_overtime:
-            # Regulation: reuse Phase 18C's own bonus-threshold hook verbatim (it already reads exactly
-            # `era_rules.bonus_foul_threshold`, the same real field `threshold` resolves to here).
-            in_bonus = shooting_foul_team_bonus_check(engine, team_foul_count_after)
-        else:
-            # Overtime: Phase 18C's own hook has no OT parameter and cannot express a distinct OT number --
-            # the real comparison it performs is reused verbatim, just against the OT-aware threshold.
-            in_bonus = threshold is not None and team_foul_count_after >= threshold
+        # ONE shared definition (regulation AND OT, including the real final-two-minute exception) --
+        # see module docstring and `is_team_in_penalty`'s own docstring. Evaluated against `new_state`
+        # (POST-increment for THIS foul) -- "does the foul just committed itself draw bonus FTs."
+        in_bonus = is_team_in_penalty(new_state, offender_team_id, clock_remaining_seconds,
+                                       engine.era_rules, is_overtime)
+        if not in_bonus and clock_remaining_seconds is not None and clock_remaining_seconds <= FINAL_TWO_MINUTES_SECONDS:
+            # This foul was forgiven INSIDE the final two minutes (the only way `is_team_in_penalty`
+            # can return False while the clock is already <= FINAL_TWO_MINUTES_SECONDS, by its own
+            # construction) -- consume the one-time exception for the rest of this period.
+            new_state = new_state._with_final_two_minute_exception_used(offender_team_id)
 
         if not possession_consequence_already_applied:
             engine.non_shooting_foul(offender_id, fouled_player_id, team_foul_count_after)

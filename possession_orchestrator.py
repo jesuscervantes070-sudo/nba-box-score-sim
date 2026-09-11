@@ -1552,7 +1552,7 @@ def _dispatch_floor_foul(engine: PossessionEngine, world: PossessionWorld, confi
         engine, world.foul_state, foul_event_id, offender_id=offender_id, fouled_player_id=fouled_player_id,
         foul_class=on_ball_outcome, offender_team_id=offender_team_id, fouled_team_id=fouled_team_id,
         rng=rng, possession_consequence_already_applied=True, free_throw_rate=free_throw_rate,
-        is_overtime=config.is_overtime,
+        is_overtime=config.is_overtime, clock_remaining_seconds=engine.state.game_clock_remaining,
     )
     world.stats.add_personal_foul(offender_id)
     # Reconciliation fix: `administer_floor_foul` (Phase 21B) itself logs no event -- an OFFENSIVE_CHARGE's

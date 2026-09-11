@@ -20,7 +20,7 @@ import random
 from dataclasses import dataclass, field, replace
 from typing import Dict, Optional, Tuple
 
-from floor_foul_administration import FoulAdministrationState, effective_bonus_foul_threshold
+from floor_foul_administration import FoulAdministrationState, is_team_in_penalty
 from possession_events import Event, EventType
 from possession_orchestrator import (
     EventDerivedStats,
@@ -119,13 +119,14 @@ class DetailedGameState:
         return dict(self.foul_state.team_fouls)
 
     def in_bonus(self, team_id: str, rules: EraRules, is_overtime: bool = False) -> bool:
-        """Whether ``team_id`` has committed enough qualifying fouls.
-
-        This is derived from Phase 21B's persisted category-aware counter and
-        threshold helper; Phase 23B never detects or reclassifies a foul.
-        """
-        threshold = effective_bonus_foul_threshold(rules, is_overtime=is_overtime)
-        return threshold is not None and self.foul_state.team_foul_count(team_id) >= threshold
+        """Whether ``team_id`` is in the penalty right now, using this state's own CURRENT
+        (unmodified) foul/clock snapshot -- a general query, not tied to any specific
+        about-to-happen foul. Delegates to `floor_foul_administration.is_team_in_penalty`, the
+        ONE shared penalty-state definition (also consulted by `administer_floor_foul` itself,
+        passed its own POST-increment state) -- never a second, duplicated threshold check. This
+        is why passing `self.game_clock_seconds` here correctly reflects the real final-two-minute
+        exception (Phase 21B correction) without this class re-deriving any of that logic."""
+        return is_team_in_penalty(self.foul_state, team_id, self.game_clock_seconds, rules, is_overtime)
 
 
 @dataclass(frozen=True)
