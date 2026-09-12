@@ -941,11 +941,28 @@ class PossessionConfig:
 
     `drive_charge_hazard_per_drive`/`drive_defensive_floor_foul_hazard_per_drive` are the REAL,
     OBSERVABLE per-drive hazards `drive_floor_foul_resolution.py`'s `resolve_drive_floor_foul_outcome`
-    is designed to be calibrated against -- both `None` (UNCALIBRATED, not zero) until a real
-    NBA-Tracking-derived rate is sourced; leaving both `None` makes that stage consume zero RNG
-    and produces byte-for-byte identical output to this stage not existing at all.
-    `force_drive_floor_foul_outcome` is a TEST-ONLY deterministic override for that same stage --
-    never set by production config construction."""
+    is designed to be calibrated against. ACTIVATED ("Activate empirical foul occurrence" phase):
+      - `drive_charge_hazard_per_drive` = 0.0035, a REAL (not fabricated), but explicitly SMALL-SAMPLE
+        estimate: a live `playbyplayv3` pull of 20 real 2025-26 games (40 team-games) found 9 real
+        "Offensive Charge" `subType` foul events -- 0.225 charges/team-game -- divided by the real
+        2025-26 `leaguedashptstats(Drives)` league-wide drives/team-game (66.4, independently verified
+        live and matching this task's own stated reference exactly) gives 0.34%. Rounded to 0.35%.
+        Flagged noisy (n=9 events) -- a larger PBP sample would refine this, not replace its structure.
+      - `drive_defensive_floor_foul_hazard_per_drive` = 0.073, derived from the SAME live
+        `leaguedashptstats(Drives)` pull's real, league-wide `DRIVE_PF`/`DRIVES` ratio (8.58%,
+        independently verified live and matching this task's own stated ~8.6% reference) MINUS this
+        engine's own already-existing drive-then-shot shooting-foul contribution to that same real
+        DRIVE_PF definition (measured directly from this engine, ~1.21% of drives, BEFORE this
+        activation) -- `DRIVE_PF` counts fouls DRAWN by the driver (shooting AND non-shooting
+        defensive fouls), so the two contributions are additive, not double-counted: 8.58% - 1.21% =
+        7.37%, rounded to 7.3%. NOT an attempt to force a within-drive-decomposition observed truth
+        (no such per-drive-mechanism-level dataset exists) -- a single MODEL-IMPOSED remainder
+        satisfying the real aggregate total, per this phase's own instruction.
+    Both were `None` (UNCALIBRATED, not zero) until now; leaving both `None` made that stage consume
+    zero RNG and produce byte-for-byte identical output to this stage not existing at all -- this is
+    no longer the default, so a caller wanting the OLD inert behavior must now pass both explicitly as
+    `None`. `force_drive_floor_foul_outcome` is a TEST-ONLY deterministic override for that same stage
+    -- never set by production config construction."""
     season: str = "2023-24"
     initial_ball_zone: SpatialZone = SpatialZone.TOP_OF_KEY
     drive_action_seconds: float = 2.5
@@ -954,8 +971,8 @@ class PossessionConfig:
     loose_ball_action_seconds: float = 0.5
     max_steps_per_possession: int = 100
     force_on_ball_contact_established: bool = False
-    drive_charge_hazard_per_drive: Optional[float] = None                # UNCALIBRATED -- see class docstring
-    drive_defensive_floor_foul_hazard_per_drive: Optional[float] = None  # UNCALIBRATED -- see class docstring
+    drive_charge_hazard_per_drive: Optional[float] = 0.0035              # ACTIVATED -- see class docstring
+    drive_defensive_floor_foul_hazard_per_drive: Optional[float] = 0.073  # ACTIVATED -- see class docstring
     force_drive_floor_foul_outcome: Optional[str] = None                 # TEST-ONLY -- see class docstring
     default_free_throw_rate_if_missing: Optional[float] = None  # None = fail explicitly (see _require_ft_rate); no silent placeholder unless a caller opts in
     era_rules: Optional["EraRules"] = None  # overrides `season`-derived era rules when set -- e.g. a test constructing a short game clock to reach PERIOD_END quickly
@@ -1589,15 +1606,27 @@ def _dispatch_rebound(engine: PossessionEngine, world: PossessionWorld, config: 
 # 10. Floor-foul handoff (Phase 21A detection -> Phase 21B administration).
 # ---------------------------------------------------------------------
 def _dispatch_floor_foul(engine: PossessionEngine, world: PossessionWorld, config: PossessionConfig, rng: random.Random,
-                          steps: int, on_ball_outcome: str, offender_id: str, fouled_player_id: str) -> Optional[PossessionTerminalResult]:
-    """`on_ball_outcome` is a Phase 21A `OnBallContactOutcome` string
-    (`OFFENSIVE_CHARGE`/`DEFENSIVE_FLOOR_FOUL`) already classified by
-    `apply_on_ball_pressure_to_engine`, which has ALREADY applied the
-    real possession consequence (`dead_ball_turnover`/`non_shooting_foul`)
-    -- this function does NOT re-detect the foul, only administers it via
-    Phase 21B's existing `administer_floor_foul`, with
-    `possession_consequence_already_applied=True` (the exact seam Phase
-    21B's own report documents for this exact caller)."""
+                          steps: int, on_ball_outcome: str, offender_id: str, fouled_player_id: str,
+                          possession_consequence_already_applied: bool = True) -> Optional[PossessionTerminalResult]:
+    """`on_ball_outcome` is an `OFFENSIVE_CHARGE`/`DEFENSIVE_FLOOR_FOUL` string, shared by TWO real
+    callers with DIFFERENT consequence-application histories -- `possession_consequence_already_applied`
+    (bug fix, "Activate empirical foul occurrence" phase) makes that difference explicit instead of
+    silently hardcoding the older caller's assumption for both:
+      - the LEGACY `apply_on_ball_pressure_to_engine` call site (Phase 21A) already calls
+        `engine.dead_ball_turnover`/`engine.non_shooting_foul` itself before reaching here -- passes
+        `True` (this function's default, preserving that call site's exact prior behavior).
+      - the PRODUCTION `drive_floor_foul_resolution.resolve_drive_floor_foul_outcome` call site is a
+        documented PURE function ("no engine mutation" -- its own module docstring) -- it has applied
+        NOTHING yet. Reusing `True` for this caller (the bug, present since that module's own
+        introduction but invisible until `drive_charge_hazard_per_drive`/
+        `drive_defensive_floor_foul_hazard_per_drive` were both `None` in every prior benchmark, making
+        this whole code path dead) meant `administer_floor_foul` skipped applying the REAL
+        `dead_ball_turnover`/`non_shooting_foul` consequence at all, even though
+        `possession_orchestrator.py`'s own provisional stats (`world.stats.add_player_turnover`) still
+        counted an OFFENSIVE_CHARGE as a turnover -- a real, direct
+        `event/provisional turnovers mismatch` (`detailed_game_orchestrator._assert_event_accounting_parity`),
+        confirmed by direct reproduction the moment `drive_charge_hazard_per_drive` was first set to a
+        real nonzero value. That caller now passes `False` explicitly."""
     foul_event_id = f"{engine.state.possession_id}:foul:{len(engine.log.events)}"
     offender_team_id = world.team_id_for(offender_id)
     fouled_team_id = world.team_id_for(fouled_player_id)
@@ -1611,7 +1640,8 @@ def _dispatch_floor_foul(engine: PossessionEngine, world: PossessionWorld, confi
     world.foul_state, result = administer_floor_foul(
         engine, world.foul_state, foul_event_id, offender_id=offender_id, fouled_player_id=fouled_player_id,
         foul_class=on_ball_outcome, offender_team_id=offender_team_id, fouled_team_id=fouled_team_id,
-        rng=rng, possession_consequence_already_applied=True, free_throw_rate=free_throw_rate,
+        rng=rng, possession_consequence_already_applied=possession_consequence_already_applied,
+        free_throw_rate=free_throw_rate,
         is_overtime=config.is_overtime, clock_remaining_seconds=engine.state.game_clock_remaining,
     )
     world.stats.add_personal_foul(offender_id)
@@ -1636,6 +1666,14 @@ def _dispatch_floor_foul(engine: PossessionEngine, world: PossessionWorld, confi
         world.stats.fta += seq.awarded_attempts
         world.stats.ftm += seq.makes
         world.stats.points += seq.makes
+        # Diagnostic-only trace row ("Activate empirical foul occurrence" phase) -- mirrors the
+        # SAME "action"/"shot_family"/"awarded_fts"/"ft_makes" shape `_dispatch_shooting_foul`'s
+        # own trace row already uses (see its own `world.log_trace(step=steps, action="SHOOTING_FOUL", ...)`
+        # call below) so `detailed_engine_foul_diagnostics.py`'s existing structured-free-throw-trip
+        # counting can recognize a BONUS non-shooting-foul FT trip too, not only a shooting-foul
+        # one -- consumes zero RNG, changes no simulation state, adds no new field to `world.stats`.
+        world.log_trace(step=steps, action="BONUS_FLOOR_FOUL_FREE_THROWS", shot_family="FREE_THROW",
+                         made=None, awarded_fts=seq.awarded_attempts, ft_makes=seq.makes)
         if engine.state.ball_state == BallState.LOOSE:
             return _dispatch_rebound(engine, world, config, rng, ReboundSource.FINAL_MISSED_FT, "FREE_THROW", steps,
                                       offense_team_id=fouled_team_id, defense_team_id=offender_team_id)
@@ -1701,10 +1739,14 @@ def _dispatch_drive(engine: PossessionEngine, world: PossessionWorld, intent: Ac
                          driver=driver_id, defender=defender_id)
         if floor_foul_outcome == DriveFloorFoulOutcome.OFFENSIVE_CHARGE:
             _charge_time(engine, config.drive_action_seconds, world, "DRIVE_EXECUTION", steps)
-            return _dispatch_floor_foul(engine, world, config, rng, steps, OFFENSIVE_CHARGE, driver_id, defender_id)
+            # `resolve_drive_floor_foul_outcome` is a PURE function -- it has applied no engine
+            # consequence yet (bug fix, see `_dispatch_floor_foul`'s own docstring).
+            return _dispatch_floor_foul(engine, world, config, rng, steps, OFFENSIVE_CHARGE, driver_id, defender_id,
+                                         possession_consequence_already_applied=False)
         if floor_foul_outcome == DriveFloorFoulOutcome.DEFENSIVE_FLOOR_FOUL:
             _charge_time(engine, config.drive_action_seconds, world, "DRIVE_EXECUTION", steps)
-            return _dispatch_floor_foul(engine, world, config, rng, steps, DEFENSIVE_FLOOR_FOUL, defender_id, driver_id)
+            return _dispatch_floor_foul(engine, world, config, rng, steps, DEFENSIVE_FLOOR_FOUL, defender_id, driver_id,
+                                         possession_consequence_already_applied=False)
         # NO_FLOOR_FOUL -> fall through to the legacy on-ball-pressure check below.
 
     # Phase 21A ordering decision (drives occur during LIVE_DRIBBLE, exactly Phase 21A's own owned

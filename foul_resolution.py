@@ -71,17 +71,32 @@ REAL_AND_ONE_GIVEN_FOUL_RATE_2023_24 = 0.1696  # reporting/validation anchor onl
 # live call this phase -- explicitly flagged lower-confidence than the
 # rim anchor.
 BASE_CONTACT_PROBABILITY = {
-    "RIM": 0.14,        # rough real anchor -- most rim attempts involve SOME real physical contact, only a fraction is whistled
-    "FLOATER": 0.08,
-    "MIDRANGE": 0.03,
-    "THREE_POINT": 0.025,
+    "RIM": 0.875,       # RE-ANCHORED ("Activate empirical foul occurrence" phase) -- see this block's own
+    "FLOATER": 0.6286,  # updated docstring below. Prior values (0.14/0.08/0.03/0.025) combined with
+    "MIDRANGE": 0.12,   # BASE_WHISTLE_GIVEN_CONTACT to only 6.8%/3.1%/0.6%/1.6% shooting-foul rates per
+    "THREE_POINT": 0.13,  # attempt -- an order of magnitude below the well-known real NBA range (rim
+    # shooting fouls widely cited around 20-25%+ of rim attempts; short/floater range fouls materially
+    # lower but still well above a jumper; midrange/three jumpers drawn far less often, three slightly
+    # ABOVE midrange because closeout/airborne-shooter contact on a three is real and non-trivial). Both
+    # the OLD and NEW numbers here are ROUGH, HAND-SET anchors -- no live per-shot-family whistle dataset
+    # is publicly available to fit either version of this table precisely; this re-anchoring targets the
+    # real, better-known ORDER OF MAGNITUDE and was then CALIBRATED FURTHER (a small uniform-multiplier
+    # grid, TRAIN seeds 25000-25049, validated on HELDOUT seeds 25050-25099) against the real aggregate
+    # 2025-26 team FTA/PF (~23.5/~19.9) -- landing at effective per-attempt rates of RIM ~40%/FLOATER
+    # ~22%/MIDRANGE ~3%/THREE ~8% (HELDOUT-measured). This closes MOST, not all, of the real FTA/PF gap
+    # (HELDOUT: FTA/team ~16.5, PF/team ~12.2, vs. real ~23.5/~19.9) while keeping pace/FGA inside this
+    # task's own guardrails -- pushing further starts requiring RIM contact probabilities uncomfortably
+    # close to 100% for a diminishing FTA return, which is flagged here as the honest stopping point for
+    # this table alone (the remaining gap is directional evidence that either the whistle-given-contact
+    # table, drive-origin-specific shooting-foul incidence, or make-probability-adjacent bonus/and-one
+    # volume also need attention -- explicitly OUT OF SCOPE this phase per "do not yet tune make
+    # probabilities").
 }
 # Given contact occurred, base probability it is WHISTLED as a shooting
-# foul -- calibrated so BASE_CONTACT_PROBABILITY x BASE_WHISTLE_GIVEN_CONTACT
-# lands roughly near real, well-known NBA shooting-foul-rate orders of
-# magnitude per family (rim ~6-7% of attempts, three ~2% of attempts) --
-# explicitly a real, hand-tuned placeholder PAIR, not two independently
-# validated numbers.
+# foul -- UNCHANGED this phase (only BASE_CONTACT_PROBABILITY above was re-anchored; keeping this
+# table fixed isolates which of the two placeholder factors moved, per this phase's own "only
+# occurrence rates are in scope, not shot make-probabilities" instruction -- this table governs
+# whether contact becomes a WHISTLE, still zero relationship to shot make-probability).
 BASE_WHISTLE_GIVEN_CONTACT = {
     "RIM": 0.48,
     "FLOATER": 0.35,

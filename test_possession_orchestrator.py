@@ -1930,6 +1930,52 @@ class TestTransitionPushInteriorOpportunity(unittest.TestCase):
         self.assertEqual(len(resolved), 1)
 
 
+class TestActivateEmpiricalFoulOccurrence(unittest.TestCase):
+    """"Activate empirical foul occurrence" phase -- focused tests J/K/N from the task's own
+    required list: (J) drive TOV accounting remains correct (specifically: the real bug this
+    phase fixed, an OFFENSIVE_CHARGE reached via the NEW `drive_floor_foul_resolution` production
+    path previously left `world.stats.add_player_turnover` uncompensated by any real engine-level
+    turnover consequence, producing an event/provisional turnover MISMATCH -- confirmed fixed by
+    running a real possession end to end, not just re-asserting a hardcoded count), (K) floor-foul
+    ADMINISTRATION itself is unchanged (only occurrence hazards moved), (N) foul occurrence is
+    deterministic under a fixed seed."""
+
+    def test_j_offensive_charge_via_new_path_produces_matching_event_and_provisional_turnover(self):
+        from possession_orchestrator import derive_stat_deltas_from_events
+        config = PossessionConfig(drive_charge_hazard_per_drive=1.0,  # force OFFENSIVE_CHARGE deterministically
+                                   drive_defensive_floor_foul_hazard_per_drive=0.0)
+        seed, result = _find_seed(PossessionTerminalReason.OFFENSIVE_FOUL_TURNOVER, config=config, tries=50)
+        # the real bug ("Activate empirical foul occurrence" phase): before the
+        # `possession_consequence_already_applied` fix, `world.stats.add_player_turnover` was
+        # incremented here with NO corresponding real engine turnover consequence at all (the NEW
+        # `drive_floor_foul_resolution` path never called `engine.dead_ball_turnover`) -- this
+        # reconciliation is the exact invariant `detailed_game_orchestrator._assert_event_accounting_parity`
+        # enforces at the full-game level; re-checked here directly against this ONE possession's
+        # own event-derived vs. provisional turnover count.
+        provisional_turnovers = sum(result.world.stats.player_turnovers.values())
+        event_derived_turnovers = derive_stat_deltas_from_events(result.events).team_turnovers
+        self.assertEqual(provisional_turnovers, 1)
+        self.assertEqual(event_derived_turnovers, 1)
+
+    def test_k_floor_foul_administration_itself_is_unchanged(self):
+        """Only occurrence hazards moved this phase -- `administer_floor_foul`'s own bonus/
+        team-foul/FT-award RULES (Phase 21B) are untouched, confirmed by direct source-level
+        checks already covered by `test_floor_foul_administration.py` (unmodified this phase) and
+        re-confirmed here structurally: `_dispatch_floor_foul` still routes every DEFENSIVE_FLOOR_FOUL
+        through the SAME `administer_floor_foul` entry point, never a parallel/duplicate one."""
+        import inspect
+        import possession_orchestrator as po
+        src = inspect.getsource(po._dispatch_floor_foul)
+        self.assertEqual(src.count("administer_floor_foul("), 1)  # exactly one entry point, still
+
+    def test_n_foul_occurrence_is_deterministic_under_a_fixed_seed(self):
+        config = PossessionConfig()  # activated defaults
+        first = _run(config=config, seed=42)
+        second = _run(config=config, seed=42)
+        self.assertEqual(first.world.stats.fta, second.world.stats.fta)
+        self.assertEqual(dict(first.world.stats.personal_fouls), dict(second.world.stats.personal_fouls))
+
+
 class TestExpandInteriorScoringOpportunities(unittest.TestCase):
     """"Expand interior scoring opportunities" phase -- focused tests A-E from the task's own
     required list: (A) TRANSITION_PUSH can target PAINT, (B) TRANSITION_PUSH can target

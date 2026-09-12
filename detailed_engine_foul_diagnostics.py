@@ -241,11 +241,38 @@ def diagnose_fouls(results: Sequence["DetailedGameResult"]) -> FoulDiagnostics:
                         diagnosis.and_one_final_ft_misses += 1
                         diagnosis.and_one_missed_ft_rebound_handoffs += live_rebound
                     game_shooting_fouls += 1
-                elif (row.get("action") == "ON_BALL_PRESSURE"
+                elif row.get("action") == "BONUS_FLOOR_FOUL_FREE_THROWS":
+                    # "Activate empirical foul occurrence" phase: a REAL, structurally distinct FT
+                    # trip -- a bonus non-shooting DEFENSIVE_FLOOR_FOUL's own free throws, NOT a
+                    # shooting foul (never added to `shooting_fouls_by_family`/`game_shooting_fouls`,
+                    # which count shooting fouls specifically) -- but a real structured trip that
+                    # MUST still reconcile against `StatDeltas` FTA/FTM, same as any other trip.
+                    attempts = int(row.get("awarded_fts", 0))
+                    makes = int(row.get("ft_makes", 0))
+                    live_rebound = any(
+                        rebound.get("source") == "FINAL_MISSED_FT"
+                        for rebound in world.rebound_opportunity_log
+                    )
+                    trips.append(FreeThrowTripObservation(
+                        game_index=game_index, possession_id=record.possession_id,
+                        source="BONUS_FLOOR_FOUL", shot_family=row.get("shot_family", "FREE_THROW"),
+                        attempts=attempts, makes=makes,
+                        final_attempt_missed=makes < attempts if attempts == 1 else False,
+                        live_rebound_handoff=live_rebound,
+                    ))
+                    diagnosis.fta_from_structured_trips += attempts
+                    diagnosis.ftm_from_structured_trips += makes
+                elif (row.get("action") in ("ON_BALL_PRESSURE", "DRIVE_FLOOR_FOUL_CHECK")
                       and row.get("outcome") == DEFENSIVE_FLOOR_FOUL):
+                    # "Activate empirical foul occurrence" phase: a floor foul can now ALSO arrive
+                    # via the PRODUCTION `DRIVE_FLOOR_FOUL_CHECK` trace row (`drive_floor_foul_resolution.py`),
+                    # not only the LEGACY `ON_BALL_PRESSURE` collision branch -- the two are mutually
+                    # exclusive per drive (the new stage returns immediately on any non-`NO_FLOOR_FOUL`
+                    # outcome, so the legacy row is never even logged for that same drive), so counting
+                    # both action names here can never double-count a single real foul.
                     diagnosis.defensive_floor_fouls += 1
                     game_defensive_floor_fouls += 1
-                elif (row.get("action") == "ON_BALL_PRESSURE"
+                elif (row.get("action") in ("ON_BALL_PRESSURE", "DRIVE_FLOOR_FOUL_CHECK")
                       and row.get("outcome") == OFFENSIVE_CHARGE):
                     diagnosis.offensive_fouls += 1
                     game_offensive_fouls += 1

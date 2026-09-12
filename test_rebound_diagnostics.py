@@ -43,8 +43,15 @@ class TestReboundDiagnostics(unittest.TestCase):
     def test_shot_family_classification_covers_every_opportunity(self):
         self.assertEqual(sum(stats.opportunities for stats in self.diagnosis.by_family.values()),
                          self.diagnosis.rebound_opportunities)
+        # "FREE_THROW" ("Activate empirical foul occurrence" phase): a real, pre-existing rebound
+        # source (`ReboundSource.FINAL_MISSED_FT`, dispatched with `shot_family="FREE_THROW"` --
+        # see `possession_orchestrator._dispatch_floor_foul`) that was structurally reachable only
+        # from a whistled SHOOTING foul before this phase (both drive floor-foul hazards were
+        # `None`) -- now also reachable from a missed final BONUS free throw on a non-shooting
+        # DEFENSIVE_FLOOR_FOUL, once `drive_defensive_floor_foul_hazard_per_drive` is activated.
+        # Not a new rebound source, not a classification bug -- a previously-unreachable real branch.
         self.assertEqual(set(self.diagnosis.by_family),
-                         {"RIM", "FLOATER", "MIDRANGE", "THREE_POINT"})
+                         {"RIM", "FLOATER", "MIDRANGE", "THREE_POINT", "FREE_THROW"})
 
     def test_oreb_dreb_outcomes_reconcile_to_stats_and_events(self):
         self.assertEqual(self.diagnosis.offensive_rebounds,

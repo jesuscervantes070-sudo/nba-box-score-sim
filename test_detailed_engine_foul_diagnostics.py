@@ -32,17 +32,23 @@ class TestFoulDiagnostics(unittest.TestCase):
         )
 
     def test_default_production_executes_no_drive_collision_foul_checks(self):
+        """The LEGACY `on_ball_pressure` collision branch (`force_on_ball_contact_established`
+        default `False`) remains permanently inert in production -- UNCHANGED by "Activate
+        empirical foul occurrence". `defensive_floor_fouls`/`offensive_fouls` are no longer
+        expected to be zero, though: both now count the PRODUCTION `DRIVE_FLOOR_FOUL_CHECK` path
+        too (see `detailed_engine_foul_diagnostics.py`'s own updated classification), which this
+        phase activated via real, nonzero `PossessionConfig` hazards."""
         self.assertGreater(self.diagnosis.dispatched_actions_by_action["DRIVE"], 0)
         self.assertEqual(self.diagnosis.drive_collision_foul_checks, 0)
-        self.assertEqual(self.diagnosis.defensive_floor_fouls, 0)
-        self.assertEqual(self.diagnosis.offensive_fouls, 0)
+        self.assertGreater(self.diagnosis.defensive_floor_fouls, 0)
+        self.assertGreater(self.diagnosis.offensive_fouls, 0)
 
-    def test_every_eligible_drive_gets_a_floor_foul_check_currently_all_no_foul(self):
-        """"Model drive floor fouls as observable outcomes": every dispatched drive with an
-        assigned defender now produces exactly one DRIVE_FLOOR_FOUL_CHECK opportunity, and (both
-        hazards being UNCALIBRATED/None in production) every single one currently resolves
-        NO_FLOOR_FOUL -- this is the new eligible-opportunity denominator a future calibration
-        pass will need, not yet a nonzero rate."""
+    def test_every_eligible_drive_gets_a_floor_foul_check(self):
+        """"Activate empirical foul occurrence": every dispatched drive with an assigned defender
+        produces exactly one DRIVE_FLOOR_FOUL_CHECK opportunity, and -- now that
+        `PossessionConfig.drive_charge_hazard_per_drive`/`drive_defensive_floor_foul_hazard_per_drive`
+        are real, nonzero, calibrated values -- a real minority of those resolve to each of the
+        three outcomes, reconciling exactly to the eligible-opportunity denominator."""
         self.assertGreater(self.diagnosis.eligible_drive_floor_foul_opportunities, 0)
         # every dispatched drive is eligible except the rare one with no assigned defender at all
         # (the same `if defender_id is not None:` guard the legacy on-ball-pressure check already uses).
@@ -50,10 +56,15 @@ class TestFoulDiagnostics(unittest.TestCase):
         missing_defender_drives = dispatched - self.diagnosis.eligible_drive_floor_foul_opportunities
         self.assertGreaterEqual(missing_defender_drives, 0)
         self.assertLess(missing_defender_drives, dispatched * 0.05)  # a small minority, not systematic
-        self.assertEqual(self.diagnosis.drive_floor_foul_charge_outcomes, 0)
-        self.assertEqual(self.diagnosis.drive_floor_foul_defensive_outcomes, 0)
-        self.assertEqual(self.diagnosis.drive_floor_foul_no_foul_continuations,
-                          self.diagnosis.eligible_drive_floor_foul_opportunities)
+        self.assertGreater(self.diagnosis.drive_floor_foul_charge_outcomes, 0)
+        self.assertGreater(self.diagnosis.drive_floor_foul_defensive_outcomes, 0)
+        self.assertGreater(self.diagnosis.drive_floor_foul_no_foul_continuations, 0)
+        self.assertEqual(
+            self.diagnosis.drive_floor_foul_charge_outcomes
+            + self.diagnosis.drive_floor_foul_defensive_outcomes
+            + self.diagnosis.drive_floor_foul_no_foul_continuations,
+            self.diagnosis.eligible_drive_floor_foul_opportunities,
+        )
 
     def test_pf_and_free_throw_projections_reconcile(self):
         assert_foul_reconciliation(self.diagnosis)
