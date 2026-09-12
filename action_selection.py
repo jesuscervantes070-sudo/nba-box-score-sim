@@ -275,28 +275,103 @@ def evaluate_clock_feasibility(perceived: List[PerceivedOpportunity],
     return ClockFeasibilityResult(feasible, removed, terminal_shots)
 
 
-def shot_zone_probabilities(options: Tuple[SpatialZone, ...], tendency: TendencyContext,
-                            context: ShotFamilySelectionContext) -> List[float]:
+CATCH_AND_SHOOT_THREE_BASELINE_LOG_WEIGHT = 0.7
+# "Model action-specific jump-shot selection" phase -- CATCH_AND_SHOOT's OWN structural prior,
+# separate from `PULL_UP_THREE_BASELINE_LOG_WEIGHT`/`context.three_point_baseline_log_weight`
+# below. ROOT CAUSE this phase fixed (see docs): both CATCH_AND_SHOOT and PULL_UP previously
+# shared ONE generic {current-zone, MIDRANGE} candidate set and one shared, NEGATIVE
+# `three_point_baseline_log_weight` (-0.2) -- meaning a league-average-tendency player's
+# catch-and-shoot from the perimeter scored WORSE for a three than for a midrange (0.0 for
+# MIDRANGE's un-weighted score vs -0.2+deviation for the perimeter zone), even though a catch-
+# and-shoot's real basketball meaning ("receive the ball in a shooting-ready context and
+# immediately shoot") is overwhelmingly a spot-up three in a perimeter location in the modern
+# game. This is a REAL, STRUCTURAL prior (this action's own basketball semantics), not a player
+# tendency and not a shooting-ABILITY input -- `tendency.three_point_preference` is still added on
+# top, so player differentiation is preserved (see tests F/H). CALIBRATED (a joint grid with
+# `PULLUP_THREE_BASELINE_LOG_WEIGHT` below, TRAIN seeds 25000-25049, validated on HELDOUT
+# 25050-25099) as the SMALLEST joint pair landing overall THREE share close to the real 2025-26
+# reference (~41.2%: TRAIN 41.2%, HELDOUT 40.6%) while reducing MIDRANGE materially (47.5% -> ~43-44%
+# overall) -- NOT chasing MIDRANGE dramatically lower here, because with RIM+FLOATER's combined
+# share still ~15% at this point (unchanged by this phase), any weight aggressive enough to push
+# MIDRANGE below ~30% overall pushes THREE well past 50% (measured directly: e.g.
+# catch=1.2/pullup=0.3 reaches THREE=46.1%/MIDRANGE=38.5%, catch=0.9/pullup=1.5 reaches
+# THREE=56.2%/MIDRANGE=28.2%) -- exactly the "3PT share explodes above plausible modern range"
+# regression this task explicitly rejects. Closing the rest of the MIDRANGE gap honestly requires
+# RIM/FLOATER's own combined share to rise (a separate, later phase), not a further push on this
+# knob alone.
+PULLUP_THREE_BASELINE_LOG_WEIGHT = 0.2
+# PULL_UP's own baseline -- a pull-up jumper is a genuinely different, more contested shot context
+# than a catch-and-shoot; real NBA offense still runs meaningful pull-up-midrange volume (unlike a
+# spot-up catch), so this stays far closer to neutral than CATCH_AND_SHOOT's own weight above,
+# preserving a real, still-live competition between pull-up three and pull-up midrange rather than
+# defaulting either family. `context.three_point_baseline_log_weight` (-0.2, UNCHANGED,
+# `PossessionConfig.three_point_family_log_weight`) is NOT replaced -- it is still added on top,
+# ADDITIVELY, as the era/environment adjustment it always was; this constant is the NEW, separate
+# action-specific term layered alongside it, not instead of it.
+MIDRANGE_PREFERENCE_WEIGHT = 1.0
+# ACTIVATED this phase -- `tendency.midrange_preference`'s first-ever read anywhere in this
+# codebase (previously "deliberately excluded" -- see this function's OLD docstring, preserved
+# below in the module history). Applied ONLY to the MIDRANGE candidate's own score, and ONLY in a
+# context where MIDRANGE is already a live candidate (PULL_UP's {perimeter-zone, MIDRANGE} or
+# {TOP_OF_KEY, MIDRANGE} menu, or CATCH_AND_SHOOT's identical menu) -- never a standalone "global
+# probability of a midrange shot" term, per the task's own explicit constraint. A player with a
+# real, elevated midrange_preference now measurably shifts THIS competition toward midrange more
+# than a league-average player would, without ever fabricating a midrange opportunity from a state
+# where none of the existing structural gates (`_shot_zone_options`) would have offered one at all.
+LATE_CLOCK_MIDRANGE_LOG_WEIGHT = 1.2
+LATE_CLOCK_SHOT_CLOCK_THRESHOLD_SECONDS = 6.0
+# ACTIVATED this phase -- `ClockContext.shot_clock_remaining` is REAL, already-reliable live state
+# (already consulted by `evaluate_clock_feasibility`'s own late-clock gate; not fabricated here).
+# A genuinely late shot clock is a REAL, well-known basketball reason a difficult pull-up/midrange
+# attempt becomes more likely than it would be with a full shot clock -- this is a LEGITIMATE
+# additional MIDRANGE source, not the false generic default this phase removes elsewhere. Applied
+# identically to CATCH_AND_SHOOT and PULL_UP (a late-clock catch-and-shoot forced attempt is just as real
+# as a late-clock pull-up) -- both still read the SAME real `TendencyContext`/family-eligibility
+# gates on top, this is purely an ADDITIVE context term.
+
+
+def shot_zone_probabilities(action_type: ActionType, options: Tuple[SpatialZone, ...],
+                            tendency: TendencyContext, context: ShotFamilySelectionContext,
+                            shot_clock_remaining: Optional[float] = None) -> List[float]:
     """Return the hierarchical family-choice distribution for one shot action.
 
-    `three_point_preference` is already a logit-relative-to-league-average
-    player deviation for real 3PA/FGA, so its natural coefficient here is 1.
-    `midrange_preference` is deliberately excluded: it means midrange share
-    *within two-point zones*, not broad TWO-vs-THREE preference.
-    """
+    ACTION-SPECIFIC by construction ("Model action-specific jump-shot selection" phase) --
+    CATCH_AND_SHOOT and PULL_UP no longer share one generic perimeter-vs-MIDRANGE weight (see
+    `CATCH_AND_SHOOT_THREE_BASELINE_LOG_WEIGHT`'s own docstring for the full root-cause history).
+    `three_point_preference` is already a logit-relative-to-league-average player deviation for
+    real 3PA/FGA, so its natural coefficient here is 1, applied identically for both actions (a
+    player's real 3-point shot-selection preference does not change basketball meaning by action
+    type). `midrange_preference` is now READ (see `MIDRANGE_PREFERENCE_WEIGHT`'s own docstring) --
+    still only within this already-eligible two-way (or three-way, for a genuine interior PULL_UP
+    menu) competition, never as a standalone global term."""
     scores = []
     player_three_deviation = tendency.three_point_preference or 0.0
+    player_midrange_deviation = tendency.midrange_preference or 0.0
+    late_clock = shot_clock_remaining is not None and shot_clock_remaining <= LATE_CLOCK_SHOT_CLOCK_THRESHOLD_SECONDS
+    if action_type == ActionType.CATCH_AND_SHOOT:
+        action_prior = CATCH_AND_SHOOT_THREE_BASELINE_LOG_WEIGHT
+    elif action_type == ActionType.PULL_UP:
+        action_prior = PULLUP_THREE_BASELINE_LOG_WEIGHT
+    else:
+        action_prior = 0.0  # unreached in production (SHOT_ACTIONS = {PULL_UP, CATCH_AND_SHOOT}
+        # only) -- kept so a direct/test caller with any other action_type falls back to EXACTLY
+        # the old, pre-this-phase behavior (`context.three_point_baseline_log_weight` alone).
     for zone in options:
         score = 0.0
         if zone in PERIMETER_ZONES or zone == SpatialZone.BACKCOURT:
-            score += context.three_point_baseline_log_weight + player_three_deviation
+            score += context.three_point_baseline_log_weight + action_prior + player_three_deviation
+        elif zone in MIDRANGE_ZONES:
+            score += MIDRANGE_PREFERENCE_WEIGHT * player_midrange_deviation
+            if late_clock:
+                score += LATE_CLOCK_MIDRANGE_LOG_WEIGHT
         scores.append(score)
     return _softmax(scores)
 
 
 def _select_shot_zone(action_type: ActionType, default_zone: Optional[SpatialZone],
                        shot_zone_options: Tuple[SpatialZone, ...], tendency: TendencyContext,
-                       context: ShotFamilySelectionContext, rng: random.Random) -> Optional[SpatialZone]:
+                       context: ShotFamilySelectionContext, rng: random.Random,
+                       shot_clock_remaining: Optional[float] = None) -> Optional[SpatialZone]:
     """Hierarchical family choice after action selection, before resolution."""
     if action_type not in SHOT_ACTIONS or default_zone is None:
         return default_zone
@@ -306,7 +381,7 @@ def _select_shot_zone(action_type: ActionType, default_zone: Optional[SpatialZon
     if any(zone not in PERIMETER_ZONES | MIDRANGE_ZONES | INTERIOR_ZONES
            and zone != SpatialZone.BACKCOURT for zone in options):
         return default_zone
-    probabilities = shot_zone_probabilities(options, tendency, context)
+    probabilities = shot_zone_probabilities(action_type, options, tendency, context, shot_clock_remaining)
     return options[_weighted_choice(rng, probabilities)]
 
 
@@ -343,6 +418,7 @@ class SelectionPolicy:
         family_context = shot_family_context or ShotFamilySelectionContext()
         target_zone = _select_shot_zone(
             opp.action_type, opp.target_zone, opp.shot_zone_options, tendency, family_context, self.rng,
+            shot_clock_remaining=clock.shot_clock_remaining,
         )
         return ActionIntent(
             action_type=opp.action_type, actor_player_id=opp.actor_player_id, possession_id=possession_id,

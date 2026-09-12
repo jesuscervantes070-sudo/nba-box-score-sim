@@ -459,5 +459,130 @@ class TestDriveFollowupScoring(unittest.TestCase):
         self.assertLess(biased_pass, baseline_pass)
 
 
+class TestActionSpecificJumpShotSelection(unittest.TestCase):
+    """"Model action-specific jump-shot selection" phase -- focused tests A-K from the task's own
+    required list (E is covered by the PRE-EXISTING single-option interior branch, re-confirmed by
+    `test_e_short_interior_pull_up_uses_the_single_interior_option` below; L/M/N/O/P/Q are covered
+    by the diagnostics/transition/foul/OREB/rebound suites this phase left untouched)."""
+
+    PERIMETER_OPTIONS = (SpatialZone.TOP_OF_KEY, SpatialZone.MIDRANGE)
+
+    def _probabilities(self, action_type, tendency=None, options=None):
+        from action_selection import ShotFamilySelectionContext, shot_zone_probabilities
+        return shot_zone_probabilities(action_type, options or self.PERIMETER_OPTIONS,
+                                        tendency or TendencyContext(), ShotFamilySelectionContext(-0.2))
+
+    def test_a_perimeter_catch_and_shoot_strongly_favors_perimeter(self):
+        p_three = self._probabilities(ActionType.CATCH_AND_SHOOT)[0]
+        self.assertGreater(p_three, 0.55)  # clearly favors the perimeter zone over MIDRANGE (>50%)
+
+    def test_b_catch_and_shoot_no_longer_generically_defaults_to_midrange(self):
+        """Direct regression guard for the ROOT CAUSE this phase fixed: a league-average-tendency
+        CATCH_AND_SHOOT from the perimeter used to score WORSE for a three than for a midrange
+        (`context.three_point_baseline_log_weight` alone was negative) -- it must now clearly favor
+        the perimeter zone instead."""
+        probabilities = self._probabilities(ActionType.CATCH_AND_SHOOT, TendencyContext())
+        self.assertGreater(probabilities[0], probabilities[1])  # P(three) > P(midrange)
+
+    def test_c_pull_up_can_produce_three(self):
+        from action_selection import _select_shot_zone, ShotFamilySelectionContext
+        import random
+        chosen = {
+            _select_shot_zone(ActionType.PULL_UP, SpatialZone.TOP_OF_KEY, self.PERIMETER_OPTIONS,
+                               TendencyContext(), ShotFamilySelectionContext(-0.2), random.Random(seed))
+            for seed in range(30)
+        }
+        self.assertIn(SpatialZone.TOP_OF_KEY, chosen)
+
+    def test_d_pull_up_can_produce_midrange(self):
+        from action_selection import _select_shot_zone, ShotFamilySelectionContext
+        import random
+        chosen = {
+            _select_shot_zone(ActionType.PULL_UP, SpatialZone.TOP_OF_KEY, self.PERIMETER_OPTIONS,
+                               TendencyContext(), ShotFamilySelectionContext(-0.2), random.Random(seed))
+            for seed in range(30)
+        }
+        self.assertIn(SpatialZone.MIDRANGE, chosen)
+
+    def test_e_short_interior_pull_up_uses_the_single_interior_option(self):
+        """PRE-EXISTING, unchanged mechanism, re-confirmed this phase: once `ball_zone` is already
+        RESTRICTED_RIM/PAINT (reached only via real drive geometry -- never fabricated here),
+        `_shot_zone_options()` returns a SINGLE option and `_select_shot_zone` never runs the
+        family-choice softmax at all -- a genuine short/interior PULL_UP is already supported."""
+        from action_selection import _select_shot_zone, ShotFamilySelectionContext
+        import random
+        result = _select_shot_zone(ActionType.PULL_UP, SpatialZone.PAINT, (SpatialZone.PAINT,),
+                                    TendencyContext(), ShotFamilySelectionContext(-0.2), random.Random(0))
+        self.assertEqual(result, SpatialZone.PAINT)
+
+    def test_f_three_point_preference_changes_selection(self):
+        low = self._probabilities(ActionType.CATCH_AND_SHOOT, TendencyContext(three_point_preference=-1.5))[0]
+        high = self._probabilities(ActionType.CATCH_AND_SHOOT, TendencyContext(three_point_preference=1.5))[0]
+        self.assertLess(low, high)
+
+    def test_g_midrange_preference_changes_selection_only_in_eligible_context(self):
+        """Eligible context: PULL_UP/CATCH_AND_SHOOT with MIDRANGE among the real candidate
+        options. Ineligible context: a single-option interior menu (RESTRICTED_RIM/PAINT alone) --
+        `midrange_preference` must have NO effect there, because MIDRANGE was never a candidate."""
+        low = self._probabilities(ActionType.PULL_UP, TendencyContext(midrange_preference=-2.0))
+        high = self._probabilities(ActionType.PULL_UP, TendencyContext(midrange_preference=2.0))
+        self.assertNotEqual(low, high)
+        from action_selection import shot_zone_probabilities, ShotFamilySelectionContext
+        interior_low = shot_zone_probabilities(ActionType.PULL_UP, (SpatialZone.RESTRICTED_RIM,),
+                                                TendencyContext(midrange_preference=-2.0), ShotFamilySelectionContext())
+        interior_high = shot_zone_probabilities(ActionType.PULL_UP, (SpatialZone.RESTRICTED_RIM,),
+                                                 TendencyContext(midrange_preference=2.0), ShotFamilySelectionContext())
+        self.assertEqual(interior_low, interior_high)
+
+    def test_h_three_point_ability_does_not_change_selection(self):
+        """`shot_zone_probabilities` structurally cannot read `three_point_shrunk_rate` at all --
+        it has no such parameter; this is the TRUE-ABILITY FIREWALL applied to family choice."""
+        import inspect
+        from action_selection import shot_zone_probabilities
+        source = inspect.getsource(shot_zone_probabilities)
+        self.assertNotIn("three_point_shrunk_rate", source)
+        self.assertNotIn("three_point_shrunk", source)
+
+    def test_i_midrange_ability_does_not_change_selection(self):
+        import inspect
+        from action_selection import shot_zone_probabilities
+        source = inspect.getsource(shot_zone_probabilities)
+        self.assertNotIn("midrange_shrunk_rate", source)
+        self.assertNotIn("midrange_shrunk", source)
+
+    def test_j_seeded_zone_selection_is_deterministic(self):
+        from action_selection import _select_shot_zone, ShotFamilySelectionContext
+        import random
+        args = (ActionType.PULL_UP, SpatialZone.TOP_OF_KEY, self.PERIMETER_OPTIONS,
+                TendencyContext(three_point_preference=0.3, midrange_preference=0.4),
+                ShotFamilySelectionContext(-0.2))
+        first = _select_shot_zone(*args, random.Random(11))
+        second = _select_shot_zone(*args, random.Random(11))
+        self.assertEqual(first, second)
+
+    def test_k_no_post_hoc_family_override(self):
+        """`_select_shot_zone` picks the zone BEFORE resolution -- `shot_family` is derived ONCE,
+        purely from that already-chosen zone (`possession_orchestrator._dispatch_shot`'s own
+        `if zone == SpatialZone.RESTRICTED_RIM: shot_family = ... elif ...` chain), BEFORE either
+        resolver (`apply_interior_shot_to_engine`/`apply_shot_resolution_to_engine`) is ever
+        called -- neither resolver's own return value is ever assigned back into `shot_family`."""
+        import inspect
+        import possession_orchestrator as po
+        source = inspect.getsource(po._dispatch_shot)
+        assign_index = source.index("shot_family = InteriorShotFamily.RIM")
+        interior_call_index = source.index("apply_interior_shot_to_engine(")
+        perimeter_call_index = source.index("apply_shot_resolution_to_engine(")
+        self.assertLess(assign_index, interior_call_index)
+        self.assertLess(assign_index, perimeter_call_index)
+        # the ONLY re-assignment STATEMENTS of the name `shot_family` between the zone-derived
+        # chain and either resolver call are the chain's own 4 branches (RIM/FLOATER/MIDRANGE/
+        # THREE_POINT) -- everything else in that span is a keyword-argument READ
+        # (`shot_family=shot_family`, `ContactContext(...)`), never a new assignment.
+        import re
+        between = source[source.index("if zone == SpatialZone.RESTRICTED_RIM"):interior_call_index]
+        assignments = re.findall(r"^\s*shot_family = ", between, flags=re.MULTILINE)
+        self.assertEqual(len(assignments), 4)
+
+
 if __name__ == "__main__":
     unittest.main()

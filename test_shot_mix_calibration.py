@@ -23,20 +23,28 @@ OPTIONS = (SpatialZone.TOP_OF_KEY, SpatialZone.MIDRANGE)
 
 
 class TestShotMixCalibration(unittest.TestCase):
+    """NOTE ("Model action-specific jump-shot selection" phase): `shot_zone_probabilities` now
+    takes an explicit leading `action_type` -- CATCH_AND_SHOOT and PULL_UP no longer share one
+    generic weight (see that function's own docstring / `CATCH_AND_SHOOT_THREE_BASELINE_LOG_WEIGHT`
+    for the full root-cause history). These tests use `ActionType.PULL_UP` throughout (matching
+    this file's original intent -- OPTIONS mirrors the real `_shot_zone_options()` menu a live-
+    dribble PULL_UP reaches from a MIDRANGE ball zone) and their expected probabilities are
+    recomputed to include `PULLUP_THREE_BASELINE_LOG_WEIGHT` (0.2)."""
+
     def test_top_level_environment_bias_moves_three_probability(self):
         neutral = shot_zone_probabilities(
-            OPTIONS, TendencyContext(), ShotFamilySelectionContext(0.0),
+            ActionType.PULL_UP, OPTIONS, TendencyContext(), ShotFamilySelectionContext(0.0),
         )[0]
         calibrated = shot_zone_probabilities(
-            OPTIONS, TendencyContext(), ShotFamilySelectionContext(-0.2),
+            ActionType.PULL_UP, OPTIONS, TendencyContext(), ShotFamilySelectionContext(-0.2),
         )[0]
-        self.assertEqual(neutral, 0.5)
+        self.assertAlmostEqual(neutral, 1.0 / (1.0 + math.exp(-0.2)))  # PULLUP_THREE_BASELINE_LOG_WEIGHT=0.2
         self.assertLess(calibrated, neutral)
 
     def test_player_three_point_preference_is_monotonic(self):
         probabilities = [
             shot_zone_probabilities(
-                OPTIONS, TendencyContext(three_point_preference=value),
+                ActionType.PULL_UP, OPTIONS, TendencyContext(three_point_preference=value),
                 ShotFamilySelectionContext(-0.2),
             )[0]
             for value in (-1.0, 0.0, 1.0)
@@ -44,29 +52,41 @@ class TestShotMixCalibration(unittest.TestCase):
         self.assertLess(probabilities[0], probabilities[1])
         self.assertLess(probabilities[1], probabilities[2])
 
-    def test_ability_and_midrange_subfamily_tendency_do_not_enter_top_level_choice(self):
+    def test_ability_does_not_enter_top_level_choice(self):
+        """`three_point_shrunk_rate`/`midrange_shrunk_rate` (execution-layer ABILITY) must NEVER
+        change shot-FAMILY selection -- unchanged invariant from before this phase."""
         low_ability = PlayerSimulationProfile.synthetic(
             "1", "A", three_point_shrunk_rate=0.10, midrange_shrunk_rate=0.90,
         )
         high_ability = PlayerSimulationProfile.synthetic(
             "1", "A", three_point_shrunk_rate=0.90, midrange_shrunk_rate=0.10,
         )
-        context = ShotFamilySelectionContext(-0.2)
         family_source = inspect.getsource(shot_zone_probabilities)
         self.assertNotIn("three_point_shrunk_rate", family_source)
         self.assertNotIn("midrange_shrunk_rate", family_source)
         self.assertNotEqual(low_ability.three_point_shrunk_rate, high_ability.three_point_shrunk_rate)
-        self.assertEqual(
-            shot_zone_probabilities(OPTIONS, TendencyContext(midrange_preference=-2.0), context),
-            shot_zone_probabilities(OPTIONS, TendencyContext(midrange_preference=2.0), context),
-        )
+
+    def test_midrange_preference_now_enters_the_eligible_top_level_choice(self):
+        """ACTIVATED this phase: `midrange_preference` (a real shot-selection TENDENCY, not
+        ability) now measurably shifts the PULL_UP/CATCH_AND_SHOOT family choice -- reversing the
+        OLD invariant this test used to assert (`shot_zone_probabilities` used to hardcode
+        "deliberately excluded"; see that function's own docstring for the full history). Still
+        never reads any `*_shrunk_rate` field (see `test_ability_does_not_enter_top_level_choice`
+        above) -- it is a real, live TENDENCY read, not an ability leak."""
+        context = ShotFamilySelectionContext(-0.2)
+        low_mid = shot_zone_probabilities(ActionType.PULL_UP, OPTIONS,
+                                           TendencyContext(midrange_preference=-2.0), context)
+        high_mid = shot_zone_probabilities(ActionType.PULL_UP, OPTIONS,
+                                            TendencyContext(midrange_preference=2.0), context)
+        self.assertNotEqual(low_mid, high_mid)
+        self.assertGreater(low_mid[0], high_mid[0])  # higher midrange_preference -> LOWER P(three)
 
     def test_neutral_player_uses_environment_baseline(self):
         probability = shot_zone_probabilities(
-            OPTIONS, TendencyContext(three_point_preference=0.0),
+            ActionType.PULL_UP, OPTIONS, TendencyContext(three_point_preference=0.0),
             ShotFamilySelectionContext(-0.2),
         )[0]
-        self.assertAlmostEqual(probability, math.exp(-0.2) / (math.exp(-0.2) + 1.0))
+        self.assertAlmostEqual(probability, math.exp(0.0) / (math.exp(0.0) + 1.0))  # -0.2 (era) + 0.2 (PULL_UP prior) = 0.0
         self.assertEqual(PossessionConfig().three_point_family_log_weight, -0.2)
 
     def test_terminal_family_choice_is_early_mid_late_clock_compatible(self):
@@ -88,8 +108,10 @@ class TestShotMixCalibration(unittest.TestCase):
 
     def test_rim_and_floater_paths_are_outside_family_bias(self):
         context = ShotFamilySelectionContext(-5.0)
-        self.assertEqual(shot_zone_probabilities((SpatialZone.PAINT,), TendencyContext(), context), [1.0])
-        self.assertEqual(shot_zone_probabilities((SpatialZone.RESTRICTED_RIM,), TendencyContext(), context), [1.0])
+        self.assertEqual(shot_zone_probabilities(ActionType.PULL_UP, (SpatialZone.PAINT,),
+                                                  TendencyContext(), context), [1.0])
+        self.assertEqual(shot_zone_probabilities(ActionType.PULL_UP, (SpatialZone.RESTRICTED_RIM,),
+                                                  TendencyContext(), context), [1.0])
         self.assertEqual(family_for_selected_shot(ActionType.PULL_UP.value, "PAINT", "PAINT"), "FLOATER")
         self.assertEqual(family_for_selected_shot(ActionType.PULL_UP.value, "RESTRICTED_RIM", "RESTRICTED_RIM"), "RIM")
 

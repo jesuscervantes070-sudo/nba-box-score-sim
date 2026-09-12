@@ -34,6 +34,10 @@ if TYPE_CHECKING:
     from detailed_game import DetailedGameResult
 
 SHOT_ACTIONS = frozenset({"PULL_UP", "CATCH_AND_SHOOT"})
+# "Model action-specific jump-shot selection" phase -- the "originating context" labels
+# `shot_family_by_originating_context` recognizes as something OTHER than "ORDINARY" (see that
+# field's own docstring).
+_ORIGINATING_CONTEXT_ACTIONS = frozenset({"DRIVE", "TRANSITION_PUSH", "INTERIOR_CUT"})
 
 
 @dataclass
@@ -62,6 +66,15 @@ class OpportunityDiagnostics:
     # ---- I/J/K/L. shot-family selection ----
     shot_family_totals: CounterType[str] = field(default_factory=Counter)
     shot_family_by_origin_action: Dict[str, CounterType[str]] = field(default_factory=lambda: defaultdict(Counter))
+    # "Model action-specific jump-shot selection" phase -- PERMANENT extension: shot family keyed
+    # by the ORIGINATING CONTEXT (the immediately preceding dispatched action in the SAME
+    # possession, if any) rather than by the release action itself (`shot_family_by_origin_action`
+    # above already covers the PULL_UP-vs-CATCH_AND_SHOOT split). Keys: "DRIVE", "TRANSITION_PUSH",
+    # "INTERIOR_CUT", "ORDINARY" (no immediately-preceding action of interest -- the shot was the
+    # possession's first action, or was preceded by an ordinary pass like SWING_PASS/RESET_PASS/
+    # OUTLET_PASS). Answers "where are the remaining MIDRANGE attempts actually coming from?" --
+    # zero RNG, purely a re-read of `world.action_log`'s already-recorded step order.
+    shot_family_by_originating_context: Dict[str, CounterType[str]] = field(default_factory=lambda: defaultdict(Counter))
 
     # ---- N. one-action possessions ----
     one_action_possessions: int = 0
@@ -172,6 +185,9 @@ def diagnose_opportunities(results: Sequence["DetailedGameResult"]) -> Opportuni
                         diag.shot_family_by_origin_action[at][family] += 1
                         if n_actions == 1:
                             diag.one_action_by_shot_family[family] += 1
+                        preceding_type = actions_list[i - 1]["action_type"] if i > 0 else None
+                        origin = preceding_type if preceding_type in _ORIGINATING_CONTEXT_ACTIONS else "ORDINARY"
+                        diag.shot_family_by_originating_context[origin][family] += 1
 
             reason = record.terminal_result.reason
             has_shooting_foul = any(r.get("action") == "SHOOTING_FOUL" for r in world.trace)
@@ -206,5 +222,7 @@ def assert_opportunity_reconciliation(diag: OpportunityDiagnostics) -> None:
         raise AssertionError(f"ending-type counts ({endings_total}) do not sum to total_possessions ({diag.total_possessions})")
     if sum(diag.shot_family_totals.values()) != sum(c.total() for c in diag.shot_family_by_origin_action.values()):
         raise AssertionError("shot_family_totals does not match the sum of shot_family_by_origin_action")
+    if sum(diag.shot_family_totals.values()) != sum(c.total() for c in diag.shot_family_by_originating_context.values()):
+        raise AssertionError("shot_family_totals does not match the sum of shot_family_by_originating_context")
     if diag.one_action_possessions != sum(diag.one_action_by_source.values()):
         raise AssertionError("one_action_by_source does not sum to one_action_possessions")
