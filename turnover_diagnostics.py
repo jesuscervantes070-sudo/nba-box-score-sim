@@ -30,10 +30,10 @@ class TurnoverCategory:
 
 
 PASS_ACTIONS = frozenset({"SWING_PASS", "KICKOUT", "RESET_PASS", "POCKET_PASS", "OUTLET_PASS",
-                           "TRANSITION_PUSH", "INTERIOR_CUT"})  # "Add interior shot-opportunity generation" --
+                           "TRANSITION_PUSH", "INTERIOR_CUT", "INTERIOR_SEAL"})  # "Add interior shot-opportunity generation" --
 # TRANSITION_PUSH now dispatches through the same real _dispatch_pass/resolve_pass machinery as
 # every other pass action, so a turnover on it (e.g. an interception) must classify the same way.
-# INTERIOR_CUT ("Expand interior scoring opportunities" phase) is the same real pass dispatch too.
+# INTERIOR_CUT and INTERIOR_SEAL are the same real pass dispatch too.
 PASS_COMPLETIONS = frozenset({"COMPLETED_CLEAN", "COMPLETED_ADJUSTED"})
 PASS_BAD_OUTCOMES = frozenset({"BAD_PASS_OUT_OF_BOUNDS", "BAD_PASS_TO_DEFENDER"})
 

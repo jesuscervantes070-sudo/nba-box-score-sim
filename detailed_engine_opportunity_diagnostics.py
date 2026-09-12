@@ -37,7 +37,23 @@ SHOT_ACTIONS = frozenset({"PULL_UP", "CATCH_AND_SHOOT"})
 # "Model action-specific jump-shot selection" phase -- the "originating context" labels
 # `shot_family_by_originating_context` recognizes as something OTHER than "ORDINARY" (see that
 # field's own docstring).
-_ORIGINATING_CONTEXT_ACTIONS = frozenset({"DRIVE", "TRANSITION_PUSH", "INTERIOR_CUT"})
+_ORIGINATING_CONTEXT_ACTIONS = frozenset({"DRIVE", "TRANSITION_PUSH", "INTERIOR_CUT", "INTERIOR_SEAL"})
+_INTERIOR_PASS_ORIGINS = frozenset({"TRANSITION_PUSH", "INTERIOR_CUT", "INTERIOR_SEAL"})
+
+
+@dataclass
+class InteriorOriginFunnel:
+    """Zero-RNG audit of one named pass-created interior path."""
+    opportunities_offered: int = 0
+    selected: int = 0
+    pass_attempts: int = 0
+    successful_passes: int = 0
+    turnovers: int = 0
+    rim_shots: int = 0
+    floater_shots: int = 0
+    midrange_shots: int = 0
+    three_shots: int = 0
+    fouls: int = 0
 
 
 @dataclass
@@ -55,6 +71,9 @@ class OpportunityDiagnostics:
     # ---- E. opportunity -> action funnel ----
     objective_opportunities_by_action: CounterType[str] = field(default_factory=Counter)
     selected_actions_by_type: CounterType[str] = field(default_factory=Counter)
+    interior_origin_funnels: Dict[str, InteriorOriginFunnel] = field(
+        default_factory=lambda: defaultdict(InteriorOriginFunnel)
+    )
 
     # ---- G. drive funnel ----
     drives_selected: int = 0
@@ -152,11 +171,39 @@ def diagnose_opportunities(results: Sequence["DetailedGameResult"]) -> Opportuni
             for decision in world.decision_log:
                 for opp in decision.get("objective_opportunities", ()):
                     diag.objective_opportunities_by_action[opp["action_type"]] += 1
+                    if opp["action_type"] in _INTERIOR_PASS_ORIGINS:
+                        diag.interior_origin_funnels[opp["action_type"]].opportunities_offered += 1
 
             actions_list = world.action_log
             for i, action in enumerate(actions_list):
                 at = action["action_type"]
                 diag.selected_actions_by_type[at] += 1
+
+                if at in _INTERIOR_PASS_ORIGINS:
+                    funnel = diag.interior_origin_funnels[at]
+                    funnel.selected += 1
+                    funnel.pass_attempts += 1
+                    rows = [r for r in world.trace if r.get("step") == action["step"]]
+                    pass_row = next((r for r in rows if r.get("action") == at), None)
+                    outcome = pass_row.get("outcome") if pass_row is not None else None
+                    if outcome in ("COMPLETED_CLEAN", "COMPLETED_ADJUSTED"):
+                        funnel.successful_passes += 1
+                    elif outcome in ("CLEAN_INTERCEPTION", "BAD_PASS_OUT_OF_BOUNDS", "BAD_PASS_TO_DEFENDER"):
+                        funnel.turnovers += 1
+                    if i + 1 < len(actions_list) and actions_list[i + 1]["action_type"] in SHOT_ACTIONS:
+                        nxt = actions_list[i + 1]
+                        nxt_rows = [r for r in world.trace if r.get("step") == nxt["step"]]
+                        shot_row, family = _shot_row_and_family(nxt_rows, nxt["action_type"])
+                        if family == "RIM":
+                            funnel.rim_shots += 1
+                        elif family == "FLOATER":
+                            funnel.floater_shots += 1
+                        elif family == "MIDRANGE":
+                            funnel.midrange_shots += 1
+                        elif family == "THREE_POINT":
+                            funnel.three_shots += 1
+                        if shot_row is not None and shot_row.get("action") == "SHOOTING_FOUL":
+                            funnel.fouls += 1
 
                 if at == "DRIVE":
                     diag.drives_selected += 1
@@ -226,3 +273,10 @@ def assert_opportunity_reconciliation(diag: OpportunityDiagnostics) -> None:
         raise AssertionError("shot_family_totals does not match the sum of shot_family_by_originating_context")
     if diag.one_action_possessions != sum(diag.one_action_by_source.values()):
         raise AssertionError("one_action_by_source does not sum to one_action_possessions")
+    for origin, funnel in diag.interior_origin_funnels.items():
+        if funnel.selected != funnel.pass_attempts:
+            raise AssertionError(f"{origin} selected/pass-attempt counts do not reconcile")
+        if funnel.selected != diag.selected_actions_by_type[origin]:
+            raise AssertionError(f"{origin} funnel selection does not match selected-actions total")
+        if funnel.opportunities_offered != diag.objective_opportunities_by_action[origin]:
+            raise AssertionError(f"{origin} funnel opportunities do not match objective total")

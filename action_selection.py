@@ -158,7 +158,8 @@ DRIVE_FOLLOWUP_LOG_WEIGHT: Dict[str, float] = {
 def _score_action(action_type: ActionType, role: RoleContext, tendency: TendencyContext,
                    drive_selection_log_weight: float = 0.0,
                    post_drive_outcome: Optional[str] = None,
-                   interior_cut_selection_log_weight: float = 0.0) -> float:
+                   interior_cut_selection_log_weight: float = 0.0,
+                   interior_seal_selection_log_weight: float = 0.0) -> float:
     """One action's additive log-weight score -- every term below is
     independent and bounded; none is multiplied by another.
 
@@ -190,6 +191,10 @@ def _score_action(action_type: ActionType, role: RoleContext, tendency: Tendency
         # MIDRANGE well above this task's own <20% target while THREE/pace/FGA all stayed healthy
         # at higher settings -- so this is CALIBRATED, not merely defaulted to 0.
         score += interior_cut_selection_log_weight
+    if action_type == ActionType.INTERIOR_SEAL:
+        # Environment-level action prior. Player identity remains in the existing role/tendency
+        # terms below; finishing ability is intentionally absent until shot resolution.
+        score += interior_seal_selection_log_weight
 
     if post_drive_outcome is not None:
         bias = DRIVE_FOLLOWUP_LOG_WEIGHT.get(post_drive_outcome, 0.0)
@@ -412,7 +417,8 @@ class SelectionPolicy:
                shot_family_context: Optional[ShotFamilySelectionContext] = None,
                drive_selection_log_weight: float = 0.0,
                post_drive_outcome: Optional[str] = None,
-               interior_cut_selection_log_weight: float = 0.0) -> Optional[ActionIntent]:
+               interior_cut_selection_log_weight: float = 0.0,
+               interior_seal_selection_log_weight: float = 0.0) -> Optional[ActionIntent]:
         """Returns None only when the perceived menu is genuinely empty
         after clock-feasibility filtering (e.g. a LOOSE-ball state with
         no recovery opportunities, or every remaining option infeasible)
@@ -422,7 +428,8 @@ class SelectionPolicy:
             return None
 
         scores = [_score_action(p.opportunity.action_type, role, tendency, drive_selection_log_weight,
-                                 post_drive_outcome, interior_cut_selection_log_weight)
+                                 post_drive_outcome, interior_cut_selection_log_weight,
+                                 interior_seal_selection_log_weight)
                   for p in feasible]
         probabilities = _softmax(scores)
         chosen_index = _weighted_choice(self.rng, probabilities)

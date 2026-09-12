@@ -110,14 +110,15 @@ class TestTurnoverAccountingReconciliation(unittest.TestCase):
         # Top-level family choice changes continuation/flip state and therefore
         # the later deterministic RNG trajectory; these pin the first shot-mix
         # baseline without changing turnover logic.
-        # Re-pinned for "Expand halfcourt interior creation" -- see
+        # Re-pinned for "Add pass-created interior seal" -- the new named pass path intentionally
+        # changes continuation/turnover trajectories without changing accounting semantics. See
         # test_turnover_diagnostics.py's own identical re-pin comment for the full rationale.
         # (Previously re-pinned for "Model action-specific jump-shot selection", "Activate
         # empirical foul occurrence", "Calibrate drive follow-up decisions", "Expand interior
         # scoring opportunities", "Add interior shot-opportunity generation", "Calibrate
         # source-conditioned transition routing", and "Fix missed and-one rebound continuation".)
-        self.assertEqual(team_total, 4018)
-        self.assertEqual(player_total, 3655)
+        self.assertEqual(team_total, 3816)
+        self.assertEqual(player_total, 3462)
 
     def test_basketball_output_digest_matches_first_shot_mix_baseline(self):
         payload = []
@@ -150,14 +151,14 @@ class TestTurnoverAccountingReconciliation(unittest.TestCase):
                             "ot": result.overtime_periods, "rows": rows})
         digest = hashlib.sha256(json.dumps(payload, sort_keys=True,
                                            separators=(",", ":")).encode()).hexdigest()
-        # Re-pinned for "Expand halfcourt interior creation" -- see
+        # Re-pinned for "Add pass-created interior seal" -- see
         # test_benchmark_uses_team_turnovers_and_preserves_player_total's own comment above for why
         # this baseline moved. (Previously re-pinned for "Model action-specific jump-shot
         # selection", "Activate empirical foul occurrence", "Calibrate drive follow-up decisions",
         # "Expand interior scoring opportunities", "Add interior shot-opportunity generation",
         # "Calibrate source-conditioned transition routing", "Model drive floor fouls as observable
         # outcomes", and "Fix missed and-one rebound continuation".)
-        self.assertEqual(digest, "2b58c014fe09f9f1d3a19b6e691e8117899e4349f1a4eac3a5949d988c3868a8")
+        self.assertEqual(digest, "b997a7bf306f8af85aee1a8787e85b9b70009f12a863f2b075f2e449be190103")
 
 
 if __name__ == "__main__":

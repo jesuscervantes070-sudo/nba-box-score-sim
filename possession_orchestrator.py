@@ -68,7 +68,8 @@ phases already built and tested.
 
 ============================ SUPPORTED VS. CAPABILITY-GATED ACTIONS ============================
 `SUPPORTED_ACTION_TYPES` = DRIVE, PULL_UP, CATCH_AND_SHOOT, SWING_PASS,
-KICKOUT, RESET_PASS, POCKET_PASS -- every action family with a coherent,
+KICKOUT, RESET_PASS, POCKET_PASS, TRANSITION_PUSH, INTERIOR_CUT,
+INTERIOR_SEAL -- every action family with a coherent,
 already-built resolver this module can route into without inventing new
 mechanics. `CAPABILITY_GATED_ACTION_TYPES` = ISOLATION_ATTACK,
 CLOSEOUT_ATTACK, TRANSITION_PUSH, OUTLET_PASS, RECOVER_LOOSE_BALL -- NONE
@@ -181,6 +182,7 @@ SUPPORTED_ACTION_TYPES = frozenset({
     # "Expand interior scoring opportunities" phase -- INTERIOR_CUT dispatches as a real pass too
     # (same PASS_ACTIONS branch, same reuse posture as TRANSITION_PUSH above).
     ActionType.INTERIOR_CUT,
+    ActionType.INTERIOR_SEAL,
 })
 CAPABILITY_GATED_ACTION_TYPES = frozenset({
     ActionType.ISOLATION_ATTACK, ActionType.CLOSEOUT_ATTACK,
@@ -675,6 +677,7 @@ class PossessionWorld:
     profiles: Dict[str, PlayerSimulationProfile]
     player_zones: Dict[str, SpatialZone] = field(default_factory=dict)
     just_caught_pass_player_id: Optional[str] = None
+    interior_seal_enabled: bool = True
     loose_ball_favored_team_id: Optional[str] = None
     foul_state: FoulAdministrationState = field(default_factory=FoulAdministrationState)
     stats: StatDeltas = field(default_factory=StatDeltas)
@@ -863,12 +866,31 @@ def build_structural_context(engine: PossessionEngine, world: PossessionWorld) -
     nearest_id = _nearest_teammate_id(engine, world, carrier) if carrier else None
     nearest_finishing_role = (world.profiles[nearest_id].role_off_finishing
                                if nearest_id is not None and nearest_id in world.profiles else None)
+    # Best eligible seal target among teammates already deployed in the coarse MIDRANGE/high-post
+    # slot, using existing finishing deployment role and a deterministic lineup-order tie-break.
+    # Missing role evidence is excluded, never converted to zero or league average.
+    seal_candidates = [
+        pid for pid in teammates
+        if world.player_zones.get(pid) == SpatialZone.MIDRANGE
+        and world.profiles.get(pid) is not None
+        and world.profiles[pid].role_off_finishing is not None
+    ]
+    seal_receiver_id = max(
+        seal_candidates,
+        key=lambda pid: (world.profiles[pid].role_off_finishing, -teammates.index(pid)),
+        default=None,
+    )
     return StructuralContext(
         teammate_ids=list(teammates), perimeter_receiver_ids=perimeter_receivers,
         roller_id=None, screen_active=False,
         nearest_teammate_id=nearest_id,
         nearest_teammate_zone=world.player_zones.get(nearest_id) if nearest_id else None,
         nearest_teammate_finishing_role=nearest_finishing_role,
+        interior_seal_receiver_id=seal_receiver_id,
+        interior_seal_receiver_finishing_role=(
+            world.profiles[seal_receiver_id].role_off_finishing if seal_receiver_id is not None else None
+        ),
+        interior_seal_enabled=world.interior_seal_enabled,
         just_caught_pass=just_caught, ball_handler_defender_id=defender_id,
     )
 
@@ -1033,6 +1055,12 @@ class PossessionConfig:
     # guardrails reject. 0.0 would be byte-for-byte the pre-this-phase behavior (the new opportunity
     # would still exist and be offered, but would only win its BASE_WEIGHT-parity ~13% share).
     interior_cut_selection_log_weight: float = 0.7
+    # Pass-created interior-seal action prior. A small TRAIN-only grid (-1.6/-1.2/-0.8/-0.4)
+    # selected -1.2: it was the strongest value that preserved the 38% THREE floor on both
+    # TRAIN 25000-25049 and HELDOUT 25050-25099. This is an environment-level action prior,
+    # not a player tendency or finishing-ability term.
+    interior_seal_selection_log_weight: float = -1.2
+    interior_seal_enabled: bool = True
     # ------------------------------------------------------------------
     # Structural Timing Hook -- see docs/DETAILED_ENGINE_FIRST_DIAGNOSTIC_REPORT.md's
     # own "Structural Timing Hook" section. These three fields are the ONLY place LIVE
@@ -1075,6 +1103,9 @@ class PossessionConfig:
     # than a defense still getting back in transition) -- set slightly below the transition value.
     # PROVISIONAL V1, NOT fit to final shot-family totals.
     interior_cut_rim_probability: float = 0.55
+    # A set-defense seal is more likely to receive in the paint than directly under the rim.
+    # Structural V1 split only; both destinations remain reachable and shot choice stays downstream.
+    interior_seal_rim_probability: float = 0.40
     # ACTIVATED ("Calibrate source-conditioned transition routing" phase). Real, first-pass value
     # -- NOT a target-fit, NOT a midpoint of `transition_entry_seconds`/`ordinary_entry_seconds`:
     # derived directly from `transition_rate_ingestion.py`'s real 2025-26 extraction, specifically
@@ -2163,13 +2194,15 @@ def _loose_ball_continuation_or_terminal(engine: PossessionEngine, world: Posses
 # ---------------------------------------------------------------------
 def _resolve_interior_pass_destination(action_type: ActionType, config: PossessionConfig,
                                         rng: random.Random) -> SpatialZone:
-    """"Expand interior scoring opportunities" phase: TRANSITION_PUSH/INTERIOR_CUT no longer
+    """Resolve the real two-zone destination for an interior-creation pass.
+
+    TRANSITION_PUSH/INTERIOR_CUT/INTERIOR_SEAL do not
     hardcode their landing zone to RESTRICTED_RIM at opportunity-generation time --
     `action_opportunity.py` still stamps a placeholder `target_zone` on the `ObjectiveOpportunity`
-    it emits (RESTRICTED_RIM for TRANSITION_PUSH, PAINT for INTERIOR_CUT -- see that module), but
+    they emit (RESTRICTED_RIM for TRANSITION_PUSH, PAINT for the halfcourt actions), but
     the REAL destination is rolled here, once, at dispatch time, from `rng` (the SAME
     possession-seeded `random.Random` every other dispatch decision already consumes) against a
-    centralized, labeled `PossessionConfig` probability. This is the ONE place either action's
+    centralized, labeled `PossessionConfig` probability. This is the ONE place each action's
     destination is decided -- `_dispatch_pass` itself is untouched and still just reads whatever
     `target_zone` it is handed. Deterministic under a fixed seed (same rng stream position ->
     same destination), consumes exactly one `rng.random()` call, and never touches any other
@@ -2178,12 +2211,16 @@ def _resolve_interior_pass_destination(action_type: ActionType, config: Possessi
         rim_probability = config.transition_push_rim_probability
     elif action_type == ActionType.INTERIOR_CUT:
         rim_probability = config.interior_cut_rim_probability
+    elif action_type == ActionType.INTERIOR_SEAL:
+        rim_probability = config.interior_seal_rim_probability
     else:
         raise UnsupportedActionError(f"_resolve_interior_pass_destination has no split defined for {action_type}")
     return SpatialZone.RESTRICTED_RIM if rng.random() < rim_probability else SpatialZone.PAINT
 
 
-_INTERIOR_DESTINATION_ACTIONS = frozenset({ActionType.TRANSITION_PUSH, ActionType.INTERIOR_CUT})
+_INTERIOR_DESTINATION_ACTIONS = frozenset({
+    ActionType.TRANSITION_PUSH, ActionType.INTERIOR_CUT, ActionType.INTERIOR_SEAL,
+})
 
 
 def dispatch_action(engine: PossessionEngine, world: PossessionWorld, intent: ActionIntent,
@@ -2248,7 +2285,8 @@ def simulate_possession(
 
     world = PossessionWorld(team_a_id=offense_team_id, team_b_id=defense_team_id,
                              team_a_five=tuple(offensive_five), team_b_five=tuple(defensive_five),
-                             profiles=dict(profiles), foul_state=foul_state or FoulAdministrationState())
+                             profiles=dict(profiles), foul_state=foul_state or FoulAdministrationState(),
+                             interior_seal_enabled=config.interior_seal_enabled)
 
     engine.inbound(inbound_receiver_id, config.initial_ball_zone, config.initial_phase)
     zones = initial_player_zones if initial_player_zones is not None else \
@@ -2349,7 +2387,8 @@ def simulate_possession(
                                 ShotFamilySelectionContext(config.three_point_family_log_weight),
                                 drive_selection_log_weight=config.drive_selection_log_weight,
                                 post_drive_outcome=pending_drive_outcome,
-                                interior_cut_selection_log_weight=config.interior_cut_selection_log_weight)
+                                interior_cut_selection_log_weight=config.interior_cut_selection_log_weight,
+                                interior_seal_selection_log_weight=config.interior_seal_selection_log_weight)
         # consumed for exactly this ONE decision, regardless of what gets selected next --
         # re-armed below only if THIS iteration's own dispatched action is itself a DRIVE.
         pending_drive_outcome = None

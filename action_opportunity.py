@@ -75,6 +75,9 @@ class StructuralContext:
     # existing signal chosen (a player whose makes are disproportionately assisted is, structurally,
     # a real finisher who scores mostly off catches/cuts rather than self-created offense).
     nearest_teammate_finishing_role: Optional[float] = None
+    interior_seal_receiver_id: Optional[str] = None
+    interior_seal_receiver_finishing_role: Optional[float] = None
+    interior_seal_enabled: bool = True
 
 
 def generate_opportunities(state: PossessionState, context: StructuralContext,
@@ -142,14 +145,28 @@ def generate_opportunities(state: PossessionState, context: StructuralContext,
             opportunities.append(ObjectiveOpportunity(_next_id(ActionType.CLOSEOUT_ATTACK), ActionType.CLOSEOUT_ATTACK,
                                                         carrier, source=f"defender_posture:{defender.posture.value}"))
 
-    # Passing menu -- always includes an obvious, low-perception-cost swing/reset when a teammate exists
+    interior_seal_available = (
+        context.interior_seal_enabled
+        and state.phase == PossessionPhase.HALFCOURT
+        and control == DribbleState.LIVE_DRIBBLE
+        and state.ball_zone in (PERIMETER_ZONES | MIDRANGE_ZONES)
+        and context.interior_seal_receiver_id is not None
+        and context.interior_seal_receiver_finishing_role is not None
+        and context.interior_seal_receiver_finishing_role >= FINISHING_ROLE_REFERENCE
+    )
+
+    # Passing menu -- always includes an obvious, low-perception-cost swing. Once an eligible
+    # high-post teammate has established a seal, INTERIOR_SEAL replaces (rather than adds to)
+    # RESET_PASS for that decision. This preserves the existing menu cardinality and does not
+    # dilute shot/drive selection merely because another named opportunity exists.
     if context.nearest_teammate_id is not None:
         opportunities.append(ObjectiveOpportunity(_next_id(ActionType.SWING_PASS), ActionType.SWING_PASS,
                                                     carrier, target_player_id=context.nearest_teammate_id,
                                                     target_zone=context.nearest_teammate_zone, source="nearest_teammate"))
-        opportunities.append(ObjectiveOpportunity(_next_id(ActionType.RESET_PASS), ActionType.RESET_PASS,
-                                                    carrier, target_player_id=context.nearest_teammate_id,
-                                                    target_zone=context.nearest_teammate_zone, source="safety_valve"))
+        if not interior_seal_available:
+            opportunities.append(ObjectiveOpportunity(_next_id(ActionType.RESET_PASS), ActionType.RESET_PASS,
+                                                        carrier, target_player_id=context.nearest_teammate_id,
+                                                        target_zone=context.nearest_teammate_zone, source="safety_valve"))
 
     # Kickout: requires BOTH a viable perimeter receiver AND an objective compromised interior area (advantage interface) --
     # multiple compromised areas can each independently license a kickout to a DIFFERENT receiver, not just one global check.
@@ -287,6 +304,18 @@ def generate_opportunities(state: PossessionState, context: StructuralContext,
             _next_id(ActionType.INTERIOR_CUT), ActionType.INTERIOR_CUT, carrier,
             target_player_id=context.nearest_teammate_id, target_zone=SpatialZone.PAINT,
             source="ordinary_halfcourt_finishing_role",
+        ))
+
+    # Interior seal: a SECOND, independent non-drive halfcourt creation mechanism. The
+    # orchestrator identifies a real off-ball teammate already deployed at the current coarse
+    # MIDRANGE/high-post slot whose existing Phase-13 finishing role clears the shared reference.
+    # This is not INTERIOR_CUT: no cutter, previous drive, defender-posture mutation, screen/roller
+    # state, post ability, or generic-jumper conversion is involved.
+    if interior_seal_available:
+        opportunities.append(ObjectiveOpportunity(
+            _next_id(ActionType.INTERIOR_SEAL), ActionType.INTERIOR_SEAL, carrier,
+            target_player_id=context.interior_seal_receiver_id, target_zone=SpatialZone.PAINT,
+            source="midrange_deployment_seal",
         ))
 
     return opportunities
