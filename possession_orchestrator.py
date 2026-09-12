@@ -849,6 +849,10 @@ def build_structural_context(engine: PossessionEngine, world: PossessionWorld) -
                                      caller-triggered; V0 never fabricates a live screen (per explicit instruction)
       nearest_teammate_id     -> _nearest_teammate_id (coarse zone topology, see above)
       nearest_teammate_zone   -> that same teammate's existing world.player_zones location
+      nearest_teammate_finishing_role -> that same teammate's own real, already-existing
+                                     `PlayerSimulationProfile.role_off_finishing` ("Expand halfcourt
+                                     interior creation" phase) -- a genuine per-player Phase 13 KEEP
+                                     signal, read for a TEAMMATE (not the carrier) for the first time.
     """
     carrier = engine.state.ball_carrier
     teammates = tuple(p for p in world.offense_five(engine) if p != carrier)
@@ -857,11 +861,14 @@ def build_structural_context(engine: PossessionEngine, world: PossessionWorld) -
     defender_id = _primary_defender(engine, carrier) if carrier else None
     just_caught = world.just_caught_pass_player_id == carrier
     nearest_id = _nearest_teammate_id(engine, world, carrier) if carrier else None
+    nearest_finishing_role = (world.profiles[nearest_id].role_off_finishing
+                               if nearest_id is not None and nearest_id in world.profiles else None)
     return StructuralContext(
         teammate_ids=list(teammates), perimeter_receiver_ids=perimeter_receivers,
         roller_id=None, screen_active=False,
         nearest_teammate_id=nearest_id,
         nearest_teammate_zone=world.player_zones.get(nearest_id) if nearest_id else None,
+        nearest_teammate_finishing_role=nearest_finishing_role,
         just_caught_pass=just_caught, ball_handler_defender_id=defender_id,
     )
 
@@ -1008,6 +1015,24 @@ class PossessionConfig:
     # phase's own scope excludes ("do NOT globally alter possession timing"). 0.0 is byte-for-byte
     # the prior behavior (this term literally does not fire).
     drive_selection_log_weight: float = 0.2
+    # ACTIVATED ("Expand halfcourt interior creation" phase) -- see `action_selection._score_action`'s
+    # own docstring for the full rationale. CALIBRATED (TRAIN seeds 25000-25049, validated HELDOUT
+    # 25050-25099) jointly with the new ORDINARY-halfcourt INTERIOR_CUT opportunity gate
+    # (`action_opportunity.py`). HONEST FINDING: this lever is a PASS_ACTIONS member competing in
+    # the SAME softmax as CATCH_AND_SHOOT/PULL_UP -- pushing it past ~1.0-1.5 measurably drags
+    # THREE share below this task's own 38% floor and pace/FGA below their own floors on the
+    # HELDOUT half specifically (even though TRAIN alone tolerated higher values -- e.g. w=1.4
+    # looked fine on TRAIN, 38.0% THREE/96.8 pace/86.0 FGA, but HELDOUT at the same w dropped to
+    # 36.5% THREE/95.3 pace/85.3 FGA). 0.7 is the largest value that stays within this task's
+    # stated bands on BOTH halves (TRAIN: MIDRANGE 41.4%/THREE 39.1%/pace 97.3/FGA 87.3; HELDOUT:
+    # MIDRANGE 41.8%/THREE 38.4%/pace 96.5/FGA 87.2) -- interior (RIM+FLOATER) share rises from the
+    # prior phase's ~15% to ~19.5-19.8%, a real, guardrail-respecting partial improvement, NOT the
+    # full <20% MIDRANGE / 35-40% interior target this task describes as the strong-result bar.
+    # Closing the remainder needs either a second real halfcourt interior-creation signal beyond a
+    # single teammate's finishing role, or accepting a pace/THREE trade-off this task's own
+    # guardrails reject. 0.0 would be byte-for-byte the pre-this-phase behavior (the new opportunity
+    # would still exist and be offered, but would only win its BASE_WEIGHT-parity ~13% share).
+    interior_cut_selection_log_weight: float = 0.7
     # ------------------------------------------------------------------
     # Structural Timing Hook -- see docs/DETAILED_ENGINE_FIRST_DIAGNOSTIC_REPORT.md's
     # own "Structural Timing Hook" section. These three fields are the ONLY place LIVE
@@ -2323,7 +2348,8 @@ def simulate_possession(
                                 clock_ctx, engine.state.possession_id,
                                 ShotFamilySelectionContext(config.three_point_family_log_weight),
                                 drive_selection_log_weight=config.drive_selection_log_weight,
-                                post_drive_outcome=pending_drive_outcome)
+                                post_drive_outcome=pending_drive_outcome,
+                                interior_cut_selection_log_weight=config.interior_cut_selection_log_weight)
         # consumed for exactly this ONE decision, regardless of what gets selected next --
         # re-armed below only if THIS iteration's own dispatched action is itself a DRIVE.
         pending_drive_outcome = None

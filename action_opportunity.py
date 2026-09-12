@@ -28,6 +28,11 @@ PERIMETER_ZONES = frozenset({SpatialZone.TOP_OF_KEY, SpatialZone.LEFT_WING, Spat
                               SpatialZone.LEFT_CORNER, SpatialZone.RIGHT_CORNER})
 MIDRANGE_ZONES = frozenset({SpatialZone.MIDRANGE})
 INTERIOR_ZONES = frozenset({SpatialZone.PAINT, SpatialZone.RESTRICTED_RIM})
+# "Expand halfcourt interior creation" phase -- the SAME centering reference
+# `action_selection.ROLE_FINISHING_WEIGHT` already applies to `role_off_finishing` (`- 0.5`),
+# reused here verbatim rather than inventing a second, independent threshold for the identical
+# real [0,1] PCT_AST_FGM share.
+FINISHING_ROLE_REFERENCE = 0.5
 
 
 @dataclass(frozen=True)
@@ -62,6 +67,14 @@ class StructuralContext:
     nearest_teammate_zone: Optional[SpatialZone] = None  # receiver's actual coarse location; None preserves caller compatibility
     just_caught_pass: bool = False             # True only on the frame immediately after a reception -- gates CATCH_AND_SHOOT/CLOSEOUT_ATTACK
     ball_handler_defender_id: Optional[str] = None  # the real defender currently assigned to the ball handler, if known
+    # "Expand halfcourt interior creation" phase -- the nearest teammate's real, already-existing
+    # Phase 13 KEEP `role_off_finishing` value (PCT_AST_FGM share, [0,1], real per-player season
+    # signal -- NOT invented for this phase, already read elsewhere in `action_selection.py`'s own
+    # TERMINAL_ACTIONS term). Reused here, for the FIRST time, for a TEAMMATE rather than the ball
+    # carrier -- see `ActionType.INTERIOR_CUT`'s own docstring for why this is the legitimate,
+    # existing signal chosen (a player whose makes are disproportionately assisted is, structurally,
+    # a real finisher who scores mostly off catches/cuts rather than self-created offense).
+    nearest_teammate_finishing_role: Optional[float] = None
 
 
 def generate_opportunities(state: PossessionState, context: StructuralContext,
@@ -218,5 +231,62 @@ def generate_opportunities(state: PossessionState, context: StructuralContext,
                 target_player_id=context.nearest_teammate_id, target_zone=SpatialZone.PAINT,
                 source=f"on_ball_defender_posture:{on_ball_defender.posture.value}",
             ))
+
+    # Interior cut, ORDINARY-HALFCOURT variant ("Expand halfcourt interior creation" phase):
+    # AUDIT FINDING that motivated this addition -- the drive-derived gate above makes
+    # INTERIOR_CUT "effectively another DRIVE-derived interior mechanism" (this task's own
+    # framing, confirmed by direct measurement): it requires a CLEAN_PENETRATION/PARTIAL_EDGE
+    # drive to have JUST happened, and the very decision where it becomes available is the SAME
+    # decision `action_selection.DRIVE_FOLLOWUP_LOG_WEIGHT` (a SEPARATE, frozen-this-phase
+    # mechanism) heavily biases toward a SHOT and heavily AWAY from any PASS_ACTIONS member --
+    # INTERIOR_CUT included. Measured directly: 621 objective opportunities but only 10 selections
+    # across 100 canonical games (1.6%), almost entirely explained by that same-decision collision.
+    # Real basketball also creates a cut/interior catch WITHOUT a preceding drive at all (ordinary
+    # off-ball movement, overplay, weak-side cuts, ball-watching help) -- V1 does not model
+    # continuous player movement/defender attention, but it can use a real, ALREADY-EXISTING,
+    # non-drive structural signal instead of fabricating one: `context.nearest_teammate_finishing_role`
+    # (Phase 13 KEEP `role_off_finishing`, real PCT_AST_FGM share) read for the nearest teammate. A
+    # teammate whose own scoring is disproportionately ASSISTED is, structurally, a real finisher
+    # who scores mostly off catches/cuts rather than self-creation -- exactly the real-world profile
+    # of a player a halfcourt offense would actually try to get an interior catch for, independent
+    # of whether the ball handler has drawn help via a drive. `FINISHING_ROLE_REFERENCE` (0.5) is
+    # NOT a new arbitrary threshold -- it is the SAME centering reference
+    # `action_selection.ROLE_FINISHING_WEIGHT` already uses (`role_off_finishing - 0.5`), reused
+    # here rather than invented. Gated on `control == LIVE_DRIBBLE` (the SAME live-dribble
+    # precondition DRIVE/ISOLATION_ATTACK/PULL_UP already require above) so this is a genuine,
+    # already-legitimate HALFCOURT ball-handling context, not a fabricated new state -- and
+    # crucially, this decision has NO active `post_drive_outcome` bias (nothing drove to create
+    # it), so INTERIOR_CUT competes fairly here instead of being crushed by a same-decision
+    # collision with an unrelated, frozen mechanism.
+    #
+    # THRESHOLD, DELIBERATELY `>=` NOT `>`: a league-AVERAGE finisher (`role_off_finishing == 0.5`,
+    # the exact real synthetic-profile default `PlayerSimulationProfile.synthetic` uses, and a real
+    # league-average value for an actual roster) is still a legitimate, ordinary target for an
+    # interior catch -- only a teammate who is BELOW-average as a finisher (a real, meaningful
+    # exclusion for an actual varied roster) makes this context "unavailable" (see test C: "remains
+    # unavailable in impossible contexts"). Using `>` instead would silently make this entire
+    # mechanism unreachable for every synthetic/benchmark profile (all exactly 0.5) without
+    # representing any real basketball distinction at this coarse a signal.
+    # Deliberately EXCLUDES a `context.just_caught_pass` decision ONLY when the catch occurred in a
+    # PERIMETER zone -- that specific frame is the SAME one CATCH_AND_SHOOT's own real three-point
+    # look is gated on, and letting INTERIOR_CUT compete there was measured to cannibalize
+    # CATCH_AND_SHOOT's three-point volume (pushing overall THREE share below this task's own 38%
+    # floor) far more than it should. A catch in the MIDRANGE zone (or a live-dribble decision after
+    # any catch) is a DIFFERENT real context -- CATCH_AND_SHOOT's own menu there is already
+    # {TOP_OF_KEY, MIDRANGE} (a real three is still reachable, just not the dominant option), so a
+    # cut opportunity competing there draws disproportionately from what would otherwise become a
+    # MIDRANGE catch-and-shoot, not from a genuine three -- the correct, realistic competition this
+    # mechanism should draw volume from (PULL_UP's own shot mix skews the same way).
+    just_caught_from_perimeter = context.just_caught_pass and state.ball_zone in PERIMETER_ZONES
+    if (state.phase == PossessionPhase.HALFCOURT and control == DribbleState.LIVE_DRIBBLE
+            and not just_caught_from_perimeter
+            and context.nearest_teammate_id is not None
+            and context.nearest_teammate_finishing_role is not None
+            and context.nearest_teammate_finishing_role >= FINISHING_ROLE_REFERENCE):
+        opportunities.append(ObjectiveOpportunity(
+            _next_id(ActionType.INTERIOR_CUT), ActionType.INTERIOR_CUT, carrier,
+            target_player_id=context.nearest_teammate_id, target_zone=SpatialZone.PAINT,
+            source="ordinary_halfcourt_finishing_role",
+        ))
 
     return opportunities

@@ -33,18 +33,18 @@ class TestTurnoverDiagnosis(unittest.TestCase):
 
     def test_engine_accounting_is_exactly_once_and_shot_clock_is_explicitly_separate(self):
         assert_turnover_reconciliation(self.diagnosis)
-        # Re-pinned for "Model action-specific jump-shot selection": CATCH_AND_SHOOT/PULL_UP's
-        # zone-choice weights moved (see action_selection.py's own CATCH_AND_SHOOT_THREE_BASELINE_LOG_WEIGHT/
-        # PULLUP_THREE_BASELINE_LOG_WEIGHT/MIDRANGE_PREFERENCE_WEIGHT/late-clock terms) -- this
-        # intentionally shifts the later RNG trajectory (a different shot family selected earlier
-        # in a possession changes which RNG draws every subsequent decision consumes) -- not a
-        # turnover-CLASSIFICATION change. (Previously re-pinned for "Activate empirical foul
-        # occurrence", "Calibrate drive follow-up decisions", "Expand interior scoring
-        # opportunities", "Add interior shot-opportunity generation", and "Calibrate
+        # Re-pinned for "Expand halfcourt interior creation": a new ORDINARY-halfcourt INTERIOR_CUT
+        # opportunity/selection path (action_opportunity.py/action_selection.py's
+        # `interior_cut_selection_log_weight`) intentionally shifts the later RNG trajectory (a
+        # newly-live pass opportunity, sometimes selected, sometimes failing/turning over via the
+        # SAME existing `resolve_pass` machinery) -- not a turnover-CLASSIFICATION change.
+        # (Previously re-pinned for "Model action-specific jump-shot selection", "Activate
+        # empirical foul occurrence", "Calibrate drive follow-up decisions", "Expand interior
+        # scoring opportunities", "Add interior shot-opportunity generation", and "Calibrate
         # source-conditioned transition routing".)
-        self.assertEqual(self.diagnosis.engine_accounted_turnovers, 3830)
-        self.assertEqual(self.diagnosis.player_charged_turnovers, 3460)
-        self.assertEqual(self.diagnosis.categories[TurnoverCategory.SHOT_CLOCK_VIOLATION].engine_accounted_turnovers, 370)
+        self.assertEqual(self.diagnosis.engine_accounted_turnovers, 4018)
+        self.assertEqual(self.diagnosis.player_charged_turnovers, 3655)
+        self.assertEqual(self.diagnosis.categories[TurnoverCategory.SHOT_CLOCK_VIOLATION].engine_accounted_turnovers, 363)
 
     def test_steals_are_consistent_with_current_clean_interception_semantics(self):
         steals = sum(o.steal_credited for o in self.diagnosis.observations)

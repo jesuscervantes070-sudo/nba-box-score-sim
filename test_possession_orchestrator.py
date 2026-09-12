@@ -2051,5 +2051,175 @@ class TestExpandInteriorScoringOpportunities(unittest.TestCase):
         self.assertFalse(any(o.action_type == ActionType.INTERIOR_CUT for o in opps))
 
 
+class TestExpandHalfcourtInteriorCreation(unittest.TestCase):
+    """"Expand halfcourt interior creation" phase -- focused tests A-Q from the task's own
+    required list for the NEW ordinary-halfcourt INTERIOR_CUT trigger (does not require a prior
+    DRIVE), gated on `context.nearest_teammate_finishing_role` (a real, already-existing Phase 13
+    KEEP role signal, read for a teammate for the first time)."""
+
+    def _ordinary_ctx(self, finishing_role=0.5, just_caught=False, ball_zone=None):
+        from action_opportunity import StructuralContext
+        return StructuralContext(nearest_teammate_id="2", nearest_teammate_zone=SpatialZone.LEFT_WING,
+                                  nearest_teammate_finishing_role=finishing_role, just_caught_pass=just_caught)
+
+    def _engine(self, ball_zone=SpatialZone.TOP_OF_KEY, phase=PossessionPhase.HALFCOURT):
+        engine = PossessionEngine("p1", "A", "B", season="2023-24", rng_seed=0)
+        apply_matchup_assignments(engine, OFF_FIVE, DEF_FIVE)
+        engine.inbound("1", ball_zone, phase)
+        return engine
+
+    def test_a_ordinary_halfcourt_state_generates_interior_cut_without_prior_drive(self):
+        from action_opportunity import generate_opportunities
+        engine = self._engine()
+        opps = generate_opportunities(engine.state, self._ordinary_ctx())
+        cut = next((o for o in opps if o.action_type == ActionType.INTERIOR_CUT), None)
+        self.assertIsNotNone(cut)
+        self.assertEqual(cut.target_player_id, "2")
+        self.assertEqual(cut.source, "ordinary_halfcourt_finishing_role")  # no drive involved
+
+    def test_b_gate_requires_legitimate_context(self):
+        """No finishing-role signal at all (missing != a fabricated default) -- unavailable."""
+        from action_opportunity import generate_opportunities, StructuralContext
+        engine = self._engine()
+        ctx = StructuralContext(nearest_teammate_id="2", nearest_teammate_zone=SpatialZone.LEFT_WING,
+                                 nearest_teammate_finishing_role=None)
+        opps = generate_opportunities(engine.state, ctx)
+        self.assertFalse(any(o.action_type == ActionType.INTERIOR_CUT for o in opps))
+
+    def test_c_unavailable_in_impossible_contexts(self):
+        from action_opportunity import generate_opportunities
+        # (1) below-average finisher -- a real, meaningful exclusion.
+        engine = self._engine()
+        opps = generate_opportunities(engine.state, self._ordinary_ctx(finishing_role=0.2))
+        self.assertFalse(any(o.action_type == ActionType.INTERIOR_CUT for o in opps))
+        # (2) TRANSITION phase -- this mechanism is HALFCOURT-only by construction.
+        engine2 = self._engine(phase=PossessionPhase.TRANSITION)
+        opps2 = generate_opportunities(engine2.state, self._ordinary_ctx())
+        interior_cuts = [o for o in opps2 if o.action_type == ActionType.INTERIOR_CUT]
+        self.assertEqual(interior_cuts, [])
+        # (3) no teammate at all.
+        from action_opportunity import StructuralContext
+        engine3 = self._engine()
+        ctx3 = StructuralContext(nearest_teammate_id=None, nearest_teammate_finishing_role=0.9)
+        opps3 = generate_opportunities(engine3.state, ctx3)
+        self.assertFalse(any(o.action_type == ActionType.INTERIOR_CUT for o in opps3))
+        # (4) just caught from a PERIMETER zone -- the exact frame reserved for CATCH_AND_SHOOT.
+        engine4 = self._engine(ball_zone=SpatialZone.TOP_OF_KEY)
+        opps4 = generate_opportunities(engine4.state, self._ordinary_ctx(just_caught=True))
+        self.assertFalse(any(o.action_type == ActionType.INTERIOR_CUT for o in opps4))
+
+    def test_d_paint_destination_reachable(self):
+        import random
+        from possession_orchestrator import _resolve_interior_pass_destination, PossessionConfig
+        config = PossessionConfig()
+        chosen = {_resolve_interior_pass_destination(ActionType.INTERIOR_CUT, config, random.Random(seed))
+                  for seed in range(20)}
+        self.assertIn(SpatialZone.PAINT, chosen)
+
+    def test_e_restricted_rim_destination_reachable(self):
+        import random
+        from possession_orchestrator import _resolve_interior_pass_destination, PossessionConfig
+        config = PossessionConfig()
+        chosen = {_resolve_interior_pass_destination(ActionType.INTERIOR_CUT, config, random.Random(seed))
+                  for seed in range(20)}
+        self.assertIn(SpatialZone.RESTRICTED_RIM, chosen)
+
+    def test_f_deterministic_seeded_destination(self):
+        import random
+        from possession_orchestrator import _resolve_interior_pass_destination, PossessionConfig
+        config = PossessionConfig()
+        first = _resolve_interior_pass_destination(ActionType.INTERIOR_CUT, config, random.Random(3))
+        second = _resolve_interior_pass_destination(ActionType.INTERIOR_CUT, config, random.Random(3))
+        self.assertEqual(first, second)
+
+    def test_g_opportunity_does_not_guarantee_pass_success(self):
+        """Dispatch goes through the EXISTING, unmodified `_dispatch_pass`/`resolve_pass` --
+        a low `passing_accuracy_ast_pct` must still be able to fail."""
+        import random
+        from possession_orchestrator import dispatch_action, PossessionConfig
+        outcomes = set()
+        for seed in range(60):
+            engine = self._engine()
+            world = PossessionWorld(team_a_id="A", team_b_id="B", team_a_five=OFF_FIVE, team_b_five=DEF_FIVE,
+                                     profiles=_profiles(**{p: {"passing_accuracy_ast_pct": 0.02} for p in OFF_FIVE}),
+                                     player_zones={pid: SpatialZone.TOP_OF_KEY for pid in OFF_FIVE + DEF_FIVE})
+            intent = ActionIntent(action_type=ActionType.INTERIOR_CUT, actor_player_id="1", possession_id="p1",
+                                   target_player_id="2", target_zone=SpatialZone.PAINT.value)
+            dispatch_action(engine, world, intent, PossessionConfig(), random.Random(seed), 0)
+            outcomes.add(world.player_zones["2"])
+        self.assertIn(SpatialZone.TOP_OF_KEY, outcomes)  # at least one failed/unchanged-zone outcome
+
+    def test_h_pass_failure_or_turnover_remains_possible(self):
+        import random
+        from possession_orchestrator import dispatch_action, PossessionConfig
+        found_non_completion = False
+        for seed in range(60):
+            engine = self._engine()
+            world = PossessionWorld(team_a_id="A", team_b_id="B", team_a_five=OFF_FIVE, team_b_five=DEF_FIVE,
+                                     profiles=_profiles(**{p: {"passing_accuracy_ast_pct": 0.02} for p in OFF_FIVE}),
+                                     player_zones={pid: SpatialZone.TOP_OF_KEY for pid in OFF_FIVE + DEF_FIVE})
+            intent = ActionIntent(action_type=ActionType.INTERIOR_CUT, actor_player_id="1", possession_id="p1",
+                                   target_player_id="2", target_zone=SpatialZone.PAINT.value)
+            result = dispatch_action(engine, world, intent, PossessionConfig(), random.Random(seed), 0)
+            if result is not None or world.player_zones["2"] != SpatialZone.PAINT and world.player_zones["2"] != SpatialZone.RESTRICTED_RIM:
+                found_non_completion = True
+        self.assertTrue(found_non_completion)
+
+    def test_i_successful_pass_changes_real_receiver_zone(self):
+        import random
+        from possession_orchestrator import dispatch_action, PossessionConfig
+        engine = self._engine()
+        world = PossessionWorld(team_a_id="A", team_b_id="B", team_a_five=OFF_FIVE, team_b_five=DEF_FIVE,
+                                 profiles=_profiles(),
+                                 player_zones={pid: SpatialZone.TOP_OF_KEY for pid in OFF_FIVE + DEF_FIVE})
+        intent = ActionIntent(action_type=ActionType.INTERIOR_CUT, actor_player_id="1", possession_id="p1",
+                               target_player_id="2", target_zone=SpatialZone.PAINT.value)
+        dispatch_action(engine, world, intent, PossessionConfig(), random.Random(1), 0)
+        self.assertIn(world.player_zones["2"], (SpatialZone.PAINT, SpatialZone.RESTRICTED_RIM))
+
+    def test_j_shot_selection_remains_downstream(self):
+        """After a successful interior catch, the EXISTING, unmodified single-option interior
+        branch (`_shot_zone_options`) takes over -- no shot-family override happens here."""
+        from action_opportunity import generate_opportunities, StructuralContext
+        import random
+        from possession_orchestrator import dispatch_action, PossessionConfig
+        engine = self._engine()
+        world = PossessionWorld(team_a_id="A", team_b_id="B", team_a_five=OFF_FIVE, team_b_five=DEF_FIVE,
+                                 profiles=_profiles(),
+                                 player_zones={pid: SpatialZone.TOP_OF_KEY for pid in OFF_FIVE + DEF_FIVE})
+        intent = ActionIntent(action_type=ActionType.INTERIOR_CUT, actor_player_id="1", possession_id="p1",
+                               target_player_id="2", target_zone=SpatialZone.RESTRICTED_RIM.value)
+        dispatch_action(engine, world, intent, PossessionConfig(), random.Random(1), 0)
+        ctx = StructuralContext(just_caught_pass=True)
+        opps = generate_opportunities(engine.state, ctx)
+        catch_and_shoot = next(o for o in opps if o.action_type == ActionType.CATCH_AND_SHOOT)
+        self.assertEqual(catch_and_shoot.shot_zone_options, (SpatialZone.RESTRICTED_RIM,))
+
+    def test_k_no_post_hoc_family_override(self):
+        import inspect
+        import possession_orchestrator as po
+        source = inspect.getsource(po._dispatch_shot)
+        self.assertEqual(source.count('shot_family = InteriorShotFamily'), 2)  # RIM, FLOATER branches only
+
+    def test_l_ability_does_not_determine_opportunity_frequency(self):
+        """`generate_opportunities` structurally cannot read any `*_shrunk_rate` ability field --
+        only the real, already-existing ROLE signal (`role_off_finishing`) is consulted."""
+        import inspect
+        import action_opportunity as mod
+        source = inspect.getsource(mod)
+        for forbidden in ("shrunk_rate", "three_point", "midrange_shrunk", "rim_finishing"):
+            self.assertNotIn(forbidden, source)
+
+    def test_m_three_point_share_guardrail_preserved_by_gate_design(self):
+        """The gate deliberately excludes a just-caught-from-perimeter decision (the exact frame
+        CATCH_AND_SHOOT's own three-point look is offered on) -- confirmed structurally here."""
+        from action_opportunity import generate_opportunities
+        engine = self._engine(ball_zone=SpatialZone.LEFT_WING)
+        opps = generate_opportunities(engine.state, self._ordinary_ctx(just_caught=True))
+        self.assertFalse(any(o.action_type == ActionType.INTERIOR_CUT for o in opps))
+        catch_and_shoot = next(o for o in opps if o.action_type == ActionType.CATCH_AND_SHOOT)
+        self.assertIsNotNone(catch_and_shoot)  # the real three-point look is still there, uncontested
+
+
 if __name__ == "__main__":
     unittest.main()

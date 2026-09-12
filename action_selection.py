@@ -157,7 +157,8 @@ DRIVE_FOLLOWUP_LOG_WEIGHT: Dict[str, float] = {
 
 def _score_action(action_type: ActionType, role: RoleContext, tendency: TendencyContext,
                    drive_selection_log_weight: float = 0.0,
-                   post_drive_outcome: Optional[str] = None) -> float:
+                   post_drive_outcome: Optional[str] = None,
+                   interior_cut_selection_log_weight: float = 0.0) -> float:
     """One action's additive log-weight score -- every term below is
     independent and bounded; none is multiplied by another.
 
@@ -177,6 +178,18 @@ def _score_action(action_type: ActionType, role: RoleContext, tendency: Tendency
     score = BASE_WEIGHT
     if action_type == ActionType.DRIVE:
         score += drive_selection_log_weight
+    if action_type == ActionType.INTERIOR_CUT:
+        # "Expand halfcourt interior creation" phase -- same structural, environment-level
+        # convention as `drive_selection_log_weight` above (NOT a player tendency/ability; the
+        # per-player CREATION_ACTIONS/PASS_ACTIONS terms below still apply on top). Exists because
+        # the newly-added ORDINARY-halfcourt INTERIOR_CUT opportunity (see `action_opportunity.py`)
+        # is now offered on essentially every live-dribble halfcourt decision -- without a
+        # dedicated weight it only wins ~14% of the time by BASE_WEIGHT parity alone against
+        # SWING_PASS/RESET_PASS/DRIVE/ISOLATION_ATTACK/PULL_UP/CATCH_AND_SHOOT, which is a real,
+        # measured, defensible V1 starting point but was found (TRAIN seeds 25000-25049) to leave
+        # MIDRANGE well above this task's own <20% target while THREE/pace/FGA all stayed healthy
+        # at higher settings -- so this is CALIBRATED, not merely defaulted to 0.
+        score += interior_cut_selection_log_weight
 
     if post_drive_outcome is not None:
         bias = DRIVE_FOLLOWUP_LOG_WEIGHT.get(post_drive_outcome, 0.0)
@@ -398,7 +411,8 @@ class SelectionPolicy:
                clock: ClockContext, possession_id: str,
                shot_family_context: Optional[ShotFamilySelectionContext] = None,
                drive_selection_log_weight: float = 0.0,
-               post_drive_outcome: Optional[str] = None) -> Optional[ActionIntent]:
+               post_drive_outcome: Optional[str] = None,
+               interior_cut_selection_log_weight: float = 0.0) -> Optional[ActionIntent]:
         """Returns None only when the perceived menu is genuinely empty
         after clock-feasibility filtering (e.g. a LOOSE-ball state with
         no recovery opportunities, or every remaining option infeasible)
@@ -408,7 +422,7 @@ class SelectionPolicy:
             return None
 
         scores = [_score_action(p.opportunity.action_type, role, tendency, drive_selection_log_weight,
-                                 post_drive_outcome)
+                                 post_drive_outcome, interior_cut_selection_log_weight)
                   for p in feasible]
         probabilities = _softmax(scores)
         chosen_index = _weighted_choice(self.rng, probabilities)
