@@ -124,12 +124,22 @@ class ScoringTruthEstimate:
     source: str                     # which estimator module/function produced this
     param_source: Optional[str]     # "calibrated" / "provisional", where the underlying estimator reports one
     coverage_note: str = ""         # human-readable reason when value is None (thin evidence, before data floor, etc.)
+    # "Pregame-Safe Scoring Truth" phase -- freshness/provenance label. One of
+    # player_scoring_truth_temporal.{CURRENT_SEASON_PREGAME, PRIOR_SEASON_ONLY, MISSING} for a
+    # date-level (pregame) estimate, or MULTI_SEASON_THROUGH_CUTOFF for the original season-level
+    # `build_scoring_truth_profile`'s own estimates (kept as the default so every pre-existing
+    # caller/serialized snapshot is unaffected -- this field is additive, not a breaking change).
+    # Never left ambiguous: an estimate's freshness must always be inspectable, not inferred.
+    provenance: str = "MULTI_SEASON_THROUGH_CUTOFF"
 
     def __post_init__(self):
         if self.kind not in ("ability", "tendency"):
             raise ValueError(f"kind must be 'ability' or 'tendency', got {self.kind!r}")
         if self.confidence is not None and not (0.0 <= self.confidence <= 1.0):
             raise ValueError(f"confidence must be within [0.0, 1.0] or None -- got {self.confidence!r}")
+        valid_provenance = {"CURRENT_SEASON_PREGAME", "PRIOR_SEASON_ONLY", "MULTI_SEASON_THROUGH_CUTOFF", "MISSING"}
+        if self.provenance not in valid_provenance:
+            raise ValueError(f"provenance must be one of {valid_provenance} -- got {self.provenance!r}")
 
     def to_dict(self) -> dict:
         """Deterministic, plain-JSON-serializable representation -- every field is already a
@@ -140,7 +150,7 @@ class ScoringTruthEstimate:
             "name": self.name, "kind": self.kind, "player_id": self.player_id,
             "as_of_season": self.as_of_season, "value": self.value, "confidence": self.confidence,
             "sample_size": self.sample_size, "source": self.source, "param_source": self.param_source,
-            "coverage_note": self.coverage_note,
+            "coverage_note": self.coverage_note, "provenance": self.provenance,
         }
 
     @staticmethod
@@ -149,6 +159,7 @@ class ScoringTruthEstimate:
             name=d["name"], kind=d["kind"], player_id=d["player_id"], as_of_season=d["as_of_season"],
             value=d.get("value"), confidence=d.get("confidence"), sample_size=d.get("sample_size"),
             source=d["source"], param_source=d.get("param_source"), coverage_note=d.get("coverage_note", ""),
+            provenance=d.get("provenance", "MULTI_SEASON_THROUGH_CUTOFF"),
         )
 
 
@@ -165,6 +176,11 @@ class ScoringTruthProfile:
     as_of_season: str
     identity_state: str
     estimates: Dict[str, ScoringTruthEstimate] = field(default_factory=dict)
+    # "Pregame-Safe Scoring Truth" phase -- additive, optional. None for every profile built by
+    # `build_scoring_truth_profile` (season-level, unchanged) -- a real "YYYY-MM-DD" for one built
+    # by `player_scoring_truth_temporal.build_scoring_truth_profile_as_of_date`. Deliberately NOT
+    # required: this module never fabricates date-level precision for a season-level profile.
+    as_of_date: Optional[str] = None
 
     def value(self, name: str) -> Optional[float]:
         """The engine-ready posterior mean for `name`, or None if unestimated -- the ONE
@@ -182,12 +198,14 @@ class ScoringTruthProfile:
 
     @property
     def conceptual_key(self) -> Tuple[str, str, str]:
-        """The stable identity of ONE profile: (player_id, as_of_season, model_version).
-        `as_of_season` is deliberately a SEASON, not a date -- see module docstring's
-        "TEMPORAL GRANULARITY" section. Two profiles with the same key are expected to be
+        """The stable identity of ONE profile: (player_id, as_of_date_or_season, model_version).
+        Uses `as_of_date` when present (a pregame snapshot -- date-level precision is real and
+        meaningful there) and falls back to `as_of_season` otherwise (a season-level snapshot --
+        see module docstring's "TEMPORAL GRANULARITY" section for why this module never fabricates
+        date precision it doesn't have). Two profiles with the same key are expected to be
         value-identical (same real inputs, same estimator code); this is the natural
         cache/snapshot key a future pregame-snapshot store should use."""
-        return (self.player_id, self.as_of_season, SCHEMA_VERSION)
+        return (self.player_id, self.as_of_date or self.as_of_season, SCHEMA_VERSION)
 
     def to_dict(self) -> dict:
         """Deterministic, plain-JSON-serializable representation. `schema_version` and the
@@ -200,6 +218,7 @@ class ScoringTruthProfile:
             "player_id": self.player_id,
             "canonical_name": self.canonical_name,
             "as_of_season": self.as_of_season,
+            "as_of_date": self.as_of_date,
             "identity_state": self.identity_state,
             "estimates": {name: est.to_dict() for name, est in sorted(self.estimates.items())},
         }
@@ -216,6 +235,7 @@ class ScoringTruthProfile:
             player_id=d["player_id"], canonical_name=d.get("canonical_name"),
             as_of_season=d["as_of_season"], identity_state=d["identity_state"],
             estimates={name: ScoringTruthEstimate.from_dict(v) for name, v in d.get("estimates", {}).items()},
+            as_of_date=d.get("as_of_date"),
         )
 
 
