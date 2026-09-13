@@ -110,16 +110,20 @@ class TestTurnoverAccountingReconciliation(unittest.TestCase):
         # Top-level family choice changes continuation/flip state and therefore
         # the later deterministic RNG trajectory; these pin the first shot-mix
         # baseline without changing turnover logic.
-        # Re-pinned for "Calibrate action-specific jump-shot zones" -- see
-        # test_turnover_diagnostics.py's own identical re-pin comment for the full rationale.
-        # (Previously re-pinned for "Calibrate hierarchical action families", "Use contextual
-        # hierarchical action selection", "Activate on-ball screen roll creation", "Add
-        # pass-created interior seal", "Model action-specific jump-shot selection", "Activate
+        # Re-pinned for "Calibrate defensive floor foul occurrence": `rebound_contest_foul_hazard`
+        # went from its inert `None` default to a real, active `0.08` -- a genuine new source of
+        # possessions ending in a DEFENSIVE_FLOOR_FOUL (dead-ball, re-inbound) instead of a normal
+        # rebound continuation changes the later deterministic RNG trajectory for many possessions,
+        # which shifts turnover counts even though nothing about turnover CLASSIFICATION changed
+        # (see test_turnover_diagnostics.py's own identical re-pin comment). (Previously re-pinned
+        # for "Calibrate action-specific jump-shot zones", "Calibrate hierarchical action families",
+        # "Use contextual hierarchical action selection", "Activate on-ball screen roll creation",
+        # "Add pass-created interior seal", "Model action-specific jump-shot selection", "Activate
         # empirical foul occurrence", "Calibrate drive follow-up decisions", "Expand interior
         # scoring opportunities", "Add interior shot-opportunity generation", "Calibrate
         # source-conditioned transition routing", and "Fix missed and-one rebound continuation".)
-        self.assertEqual(team_total, 4265)
-        self.assertEqual(player_total, 3873)
+        self.assertEqual(team_total, 4363)
+        self.assertEqual(player_total, 3893)
 
     def test_basketball_output_digest_matches_first_shot_mix_baseline(self):
         payload = []
@@ -152,17 +156,23 @@ class TestTurnoverAccountingReconciliation(unittest.TestCase):
                             "ot": result.overtime_periods, "rows": rows})
         digest = hashlib.sha256(json.dumps(payload, sort_keys=True,
                                            separators=(",", ":")).encode()).hexdigest()
-        # Re-pinned for "Calibrate action-specific jump-shot zones" -- see
-        # test_benchmark_uses_team_turnovers_and_preserves_player_total's own comment above for why
-        # this baseline moved. (Previously re-pinned for "Calibrate hierarchical action families",
-        # "Use contextual hierarchical action selection", "Activate on-ball screen roll creation",
-        # "Add pass-created interior seal", "Model action-specific jump-shot selection", "Activate
+        # Re-pinned for "Calibrate defensive floor foul occurrence": `rebound_contest_foul_hazard`
+        # went from its inert `None` default (byte-identical checkpoint, previously re-pinned only
+        # for the new zero-RNG `REBOUND_CONTEST_FOUL_CHECK` trace row) to a REAL, TRAIN/HELDOUT
+        # -calibrated `0.08` default -- a genuine new RNG draw on every real two-sided rebound
+        # contest, and a genuine new possession outcome (`DEFENSIVE_FLOOR_FOUL`, re-inbound or bonus
+        # free throws) whenever it fires. This is intentional, real behavior change, not a
+        # regression: canonical FTA/PF/shot-family shares move in exactly the direction this task
+        # calibrated for (see docs/phase report), and the V1 opportunity mix (THREE/MIDRANGE/
+        # RIM+FLOATER shares) is unchanged within rounding. (Previously re-pinned for "Calibrate
+        # action-specific jump-shot zones", "Calibrate hierarchical action families", "Use
+        # contextual hierarchical action selection", "Activate on-ball screen roll creation", "Add
+        # pass-created interior seal", "Model action-specific jump-shot selection", "Activate
         # empirical foul occurrence", "Calibrate drive follow-up decisions", "Expand interior
         # scoring opportunities", "Add interior shot-opportunity generation", "Calibrate
         # source-conditioned transition routing", "Model drive floor fouls as observable outcomes",
-        # and "Fix missed and-one rebound
-        # continuation".)
-        self.assertEqual(digest, "b966d6e4ed44f1cefad59092d74273de25962198ad6d3ab37dd28e105c437a73")
+        # and "Fix missed and-one rebound continuation".)
+        self.assertEqual(digest, "1f4a3fbf01b49bfb01fdf87f5c4ea3b92d1fb3d11ebbe283ead18cf7dd38a3b7")
 
 
 if __name__ == "__main__":

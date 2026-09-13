@@ -66,6 +66,16 @@ class FoulDiagnostics:
     # production, so this stage never produces a foul yet -- this counter exists so a future
     # calibration pass has an eligible-opportunity denominator ready before any rate is sourced.
     drive_floor_foul_checks_by_outcome: CounterType[str] = field(default_factory=Counter)
+    # "Calibrate defensive floor foul occurrence" -- keyed by the SAME "NO_FOUL"/DEFENSIVE_FLOOR_FOUL
+    # vocabulary `_dispatch_rebound`'s own `REBOUND_CONTEST_FOUL_CHECK` trace row uses. Logged once
+    # per real two-sided rebound contest, regardless of outcome (same "always log the check, not
+    # just the hit" convention as `drive_floor_foul_checks_by_outcome`).
+    rebound_contest_foul_checks_by_outcome: CounterType[str] = field(default_factory=Counter)
+    # FOULS BY ORIGIN: which real production mechanism produced each DEFENSIVE_FLOOR_FOUL. Every
+    # non-shooting defensive floor foul is currently reachable from exactly one of these two origins
+    # (confirmed by direct inspection of every `_dispatch_floor_foul(..., DEFENSIVE_FLOOR_FOUL, ...)`
+    # call site) -- this is a pure re-tally of `defensive_floor_fouls`, never an independent count.
+    defensive_floor_fouls_by_origin: CounterType[str] = field(default_factory=Counter)
     defensive_floor_fouls: int = 0
     offensive_fouls: int = 0
     personal_fouls_from_events: int = 0
@@ -99,6 +109,39 @@ class FoulDiagnostics:
         return self.total_shooting_fouls + self.defensive_floor_fouls + self.offensive_fouls
 
     @property
+    def fouls_by_class(self) -> Dict[str, int]:
+        """FOULS BY CLASS: every foul this engine can currently produce, by real, distinct
+        classification. "TRANSITION" and "OTHER" are explicitly 0 -- confirmed, by direct
+        inspection of every real `_dispatch_floor_foul`/`SHOOTING_FOUL` call site, to be genuinely
+        UNREACHABLE in production today, not merely unobserved in this sample -- reported as a real
+        structural zero (missing != zero is about ESTIMATES, not about a verified-absent mechanism)
+        rather than omitted. "REBOUND_LOOSE_BALL" is the rebound-contest-foul mechanism, itself
+        always classified as a DEFENSIVE_FLOOR_FOUL (see `defensive_floor_fouls_by_origin` for the
+        DRIVE/REBOUND split within that one class)."""
+        return {
+            "SHOOTING": self.total_shooting_fouls,
+            "DEFENSIVE_FLOOR": self.defensive_floor_fouls,
+            "OFFENSIVE": self.offensive_fouls,
+            "TRANSITION": 0,
+            "OTHER": 0,
+        }
+
+    @property
+    def fouls_by_origin(self) -> Dict[str, int]:
+        """FOULS BY ORIGIN: which production action/context produced each recorded foul.
+        "SCREEN"/"CUT"/"SEAL"/"TRANSITION" are explicitly 0 -- confirmed, by direct inspection, to
+        have no production-reachable foul-dispatch call site today (a real, documented structural
+        gap, not an omission). "SHOT" covers every shooting-foul family already broken out in
+        `shooting_fouls_by_family`. "ORDINARY" (any other halfcourt ball-handling/passing context)
+        is also explicitly 0 for the same confirmed-unreachable reason."""
+        return {
+            "DRIVE": self.defensive_floor_fouls_by_origin.get("DRIVE", 0) + self.offensive_fouls,
+            "SHOT": self.total_shooting_fouls,
+            "REBOUND": self.defensive_floor_fouls_by_origin.get("REBOUND", 0),
+            "SCREEN": 0, "CUT": 0, "SEAL": 0, "TRANSITION": 0, "ORDINARY": 0,
+        }
+
+    @property
     def total_ft_trips(self) -> int:
         return len(self.free_throw_trips)
 
@@ -117,6 +160,18 @@ class FoulDiagnostics:
     @property
     def drive_floor_foul_no_foul_continuations(self) -> int:
         return self.drive_floor_foul_checks_by_outcome.get("NO_FLOOR_FOUL", 0)
+
+    @property
+    def eligible_rebound_contest_foul_opportunities(self) -> int:
+        return sum(self.rebound_contest_foul_checks_by_outcome.values())
+
+    @property
+    def rebound_contest_foul_defensive_outcomes(self) -> int:
+        return self.rebound_contest_foul_checks_by_outcome.get(DEFENSIVE_FLOOR_FOUL, 0)
+
+    @property
+    def rebound_contest_foul_no_foul_continuations(self) -> int:
+        return self.rebound_contest_foul_checks_by_outcome.get("NO_FOUL", 0)
 
 
 def _trace_rows_for_step(world, step: int) -> List[dict]:
@@ -271,11 +326,24 @@ def diagnose_fouls(results: Sequence["DetailedGameResult"]) -> FoulDiagnostics:
                     # outcome, so the legacy row is never even logged for that same drive), so counting
                     # both action names here can never double-count a single real foul.
                     diagnosis.defensive_floor_fouls += 1
+                    diagnosis.defensive_floor_fouls_by_origin["DRIVE"] += 1
                     game_defensive_floor_fouls += 1
                 elif (row.get("action") in ("ON_BALL_PRESSURE", "DRIVE_FLOOR_FOUL_CHECK")
                       and row.get("outcome") == OFFENSIVE_CHARGE):
                     diagnosis.offensive_fouls += 1
                     game_offensive_fouls += 1
+                elif row.get("action") == "REBOUND_CONTEST_FOUL_CHECK":
+                    # "Calibrate defensive floor foul occurrence" -- a real, structurally distinct
+                    # origin for DEFENSIVE_FLOOR_FOUL, logged once per real two-sided rebound
+                    # contest regardless of outcome (mirrors DRIVE_FLOOR_FOUL_CHECK's own convention
+                    # immediately above). This mechanism only ever produces DEFENSIVE_FLOOR_FOUL or
+                    # "NO_FOUL" -- never OFFENSIVE_CHARGE (a real, documented V1 simplification: the
+                    # engine does not yet model offensive rebounding fouls) -- so no charge branch.
+                    diagnosis.rebound_contest_foul_checks_by_outcome[row.get("outcome", "UNKNOWN")] += 1
+                    if row.get("outcome") == DEFENSIVE_FLOOR_FOUL:
+                        diagnosis.defensive_floor_fouls += 1
+                        diagnosis.defensive_floor_fouls_by_origin["REBOUND"] += 1
+                        game_defensive_floor_fouls += 1
 
         period_team_counts = tuple(qualifying_by_period_team.values())
         diagnosis.team_periods_reaching_five_qualifying_fouls += sum(

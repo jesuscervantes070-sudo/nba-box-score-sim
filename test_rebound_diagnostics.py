@@ -26,9 +26,18 @@ class TestReboundDiagnostics(unittest.TestCase):
     def test_no_duplicate_rebound_accounting(self):
         self.assertEqual(self.diagnosis.duplicate_opportunities, 0)
         self.assertEqual(self.diagnosis.accounting_mismatches, ())
+        # Keyed by `(step, source, cascade_depth)`, not just `(step, source)`: a rebound-contest
+        # foul's own bonus free-throw sequence can, if its own final FT is also missed live,
+        # produce a SECOND, genuinely distinct rebound opportunity sharing the exact same
+        # `(step, source)` as the opportunity that triggered the foul in the first place (`steps`
+        # is the outer possession loop's single per-top-level-iteration counter, and cascading
+        # events within one iteration have always shared it). `cascade_depth` (see
+        # `possession_orchestrator._dispatch_rebound`'s own docstring) is what makes those two real,
+        # distinct events distinguishable from an actual repeat-logging bug.
         for record in self.records:
             rows = record.terminal_result.world.rebound_opportunity_log
-            self.assertEqual(len({(row["step"], row["source"]) for row in rows}), len(rows))
+            keys = {(row["step"], row["source"], row.get("cascade_depth", 0)) for row in rows}
+            self.assertEqual(len(keys), len(rows))
 
     def test_eligibility_telemetry_reconciles_candidates(self):
         self.assertTrue(self.rows)
@@ -74,9 +83,17 @@ class TestReboundDiagnostics(unittest.TestCase):
         self.assertEqual(categorized, self.diagnosis.rebound_opportunities)
         self.assertEqual(self.diagnosis.rebound_opportunities_beginning_loose,
                          self.diagnosis.rebound_opportunities)
+        # "INTERCEPTED_BY_FOUL" ("Calibrate defensive floor foul occurrence" phase): a real,
+        # distinct 5th outcome for a genuine rebound OPPORTUNITY that never resolves to a normal
+        # securing outcome because a rebound-contest foul was whistled during the live contest
+        # instead -- already counted in `unresolved_rebound_outcomes` above (it is not one of
+        # `ReboundOutcome`'s 4 constants, and is intentionally not added to that class: it is a
+        # rebound_opportunity_log bookkeeping label, not a `ReboundResult.outcome` a resolver ever
+        # produces), so this whitelist is widened to match rather than the row itself being wrong.
         self.assertTrue(all(row["outcome"] in {
             ReboundOutcome.SECURED_OFFENSE, ReboundOutcome.SECURED_DEFENSE,
             ReboundOutcome.TEAM_REBOUND_OFFENSE, ReboundOutcome.TEAM_REBOUND_DEFENSE,
+            "INTERCEPTED_BY_FOUL",
         } for row in self.rows))
 
     def test_second_chance_chain_counts_reconcile(self):

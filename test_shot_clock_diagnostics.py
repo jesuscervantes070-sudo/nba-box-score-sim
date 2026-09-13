@@ -45,8 +45,17 @@ class TestShotClockViolationDiagnostics(unittest.TestCase):
         # time-consuming stage -- `_dispatch_on_ball_screen` charges its own real duration via the
         # SAME `_charge_time` primitive DRIVE_EXECUTION/SHOT_EXECUTION already use, so a screen can
         # legitimately exhaust the shot clock exactly like any other timed action.
+        # "SHOT_EXECUTION" ("Calibrate defensive floor foul occurrence" phase): a shot can legitimately
+        # run its full planned duration and land the shot clock at EXACTLY 0.0 (a real, in-time
+        # buzzer-beater attempt, not a violation itself). A rebound-contest foul on the resulting
+        # miss's non-bonus continuation (`_dispatch_floor_foul`'s existing, already-accepted
+        # non-bonus branch -- shared with the DRIVE-derived caller, unmodified here) does not reset
+        # the shot clock, so it can now legitimately still read 0.0 at the next TOP_OF_LOOP check --
+        # previously unreachable because a live DRIVE always self-terminates as a shot-clock
+        # violation before ever dispatching a floor foul at an exhausted clock (see
+        # `advance_live_clocks`'s own preflight check in `_dispatch_drive`).
         self.assertTrue(observed_stages <= {"INTER_ACTION", "PASS_FLIGHT", "LOOSE_BALL_RECOVERY",
-                                            "ON_BALL_SCREEN_EXECUTION"})
+                                            "ON_BALL_SCREEN_EXECUTION", "SHOT_EXECUTION"})
         self.assertIn("TOP_OF_LOOP", self.diagnosis.terminal_sources)
         self.assertNotEqual(self.diagnosis.expiration_stages, self.diagnosis.terminal_sources)
 

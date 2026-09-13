@@ -155,7 +155,15 @@ def diagnose_rebounds(items: Sequence[object]) -> ReboundDiagnosis:
             per_record_mismatches.append(
                 f"{record.possession_id}: {misses} reboundable misses vs {len(record_rows)} opportunities"
             )
-        keys = Counter((row["step"], row["source"]) for row in record_rows)
+        # `cascade_depth` (added for "Calibrate defensive floor foul occurrence"): a
+        # rebound-contest foul's own bonus free-throw sequence can, if its own final FT is also
+        # missed live, produce a SECOND, genuinely distinct rebound opportunity sharing the exact
+        # same `(step, source)` as the opportunity that triggered the foul in the first place --
+        # `steps` is the outer possession loop's single per-top-level-iteration counter, and
+        # cascading events within one iteration have always shared it (e.g. MISSED_FG -> its own
+        # rebound). `cascade_depth` disambiguates a legitimate cascade (depth increases each real
+        # foul-triggered re-dispatch) from an actual repeat-logging bug (same call, same depth).
+        keys = Counter((row["step"], row["source"], row.get("cascade_depth", 0)) for row in record_rows)
         duplicate_opportunities += sum(count - 1 for count in keys.values() if count > 1)
 
     direct_off = sum(row["outcome"] == ReboundOutcome.SECURED_OFFENSE for row in rows)
