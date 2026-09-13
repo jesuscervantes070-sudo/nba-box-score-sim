@@ -50,6 +50,23 @@ to each sub-call, unmodified, adding no new leakage surface (the same discipline
 TRUE != STATIC: every function here takes `as_of_season` explicitly; a profile for the same
 player at two different `as_of_season` values is two different, independently-computed
 `ScoringTruthProfile` objects, never one mutated in place.
+
+============================ TEMPORAL GRANULARITY -- HONEST LIMITATION ============================
+Every one of the 8 target estimators is SEASON-LEVEL ONLY: `as_of_season="2024-25"` means "every
+real game of the 2024-25 season that is cached," not "every real game through some specific date
+within 2024-25." There is no game-log-level or date-filterable evidence source wired into any of
+these estimators today (`loader.load_teams`/`load_player_advanced_stats`, `shot_zone_ingestion`,
+`player_tendencies_analysis` all return one aggregated row per player-SEASON, never per-game).
+Consequently: a `ScoringTruthProfile` built with `as_of_season="2024-25"` is SAFE for a
+CROSS-SEASON forecast (predicting a 2025-26 game using only 2024-25-and-earlier evidence) but IS
+NOT SAFE for an IN-SEASON PREGAME forecast of any 2024-25 game itself -- it would leak that same
+game's own future-within-season evidence (and every other game played after it that season) into
+the "belief as of" that game. This module does not solve that problem (no date-filterable source
+exists yet to solve it with) -- it is flagged here explicitly as a real, current limitation for
+the next phase (a game-log-level or PBP-date-level evidence source would be required), not
+silently assumed away. `conceptual_key`/`to_dict` use `as_of_season` (never a date) for exactly
+this reason -- adding a `as_of_date` field to the key today would imply a precision this module
+cannot actually honor.
 """
 from dataclasses import dataclass, field, replace
 from typing import Dict, List, Optional, Tuple
@@ -64,6 +81,13 @@ from possession_orchestrator import PlayerSimulationProfile
 # ---------------------------------------------------------------------
 ABILITY_TARGETS: Tuple[str, ...] = ("rim_finishing", "floater_short_mid", "midrange", "three_point", "free_throw")
 TENDENCY_TARGETS: Tuple[str, ...] = ("three_point_preference", "midrange_preference", "drive_aggression")
+
+# Schema/methodology version for ScoringTruthProfile's serialized form -- bumped when the SHAPE
+# changes (new/removed field, changed meaning of an existing field), never when only the
+# underlying VALUES change (a new as_of_season is just a new profile at the same schema version).
+# Same convention as player_ability_profile.SCHEMA_VERSION, kept as its own independent constant
+# since this module's serialized shape is not that one's (engine-scale values, not 0-99 percentiles).
+SCHEMA_VERSION = "0.1.0-scoring-truth"
 
 _SHOT_ZONE_ABILITIES = frozenset({"rim_finishing", "floater_short_mid", "midrange"})
 
@@ -107,6 +131,26 @@ class ScoringTruthEstimate:
         if self.confidence is not None and not (0.0 <= self.confidence <= 1.0):
             raise ValueError(f"confidence must be within [0.0, 1.0] or None -- got {self.confidence!r}")
 
+    def to_dict(self) -> dict:
+        """Deterministic, plain-JSON-serializable representation -- every field is already a
+        str/float/None, no custom types, so `json.dumps(sort_keys=True)` of this dict is stable
+        across processes/runs for identical input (see test_player_scoring_truth.py's own
+        serialization-determinism guardrail)."""
+        return {
+            "name": self.name, "kind": self.kind, "player_id": self.player_id,
+            "as_of_season": self.as_of_season, "value": self.value, "confidence": self.confidence,
+            "sample_size": self.sample_size, "source": self.source, "param_source": self.param_source,
+            "coverage_note": self.coverage_note,
+        }
+
+    @staticmethod
+    def from_dict(d: dict) -> "ScoringTruthEstimate":
+        return ScoringTruthEstimate(
+            name=d["name"], kind=d["kind"], player_id=d["player_id"], as_of_season=d["as_of_season"],
+            value=d.get("value"), confidence=d.get("confidence"), sample_size=d.get("sample_size"),
+            source=d["source"], param_source=d.get("param_source"), coverage_note=d.get("coverage_note", ""),
+        )
+
 
 @dataclass(frozen=True)
 class ScoringTruthProfile:
@@ -135,6 +179,44 @@ class ScoringTruthProfile:
         """One line per target: whether real evidence exists. A quick, honest "how complete is
         this profile" report -- never used to decide whether to fabricate a missing value."""
         return {name: self.has_real_evidence(name) for name in (*ABILITY_TARGETS, *TENDENCY_TARGETS)}
+
+    @property
+    def conceptual_key(self) -> Tuple[str, str, str]:
+        """The stable identity of ONE profile: (player_id, as_of_season, model_version).
+        `as_of_season` is deliberately a SEASON, not a date -- see module docstring's
+        "TEMPORAL GRANULARITY" section. Two profiles with the same key are expected to be
+        value-identical (same real inputs, same estimator code); this is the natural
+        cache/snapshot key a future pregame-snapshot store should use."""
+        return (self.player_id, self.as_of_season, SCHEMA_VERSION)
+
+    def to_dict(self) -> dict:
+        """Deterministic, plain-JSON-serializable representation. `schema_version` and the
+        conceptual key's three components are all present explicitly (not just derivable) so a
+        stored snapshot is self-describing even without importing this module. Field order is
+        fixed (a plain dict literal); combined with `json.dumps(..., sort_keys=True)` at the
+        call site, two calls on equal input produce byte-identical output."""
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "player_id": self.player_id,
+            "canonical_name": self.canonical_name,
+            "as_of_season": self.as_of_season,
+            "identity_state": self.identity_state,
+            "estimates": {name: est.to_dict() for name, est in sorted(self.estimates.items())},
+        }
+
+    @staticmethod
+    def from_dict(d: dict) -> "ScoringTruthProfile":
+        if d.get("schema_version") != SCHEMA_VERSION:
+            raise ValueError(
+                f"ScoringTruthProfile.from_dict: schema_version mismatch -- stored "
+                f"{d.get('schema_version')!r}, this code expects {SCHEMA_VERSION!r}. A schema "
+                f"migration (not a silent reinterpretation) is required before loading this snapshot."
+            )
+        return ScoringTruthProfile(
+            player_id=d["player_id"], canonical_name=d.get("canonical_name"),
+            as_of_season=d["as_of_season"], identity_state=d["identity_state"],
+            estimates={name: ScoringTruthEstimate.from_dict(v) for name, v in d.get("estimates", {}).items()},
+        )
 
 
 def _ability_estimate(player_id: str, as_of_season: str, attribute: str,
