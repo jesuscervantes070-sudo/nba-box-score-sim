@@ -44,8 +44,8 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
 from action_intent import (
-    ActionIntent, ActionType, CREATION_ACTIONS, DurationClass, PASS_ACTIONS,
-    SHOT_ACTIONS, TERMINAL_ACTIONS,
+    ActionFamily, ActionIntent, ActionType, CREATION_ACTIONS, DurationClass, FAMILY_BY_ACTION_TYPE,
+    PASS_ACTIONS, SHOT_ACTIONS, TERMINAL_ACTIONS,
 )
 from action_opportunity import INTERIOR_ZONES, MIDRANGE_ZONES, PERIMETER_ZONES
 from action_perception import PerceivedOpportunity
@@ -104,6 +104,28 @@ class ClockFeasibilityResult:
     @property
     def late_clock_filter_activated(self) -> bool:
         return bool(self.removed_for_late_clock)
+
+
+@dataclass(frozen=True)
+class FamilySelectionContext:
+    """"Use contextual hierarchical action selection" phase -- structural, ENVIRONMENT-level
+    family priors, additive in log-weight space, added exactly ONCE at the family-selection step
+    (never inside `_score_action`, which stays the single, unmodified source of every ACTION-level
+    role/tendency term). All default to 0.0, which makes `family_probabilities` mathematically
+    IDENTICAL to the prior flat softmax (see that function's own docstring for the proof) -- a
+    byte-for-byte neutral hierarchy until a caller deliberately opts a family in."""
+    attack_log_weight: float = 0.0
+    shot_log_weight: float = 0.0
+    off_ball_creation_log_weight: float = 0.0
+    ball_movement_log_weight: float = 0.0
+
+    def weight_for(self, family: "ActionFamily") -> float:
+        return {
+            ActionFamily.ATTACK: self.attack_log_weight,
+            ActionFamily.SHOT: self.shot_log_weight,
+            ActionFamily.OFF_BALL_CREATION: self.off_ball_creation_log_weight,
+            ActionFamily.BALL_MOVEMENT: self.ball_movement_log_weight,
+        }[family]
 
 
 @dataclass(frozen=True)
@@ -414,6 +436,55 @@ def _select_shot_zone(action_type: ActionType, default_zone: Optional[SpatialZon
     return options[_weighted_choice(rng, probabilities)]
 
 
+class ActionSelectionMode:
+    """Plain string constants (same convention as `DriveOutcome`/`PassOutcome` elsewhere in this
+    codebase) -- "Use contextual hierarchical action selection" phase. `FLAT` preserves the
+    ORIGINAL Phase 16 behavior (one softmax over every feasible action) verbatim, kept ONLY for
+    diagnostics/before-after benchmarking, never the production default going forward. `HIERARCHICAL`
+    groups by `ActionFamily` first -- see `family_probabilities`'s own docstring for the exact
+    mathematical relationship between the two modes at neutral (all-zero) family weights."""
+    FLAT = "FLAT"
+    HIERARCHICAL = "HIERARCHICAL"
+
+
+def family_log_mass(scores: List[float], families: List[ActionFamily]) -> Dict[ActionFamily, float]:
+    """log(sum(exp(score) for actions in this family)), grouped from PARALLEL `scores`/`families`
+    lists (same index `i` in both refers to the same feasible action). A real, numerically-stable
+    (max-subtracted) log-sum-exp per family -- not a naive `math.log(sum(math.exp(...)))`."""
+    groups: Dict[ActionFamily, List[float]] = {}
+    for score, family in zip(scores, families):
+        groups.setdefault(family, []).append(score)
+    result: Dict[ActionFamily, float] = {}
+    for family, group_scores in groups.items():
+        m = max(group_scores)
+        result[family] = m + math.log(sum(math.exp(s - m) for s in group_scores))
+    return result
+
+
+def family_probabilities(scores: List[float], families: List[ActionFamily],
+                          family_context: Optional[FamilySelectionContext] = None) -> Dict[ActionFamily, float]:
+    """Family-selection distribution over the families actually PRESENT in `families` (never a
+    synthetic family with zero feasible members -- `family_log_mass` only ever produces an entry
+    for a family that has at least one real action in it, so an empty family can never be scored,
+    let alone selected).
+
+    MATHEMATICAL EQUIVALENCE (the "neutral hierarchy" this phase's own Phase 1 benchmark checks):
+    at every `family_context` weight left at its 0.0 default,
+        family_probabilities(scores, families)[family(a)] * softmax(scores restricted to that family)[a's index within it]
+    equals
+        softmax(scores)[a]
+    for every action `a` -- i.e. this two-step (family, then action-within-family) decomposition
+    reproduces the EXACT SAME distribution one flat softmax over `scores` would have. Only a
+    nonzero `family_context` weight deliberately shifts mass toward/away from a whole family at
+    once, without touching any action's own within-family relative ordering."""
+    context = family_context or FamilySelectionContext()
+    log_mass = family_log_mass(scores, families)
+    ordered_families = list(log_mass)
+    weighted = [log_mass[family] + context.weight_for(family) for family in ordered_families]
+    probabilities = _softmax(weighted)
+    return dict(zip(ordered_families, probabilities))
+
+
 class SelectionPolicy:
     """Stateless scoring + stochastic sampling. `rng` is a caller-
     supplied `random.Random` (never the global `random` module) so
@@ -432,11 +503,22 @@ class SelectionPolicy:
                interior_seal_selection_log_weight: float = 0.0,
                on_ball_screen_selection_log_weight: float = 0.0,
                screen_pocket_pass_log_weight: float = 0.0,
-               screen_active: bool = False) -> Optional[ActionIntent]:
+               screen_active: bool = False,
+               mode: str = ActionSelectionMode.HIERARCHICAL,
+               family_selection_context: Optional[FamilySelectionContext] = None) -> Optional[ActionIntent]:
         """Returns None only when the perceived menu is genuinely empty
         after clock-feasibility filtering (e.g. a LOOSE-ball state with
         no recovery opportunities, or every remaining option infeasible)
-        -- never a fabricated default action."""
+        -- never a fabricated default action.
+
+        `mode` ("Use contextual hierarchical action selection" phase): `ActionSelectionMode.FLAT`
+        reproduces the ORIGINAL Phase 16 one-softmax-over-everything behavior verbatim (one
+        `rng.random()` draw). `HIERARCHICAL` (the new default) groups by `ActionFamily` first, then
+        the specific action within the chosen family (two `rng.random()` draws) -- see
+        `family_probabilities`'s own docstring for the exact mathematical relationship between the
+        two modes. `_score_action` itself is COMPLETELY UNCHANGED and used IDENTICALLY by both
+        modes -- HIERARCHICAL only changes HOW its outputs get grouped and sampled, never what they
+        are."""
         feasible = list(evaluate_clock_feasibility(perceived, clock).feasible)
         if not feasible:
             return None
@@ -446,8 +528,22 @@ class SelectionPolicy:
                                 interior_seal_selection_log_weight, on_ball_screen_selection_log_weight,
                                 screen_pocket_pass_log_weight, screen_active)
                   for p in feasible]
-        probabilities = _softmax(scores)
-        chosen_index = _weighted_choice(self.rng, probabilities)
+
+        if mode == ActionSelectionMode.FLAT:
+            probabilities = _softmax(scores)
+            chosen_index = _weighted_choice(self.rng, probabilities)
+        elif mode == ActionSelectionMode.HIERARCHICAL:
+            families = [FAMILY_BY_ACTION_TYPE[p.opportunity.action_type] for p in feasible]
+            family_probs = family_probabilities(scores, families, family_selection_context)
+            ordered_families = list(family_probs)
+            chosen_family = ordered_families[
+                _weighted_choice(self.rng, [family_probs[f] for f in ordered_families])
+            ]
+            indices_in_family = [i for i, f in enumerate(families) if f == chosen_family]
+            sub_probabilities = _softmax([scores[i] for i in indices_in_family])
+            chosen_index = indices_in_family[_weighted_choice(self.rng, sub_probabilities)]
+        else:
+            raise ValueError(f"unknown ActionSelectionMode: {mode!r}")
         chosen = feasible[chosen_index]
         opp = chosen.opportunity
 

@@ -158,6 +158,31 @@ class OpportunityDiagnostics:
         counts = self.action_count_by_source.get(source, [])
         return sum(counts) / len(counts) if counts else float("nan")
 
+    def _by_family(self, per_action: CounterType[str]) -> CounterType[str]:
+        """"Use contextual hierarchical action selection" phase -- PERMANENT, ZERO-RNG re-aggregation
+        of an already-populated per-ACTION counter (`objective_opportunities_by_action`/
+        `selected_actions_by_type`, both populated identically regardless of `ActionSelectionMode`)
+        into per-FAMILY totals via `action_intent.FAMILY_BY_ACTION_TYPE`. Computed on read, not
+        recorded during simulation -- adds no new state, no new trace rows, no RNG."""
+        from action_intent import ActionType, FAMILY_BY_ACTION_TYPE
+        out: CounterType[str] = Counter()
+        for action_type_value, count in per_action.items():
+            family = FAMILY_BY_ACTION_TYPE.get(ActionType(action_type_value))
+            if family is not None:  # RECOVER_LOOSE_BALL has no family -- see that constant's own docstring
+                out[family.value] += count
+        return out
+
+    @property
+    def family_opportunities(self) -> CounterType[str]:
+        """Objective opportunities re-aggregated by `ActionFamily` (ATTACK/SHOT/OFF_BALL_CREATION/
+        BALL_MOVEMENT)."""
+        return self._by_family(self.objective_opportunities_by_action)
+
+    @property
+    def family_selected(self) -> CounterType[str]:
+        """Selected actions re-aggregated by `ActionFamily`."""
+        return self._by_family(self.selected_actions_by_type)
+
 
 def _shot_row_and_family(rows: Sequence[dict], action_type: str) -> Tuple[dict, str]:
     """Returns (row, family) for a dispatched shot action -- `family` comes from the

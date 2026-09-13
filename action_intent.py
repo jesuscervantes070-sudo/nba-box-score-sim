@@ -84,6 +84,65 @@ CREATION_ACTIONS = frozenset({ActionType.DRIVE, ActionType.ISOLATION_ATTACK, Act
 # same kind of scoring-chance-creating pass POCKET_PASS already is, so it belongs in this grouping for the same reason.
 
 
+class ActionFamily(Enum):
+    """"Use contextual hierarchical action selection" phase -- the decision-CLASS partition
+    `action_selection.SelectionPolicy` groups feasible actions into before choosing a specific
+    action within the chosen family. THE ROOT CAUSE THIS TASK ADDRESSES: three independently-built
+    interior mechanisms (INTERIOR_CUT, INTERIOR_SEAL, ON_BALL_SCREEN) each hit the same ceiling --
+    adding ONE more feasible action to a single FLAT softmax mathematically shrinks EVERY other
+    feasible action's probability by the identical multiplicative factor Z/(Z+exp(new_score))
+    (proven directly: `_softmax([1.0]*6)[0]` vs `_softmax([1.0]*7)[0]` -- see
+    `test_hierarchical_action_selection.py`'s own `test_flat_softmax_dilution_is_mathematically_exact`),
+    regardless of whether that action has anything to do with the others. Grouping first means a
+    new OFF_BALL_CREATION action only ever dilutes OTHER OFF_BALL_CREATION actions, never
+    unrelated SHOT/BALL_MOVEMENT probability mass.
+
+    Every `ActionType` a normal offensive decision can ever perceive belongs to EXACTLY ONE family
+    (`FAMILY_BY_ACTION_TYPE` below is a total function over `SUPPORTED_ACTION_TYPES ∪
+    CAPABILITY_GATED_ACTION_TYPES`, `RECOVER_LOOSE_BALL` excluded -- see that constant's own
+    docstring for why: a LOOSE ball is intercepted before this menu is ever built at all, so it
+    never needs a family). Chosen by AUDITING EACH ACTION'S OWN SEMANTICS, not by any preferred
+    illustrative grouping:
+      ATTACK            -- a live-dribble, ball-handler-driven bid to create a scoring edge:
+                           DRIVE, ISOLATION_ATTACK, CLOSEOUT_ATTACK, ON_BALL_SCREEN (initiating a
+                           screen is itself a proactive attacking decision by the ball handler, not
+                           a pass -- it moves no ball and creates no shot by itself).
+      SHOT              -- an immediate release: PULL_UP, CATCH_AND_SHOOT. Exactly `SHOT_ACTIONS`.
+      OFF_BALL_CREATION -- the ball handler looks for a TEAMMATE's own off-ball scoring chance
+                           without a live screen already active: INTERIOR_CUT, INTERIOR_SEAL.
+      BALL_MOVEMENT     -- every other real pass: SWING_PASS, RESET_PASS, KICKOUT, OUTLET_PASS,
+                           TRANSITION_PUSH, and POCKET_PASS (a screen-context-conditional pass --
+                           still fundamentally "move the ball to a teammate", not a fresh creation
+                           decision the ball handler is initiating from scratch).
+    """
+    ATTACK = "ATTACK"
+    SHOT = "SHOT"
+    OFF_BALL_CREATION = "OFF_BALL_CREATION"
+    BALL_MOVEMENT = "BALL_MOVEMENT"
+
+
+FAMILY_BY_ACTION_TYPE: Dict[ActionType, ActionFamily] = {
+    ActionType.DRIVE: ActionFamily.ATTACK,
+    ActionType.ISOLATION_ATTACK: ActionFamily.ATTACK,
+    ActionType.CLOSEOUT_ATTACK: ActionFamily.ATTACK,
+    ActionType.ON_BALL_SCREEN: ActionFamily.ATTACK,
+    ActionType.PULL_UP: ActionFamily.SHOT,
+    ActionType.CATCH_AND_SHOOT: ActionFamily.SHOT,
+    ActionType.INTERIOR_CUT: ActionFamily.OFF_BALL_CREATION,
+    ActionType.INTERIOR_SEAL: ActionFamily.OFF_BALL_CREATION,
+    ActionType.SWING_PASS: ActionFamily.BALL_MOVEMENT,
+    ActionType.RESET_PASS: ActionFamily.BALL_MOVEMENT,
+    ActionType.KICKOUT: ActionFamily.BALL_MOVEMENT,
+    ActionType.OUTLET_PASS: ActionFamily.BALL_MOVEMENT,
+    ActionType.TRANSITION_PUSH: ActionFamily.BALL_MOVEMENT,
+    ActionType.POCKET_PASS: ActionFamily.BALL_MOVEMENT,
+}
+# RECOVER_LOOSE_BALL deliberately has NO family: a BallState.LOOSE possession is intercepted at
+# the top of the possession loop, before generate_opportunities ever builds a normal offensive
+# menu -- it never reaches SelectionPolicy.select() at all (see possession_orchestrator.py's own
+# "RECOVER_LOOSE_BALL is gated for a different reason" documentation, unchanged by this phase).
+
+
 class DurationClass(Enum):
     """A calibratable KEY, not a hardcoded empirical duration -- a
     future phase attaches real timing distributions to these keys (see

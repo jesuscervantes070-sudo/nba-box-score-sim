@@ -8,7 +8,13 @@ from detailed_engine_foul_diagnostics import assert_foul_reconciliation, diagnos
 class TestFoulDiagnostics(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.games = run_benchmark_sample(range(25000, 25005))
+        # Widened from 5 to 25 games ("Use contextual hierarchical action selection" phase): the
+        # real `drive_charge_hazard_per_drive` (0.35%/drive) is a genuinely low-probability event
+        # -- 5 games (~75-100 drives) can land on exactly zero OFFENSIVE_CHARGE outcomes by real
+        # chance alone (confirmed: the new hierarchical selector's different RNG draw structure
+        # flipped this specific 5-game sample to zero). 25 games (~400-500 drives) keeps the
+        # expected charge count comfortably above zero without meaningfully slowing this suite.
+        cls.games = run_benchmark_sample(range(25000, 25025))
         cls.results = tuple(game.result for game in cls.games)
         cls.diagnosis = diagnose_fouls(cls.results)
 

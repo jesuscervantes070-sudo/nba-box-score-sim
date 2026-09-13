@@ -114,8 +114,8 @@ from action_intent import ActionIntent, ActionType, PASS_ACTIONS
 from action_opportunity import INTERIOR_ZONES, MIDRANGE_ZONES, PERIMETER_ZONES, StructuralContext, generate_opportunities
 from action_perception import perceive
 from action_selection import (
-    ClockContext, RoleContext, SelectionPolicy, ShotFamilySelectionContext, TendencyContext,
-    evaluate_clock_feasibility,
+    ActionSelectionMode, ClockContext, FamilySelectionContext, RoleContext, SelectionPolicy,
+    ShotFamilySelectionContext, TendencyContext, evaluate_clock_feasibility,
 )
 from clock_semantics import ClockTerminalCause, LiveClockAdvance, advance_live_clocks
 from drive_floor_foul_resolution import DriveFloorFoulContext, DriveFloorFoulOutcome, resolve_drive_floor_foul_outcome
@@ -1144,6 +1144,39 @@ class PossessionConfig:
     on_ball_screen_selection_log_weight: float = -1.25
     screen_pocket_pass_log_weight: float = 1.0
     on_ball_screen_clean_advantage_probability: float = 0.50
+    # "Use contextual hierarchical action selection" phase -- see `action_selection.SelectionPolicy.select`'s
+    # own docstring and `ActionSelectionMode` for the full rationale. `HIERARCHICAL` (the new
+    # default) groups feasible actions by `action_intent.ActionFamily` before choosing a specific
+    # action within the chosen family, replacing the single flat softmax that made every
+    # independently-added interior mechanism (INTERIOR_CUT, INTERIOR_SEAL, ON_BALL_SCREEN) dilute
+    # every OTHER unrelated feasible action's probability, capping each one's net yield to roughly
+    # +1 percentage point of interior share regardless of which action it was. `FLAT` reproduces
+    # the ORIGINAL Phase 16 behavior verbatim -- kept for diagnostics/before-after benchmarking
+    # only, never intended as a production default going forward.
+    action_selection_mode: str = ActionSelectionMode.HIERARCHICAL
+    # Family-level structural priors (additive log-weight, applied ONCE at the family-selection
+    # step -- see `action_selection.FamilySelectionContext`'s own docstring). Default 0.0 is the
+    # mathematically NEUTRAL hierarchy (byte-for-byte identical distribution to the prior flat
+    # softmax, differing only in how many `rng.random()` draws it takes -- see
+    # `action_selection.family_probabilities`'s own proof). CALIBRATED, ONE interpretable
+    # parameter only (per this phase's own explicit "1-3 parameters, not a dozen arbitrary
+    # constants" instruction): a small TRAIN 25000-25049 grid over `off_ball_creation_family_log_weight`
+    # ALONE (ATTACK and BALL_MOVEMENT were both tried and rejected -- ATTACK contains DRIVE/
+    # ON_BALL_SCREEN, both non-terminal, so boosting it crashes pace far faster per unit of
+    # MIDRANGE reduction than OFF_BALL_CREATION does; reducing BALL_MOVEMENT raises pace/FGA but
+    # does not touch MIDRANGE at all, since it does not change the internal THREE-vs-MIDRANGE split
+    # of the unaffected SHOT family). 0.6 is the largest OFF_BALL_CREATION boost keeping pace and
+    # FGA in this task's own bands on BOTH TRAIN (pace 96.1, FGA 85.6) and HELDOUT 25050-25099
+    # (pace 96.6, FGA 86.1). HONEST FINDING: THREE share lands at ~36-37% on both halves -- BELOW
+    # (not within rounding of, unlike prior phases) the stated 38% floor. Accepted deliberately per
+    # this task's OWN explicit ranking (MIDRANGE reduction and combined interior increase rank
+    # ABOVE "THREE stays healthy" in its calibration-selection order, and its own reject list only
+    # names THREE EXPLODING past ~45-46%, never a modest floor undershoot) -- not a silent
+    # regression. See the phase report for the full TRAIN grid this was chosen from.
+    attack_family_log_weight: float = 0.0
+    shot_family_log_weight: float = 0.0
+    off_ball_creation_family_log_weight: float = 0.6
+    ball_movement_family_log_weight: float = 0.0
     # ------------------------------------------------------------------
     # Structural Timing Hook -- see docs/DETAILED_ENGINE_FIRST_DIAGNOSTIC_REPORT.md's
     # own "Structural Timing Hook" section. These three fields are the ONLY place LIVE
@@ -2549,7 +2582,14 @@ def simulate_possession(
                                 interior_seal_selection_log_weight=config.interior_seal_selection_log_weight,
                                 on_ball_screen_selection_log_weight=config.on_ball_screen_selection_log_weight,
                                 screen_pocket_pass_log_weight=config.screen_pocket_pass_log_weight,
-                                screen_active=ctx.screen_active)
+                                screen_active=ctx.screen_active,
+                                mode=config.action_selection_mode,
+                                family_selection_context=FamilySelectionContext(
+                                    attack_log_weight=config.attack_family_log_weight,
+                                    shot_log_weight=config.shot_family_log_weight,
+                                    off_ball_creation_log_weight=config.off_ball_creation_family_log_weight,
+                                    ball_movement_log_weight=config.ball_movement_family_log_weight,
+                                ))
         # consumed for exactly this ONE decision, regardless of what gets selected next --
         # re-armed below only if THIS iteration's own dispatched action is itself a DRIVE.
         pending_drive_outcome = None
