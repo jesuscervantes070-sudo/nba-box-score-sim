@@ -110,15 +110,16 @@ class TestTurnoverAccountingReconciliation(unittest.TestCase):
         # Top-level family choice changes continuation/flip state and therefore
         # the later deterministic RNG trajectory; these pin the first shot-mix
         # baseline without changing turnover logic.
-        # Re-pinned for "Use contextual hierarchical action selection" -- see
+        # Re-pinned for "Calibrate hierarchical action families" -- see
         # test_turnover_diagnostics.py's own identical re-pin comment for the full rationale.
-        # (Previously re-pinned for "Activate on-ball screen roll creation", "Add pass-created
-        # interior seal", "Model action-specific jump-shot selection", "Activate empirical foul
-        # occurrence", "Calibrate drive follow-up decisions", "Expand interior scoring
-        # opportunities", "Add interior shot-opportunity generation", "Calibrate
-        # source-conditioned transition routing", and "Fix missed and-one rebound continuation".)
-        self.assertEqual(team_total, 4073)
-        self.assertEqual(player_total, 3696)
+        # (Previously re-pinned for "Use contextual hierarchical action selection", "Activate
+        # on-ball screen roll creation", "Add pass-created interior seal", "Model action-specific
+        # jump-shot selection", "Activate empirical foul occurrence", "Calibrate drive follow-up
+        # decisions", "Expand interior scoring opportunities", "Add interior shot-opportunity
+        # generation", "Calibrate source-conditioned transition routing", and "Fix missed and-one
+        # rebound continuation".)
+        self.assertEqual(team_total, 4280)
+        self.assertEqual(player_total, 3883)
 
     def test_basketball_output_digest_matches_first_shot_mix_baseline(self):
         payload = []
@@ -151,15 +152,16 @@ class TestTurnoverAccountingReconciliation(unittest.TestCase):
                             "ot": result.overtime_periods, "rows": rows})
         digest = hashlib.sha256(json.dumps(payload, sort_keys=True,
                                            separators=(",", ":")).encode()).hexdigest()
-        # Re-pinned for "Use contextual hierarchical action selection" -- see
+        # Re-pinned for "Calibrate hierarchical action families" -- see
         # test_benchmark_uses_team_turnovers_and_preserves_player_total's own comment above for why
-        # this baseline moved. (Previously re-pinned for "Activate on-ball screen roll creation",
-        # "Add pass-created interior seal", "Model action-specific jump-shot selection", "Activate
-        # empirical foul occurrence", "Calibrate drive follow-up decisions", "Expand interior
-        # scoring opportunities", "Add interior shot-opportunity generation", "Calibrate
-        # source-conditioned transition routing", "Model drive floor fouls as observable outcomes",
-        # and "Fix missed and-one rebound continuation".)
-        self.assertEqual(digest, "ab5794592f6dee5294ffc4206b70a8f4fa8a05dae7979103b89c758dcf99f2f8")
+        # this baseline moved. (Previously re-pinned for "Use contextual hierarchical action
+        # selection", "Activate on-ball screen roll creation", "Add pass-created interior seal",
+        # "Model action-specific jump-shot selection", "Activate empirical foul occurrence",
+        # "Calibrate drive follow-up decisions", "Expand interior scoring opportunities", "Add
+        # interior shot-opportunity generation", "Calibrate source-conditioned transition routing",
+        # "Model drive floor fouls as observable outcomes", and "Fix missed and-one rebound
+        # continuation".)
+        self.assertEqual(digest, "49a9cc66ddf6f9add6e7395f40d80aa93f4313cc426645d0d5ac78b5ff09eab8")
 
 
 if __name__ == "__main__":

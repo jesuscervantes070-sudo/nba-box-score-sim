@@ -447,38 +447,68 @@ class ActionSelectionMode:
     HIERARCHICAL = "HIERARCHICAL"
 
 
-def family_log_mass(scores: List[float], families: List[ActionFamily]) -> Dict[ActionFamily, float]:
-    """log(sum(exp(score) for actions in this family)), grouped from PARALLEL `scores`/`families`
-    lists (same index `i` in both refers to the same feasible action). A real, numerically-stable
-    (max-subtracted) log-sum-exp per family -- not a naive `math.log(sum(math.exp(...)))`."""
+class FamilyAggregator:
+    """Plain string constants -- "Calibrate hierarchical action families" phase. `LOGSUMEXP`
+    (the original Phase 1 hierarchy choice) has a real, MEASURED family-SIZE bias: a family with
+    `n` feasible members of roughly EQUAL score gets `log(n)` MORE total log-mass than a
+    single-member family scoring the same per-member value, purely because it has more options --
+    not because any of them is basketball-preferred. Measured directly on canonical seeds
+    25000-25049: mean feasible-member count is BALL_MOVEMENT 2.22, SHOT 1.79, ATTACK 1.32,
+    OFF_BALL_CREATION 1.18 -- `log(2.22/1.18) ≈ 0.63`, a bias LARGER than the
+    `off_ball_creation_family_log_weight=0.6` prior this project had already hand-tuned to try to
+    counteract the exact same direction of effect. `LOGMEANEXP` (`log(sum(exp(s))) - log(n)`,
+    i.e. the per-member AVERAGE, not the total) removes this artificial size bonus -- a family's
+    mass then reflects the QUALITY of its options, never merely their COUNT."""
+    LOGSUMEXP = "LOGSUMEXP"
+    LOGMEANEXP = "LOGMEANEXP"
+
+
+def family_log_mass(scores: List[float], families: List[ActionFamily],
+                     aggregator: str = FamilyAggregator.LOGMEANEXP) -> Dict[ActionFamily, float]:
+    """Per-family aggregate log-mass, grouped from PARALLEL `scores`/`families` lists (same index
+    `i` in both refers to the same feasible action). A real, numerically-stable (max-subtracted)
+    log-sum-exp per family, optionally converted to a log-MEAN-exp (dividing by member count in
+    probability space, i.e. subtracting `log(n)` in log space) to remove the family-SIZE bias --
+    see `FamilyAggregator`'s own docstring for the measured evidence this default is based on."""
     groups: Dict[ActionFamily, List[float]] = {}
     for score, family in zip(scores, families):
         groups.setdefault(family, []).append(score)
     result: Dict[ActionFamily, float] = {}
     for family, group_scores in groups.items():
         m = max(group_scores)
-        result[family] = m + math.log(sum(math.exp(s - m) for s in group_scores))
+        log_sum = m + math.log(sum(math.exp(s - m) for s in group_scores))
+        if aggregator == FamilyAggregator.LOGMEANEXP:
+            result[family] = log_sum - math.log(len(group_scores))
+        elif aggregator == FamilyAggregator.LOGSUMEXP:
+            result[family] = log_sum
+        else:
+            raise ValueError(f"unknown FamilyAggregator: {aggregator!r}")
     return result
 
 
 def family_probabilities(scores: List[float], families: List[ActionFamily],
-                          family_context: Optional[FamilySelectionContext] = None) -> Dict[ActionFamily, float]:
+                          family_context: Optional[FamilySelectionContext] = None,
+                          aggregator: str = FamilyAggregator.LOGMEANEXP) -> Dict[ActionFamily, float]:
     """Family-selection distribution over the families actually PRESENT in `families` (never a
     synthetic family with zero feasible members -- `family_log_mass` only ever produces an entry
     for a family that has at least one real action in it, so an empty family can never be scored,
     let alone selected).
 
-    MATHEMATICAL EQUIVALENCE (the "neutral hierarchy" this phase's own Phase 1 benchmark checks):
-    at every `family_context` weight left at its 0.0 default,
+    AGGREGATOR-DEPENDENT EQUIVALENCE: with `aggregator=FamilyAggregator.LOGSUMEXP` and every
+    `family_context` weight left at its 0.0 default,
         family_probabilities(scores, families)[family(a)] * softmax(scores restricted to that family)[a's index within it]
     equals
         softmax(scores)[a]
-    for every action `a` -- i.e. this two-step (family, then action-within-family) decomposition
-    reproduces the EXACT SAME distribution one flat softmax over `scores` would have. Only a
-    nonzero `family_context` weight deliberately shifts mass toward/away from a whole family at
-    once, without touching any action's own within-family relative ordering."""
+    for every action `a` -- i.e. that combination reproduces the EXACT SAME distribution one flat
+    softmax over `scores` would have (still true, still tested -- see
+    `test_neutral_hierarchy_reproduces_flat_distribution_exactly`). The DEFAULT here,
+    `LOGMEANEXP`, deliberately does NOT reproduce that flat equivalence -- "Calibrate hierarchical
+    action families" phase found the flat distribution ITSELF carries a real, measured family-SIZE
+    bias (`FamilyAggregator`'s own docstring), so exactly reproducing it is no longer the goal.
+    Within-family action selection (which action wins ONCE a family is chosen) is UNCHANGED by
+    the aggregator choice either way -- only which family gets chosen moves."""
     context = family_context or FamilySelectionContext()
-    log_mass = family_log_mass(scores, families)
+    log_mass = family_log_mass(scores, families, aggregator)
     ordered_families = list(log_mass)
     weighted = [log_mass[family] + context.weight_for(family) for family in ordered_families]
     probabilities = _softmax(weighted)
@@ -505,7 +535,8 @@ class SelectionPolicy:
                screen_pocket_pass_log_weight: float = 0.0,
                screen_active: bool = False,
                mode: str = ActionSelectionMode.HIERARCHICAL,
-               family_selection_context: Optional[FamilySelectionContext] = None) -> Optional[ActionIntent]:
+               family_selection_context: Optional[FamilySelectionContext] = None,
+               family_aggregator: str = FamilyAggregator.LOGMEANEXP) -> Optional[ActionIntent]:
         """Returns None only when the perceived menu is genuinely empty
         after clock-feasibility filtering (e.g. a LOOSE-ball state with
         no recovery opportunities, or every remaining option infeasible)
@@ -534,7 +565,7 @@ class SelectionPolicy:
             chosen_index = _weighted_choice(self.rng, probabilities)
         elif mode == ActionSelectionMode.HIERARCHICAL:
             families = [FAMILY_BY_ACTION_TYPE[p.opportunity.action_type] for p in feasible]
-            family_probs = family_probabilities(scores, families, family_selection_context)
+            family_probs = family_probabilities(scores, families, family_selection_context, family_aggregator)
             ordered_families = list(family_probs)
             chosen_family = ordered_families[
                 _weighted_choice(self.rng, [family_probs[f] for f in ordered_families])

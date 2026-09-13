@@ -114,7 +114,7 @@ from action_intent import ActionIntent, ActionType, PASS_ACTIONS
 from action_opportunity import INTERIOR_ZONES, MIDRANGE_ZONES, PERIMETER_ZONES, StructuralContext, generate_opportunities
 from action_perception import perceive
 from action_selection import (
-    ActionSelectionMode, ClockContext, FamilySelectionContext, RoleContext, SelectionPolicy,
+    ActionSelectionMode, ClockContext, FamilyAggregator, FamilySelectionContext, RoleContext, SelectionPolicy,
     ShotFamilySelectionContext, TendencyContext, evaluate_clock_feasibility,
 )
 from clock_semantics import ClockTerminalCause, LiveClockAdvance, advance_live_clocks
@@ -1154,28 +1154,60 @@ class PossessionConfig:
     # the ORIGINAL Phase 16 behavior verbatim -- kept for diagnostics/before-after benchmarking
     # only, never intended as a production default going forward.
     action_selection_mode: str = ActionSelectionMode.HIERARCHICAL
+    # "Calibrate hierarchical action families" phase -- see `action_selection.FamilyAggregator`'s
+    # own docstring for the measured family-SIZE bias `LOGSUMEXP` (the original Phase 1 choice)
+    # carries: mean feasible-member count is BALL_MOVEMENT 2.22 vs OFF_BALL_CREATION 1.18 on
+    # canonical seeds 25000-25049 -- log(2.22/1.18) ≈ 0.63 of pure, unintended size bonus, LARGER
+    # than the hand-tuned `off_ball_creation_family_log_weight=0.6` prior that was fighting the
+    # SAME direction of effect. `LOGMEANEXP` removes it structurally. ARCHITECTURE fix, not a
+    # calibration knob -- benchmarked in isolation (neutral family priors) before any prior tuning.
+    family_aggregator: str = FamilyAggregator.LOGMEANEXP
     # Family-level structural priors (additive log-weight, applied ONCE at the family-selection
-    # step -- see `action_selection.FamilySelectionContext`'s own docstring). Default 0.0 is the
-    # mathematically NEUTRAL hierarchy (byte-for-byte identical distribution to the prior flat
-    # softmax, differing only in how many `rng.random()` draws it takes -- see
-    # `action_selection.family_probabilities`'s own proof). CALIBRATED, ONE interpretable
-    # parameter only (per this phase's own explicit "1-3 parameters, not a dozen arbitrary
-    # constants" instruction): a small TRAIN 25000-25049 grid over `off_ball_creation_family_log_weight`
-    # ALONE (ATTACK and BALL_MOVEMENT were both tried and rejected -- ATTACK contains DRIVE/
-    # ON_BALL_SCREEN, both non-terminal, so boosting it crashes pace far faster per unit of
-    # MIDRANGE reduction than OFF_BALL_CREATION does; reducing BALL_MOVEMENT raises pace/FGA but
-    # does not touch MIDRANGE at all, since it does not change the internal THREE-vs-MIDRANGE split
-    # of the unaffected SHOT family). 0.6 is the largest OFF_BALL_CREATION boost keeping pace and
-    # FGA in this task's own bands on BOTH TRAIN (pace 96.1, FGA 85.6) and HELDOUT 25050-25099
-    # (pace 96.6, FGA 86.1). HONEST FINDING: THREE share lands at ~36-37% on both halves -- BELOW
-    # (not within rounding of, unlike prior phases) the stated 38% floor. Accepted deliberately per
-    # this task's OWN explicit ranking (MIDRANGE reduction and combined interior increase rank
-    # ABOVE "THREE stays healthy" in its calibration-selection order, and its own reject list only
-    # names THREE EXPLODING past ~45-46%, never a modest floor undershoot) -- not a silent
-    # regression. See the phase report for the full TRAIN grid this was chosen from.
-    attack_family_log_weight: float = 0.0
+    # step -- see `action_selection.FamilySelectionContext`'s own docstring). BALL_MOVEMENT is the
+    # NEUTRAL/REFERENCE family (weight fixed at 0.0, never given its own knob) -- with 4 families,
+    # only 3 relative offsets are ever identifiable from softmax output (adding the same constant
+    # to every family's weight changes nothing), so introducing a 4th independent BALL_MOVEMENT
+    # parameter would be redundant/unidentifiable against the other three. BALL_MOVEMENT is chosen
+    # as the reference because it is the largest, most heterogeneous, least basketball-distinctive
+    # family (ordinary passing) -- the other three each represent a specific, real decision this
+    # phase's calibration is actually trying to shift.
+    #
+    # "Calibrate hierarchical action families" phase -- staged search (TRAIN 25000-25049, validated
+    # HELDOUT 25050-25099), TWO interpretable parameters (per this phase's own "1-3 knobs" instruction;
+    # a SHOT-family prior was considered and rejected -- see `shot_family_log_weight`'s own comment
+    # below): Stage A found `family_aggregator=LOGMEANEXP` (see that field's own docstring) ALONE
+    # recovers drive->shot beautifully (34.7%->43.5%) but overcorrects ATTACK's share (17.4%->23.0%),
+    # crashing pace/FGA (93.7/83.0) -- `attack_family_log_weight=-0.7` was the value that restored
+    # pace/FGA to this task's own bands without re-losing the drive->shot gain. Stage B then found
+    # `off_ball_creation_family_log_weight=0.9` the value (searched WITH the Stage-A ATTACK
+    # correction already in place, not independently) that further reduces MIDRANGE while keeping
+    # pace/FGA/drive->shot in-band on BOTH TRAIN (pace 98.5, FGA 86.8, drive->shot 43.5%) and
+    # HELDOUT (pace 97.6, FGA 85.8, drive->shot 44.5%). Sensitivity-checked in a +/-0.1 neighborhood
+    # around this pair (TRAIN): every nearby combination moved smoothly (pace 97.3-99.7, FGA
+    # 85.2-87.8, MIDRANGE 35.6-37.0%) -- a stable region, not a knife-edge.
+    #
+    # HONEST FINDING, WORSE than the single-lever `546adf2` checkpoint on this ONE guardrail: THREE
+    # share lands at ~35-36% on both halves -- now further below the stated 38% floor than before
+    # (was ~36-37%). Accepted deliberately, same reasoning as `546adf2`'s own re-pin: this task's
+    # explicit ranking puts MIDRANGE reduction and combined interior increase ABOVE "THREE stays
+    # healthy," and its reject list only names THREE EXPLODING past ~45-46%, never a modest floor
+    # undershoot -- MIDRANGE (40.5% at `02b974c` -> 38.0% at `546adf2` -> ~36% here) and interior
+    # (21.3% -> 25.4% -> ~28%) both continued moving the RIGHT direction with EVERY change this
+    # phase made, which this task's own priority order values more than the THREE gap.
+    attack_family_log_weight: float = -0.7
+    # A SHOT-family prior was tested in this phase's Stage C and REJECTED. Rationale: SHOT's own
+    # internal THREE-vs-MIDRANGE split is entirely owned by the unchanged, frozen action-level
+    # `shot_zone_probabilities`/`three_point_preference` machinery, so growing the WHOLE SHOT
+    # family moves THREE and MIDRANGE together, not apart -- a moderate value (0.3) measurably
+    # closes the THREE gap on TRAIN (34.9%->38.5%) but gives back essentially all of this phase's
+    # own MIDRANGE gain in the process (36.3%->38.0%) and pushes pace/FGA to their own ceiling
+    # (103.3/94.6). A SMALL value (0.1) looked promising on TRAIN alone (THREE 34.9%->37.2%, only
+    # +0.7pp MIDRANGE cost) but did NOT generalize to HELDOUT (THREE barely moved, 35.3%->35.9%,
+    # while drive->shot crept past the 45% ceiling to 45.6%) -- the textbook TRAIN-only overfit this
+    # methodology's HELDOUT step exists to catch. Left at 0.0 (inert) rather than kept as a knob
+    # with no real, HELDOUT-validated independent lever to pull.
     shot_family_log_weight: float = 0.0
-    off_ball_creation_family_log_weight: float = 0.6
+    off_ball_creation_family_log_weight: float = 0.9
     ball_movement_family_log_weight: float = 0.0
     # ------------------------------------------------------------------
     # Structural Timing Hook -- see docs/DETAILED_ENGINE_FIRST_DIAGNOSTIC_REPORT.md's
@@ -2589,7 +2621,8 @@ def simulate_possession(
                                     shot_log_weight=config.shot_family_log_weight,
                                     off_ball_creation_log_weight=config.off_ball_creation_family_log_weight,
                                     ball_movement_log_weight=config.ball_movement_family_log_weight,
-                                ))
+                                ),
+                                family_aggregator=config.family_aggregator)
         # consumed for exactly this ONE decision, regardless of what gets selected next --
         # re-armed below only if THIS iteration's own dispatched action is itself a DRIVE.
         pending_drive_outcome = None

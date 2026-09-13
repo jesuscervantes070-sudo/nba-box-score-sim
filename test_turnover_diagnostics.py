@@ -33,19 +33,19 @@ class TestTurnoverDiagnosis(unittest.TestCase):
 
     def test_engine_accounting_is_exactly_once_and_shot_clock_is_explicitly_separate(self):
         assert_turnover_reconciliation(self.diagnosis)
-        # Re-pinned for "Use contextual hierarchical action selection": `SelectionPolicy.select`'s
-        # new default (`ActionSelectionMode.HIERARCHICAL`) draws `rng.random()` TWICE per decision
-        # (one family draw, one within-family draw) instead of once, AND the calibrated
-        # `off_ball_creation_family_log_weight=0.6` deliberately shifts possession outcomes -- a
-        # documented RNG trajectory + selection-distribution change (see that function's own
-        # docstring), not a turnover-CLASSIFICATION change. (Previously re-pinned for "Activate
-        # on-ball screen roll creation", "Add pass-created interior seal", "Model action-specific
-        # jump-shot selection", "Activate empirical foul occurrence", "Calibrate drive follow-up
-        # decisions", "Expand interior scoring opportunities", "Add interior shot-opportunity
-        # generation", and "Calibrate source-conditioned transition routing".)
-        self.assertEqual(self.diagnosis.engine_accounted_turnovers, 4073)
-        self.assertEqual(self.diagnosis.player_charged_turnovers, 3696)
-        self.assertEqual(self.diagnosis.categories[TurnoverCategory.SHOT_CLOCK_VIOLATION].engine_accounted_turnovers, 377)
+        # Re-pinned for "Calibrate hierarchical action families": the new default
+        # `family_aggregator=LOGMEANEXP` (removes a real, measured family-SIZE bias LOGSUMEXP
+        # carried) plus recalibrated `attack_family_log_weight=-0.7`/
+        # `off_ball_creation_family_log_weight=0.9` deliberately shift possession outcomes -- not a
+        # turnover-CLASSIFICATION change. (Previously re-pinned for "Use contextual hierarchical
+        # action selection", "Activate on-ball screen roll creation", "Add pass-created interior
+        # seal", "Model action-specific jump-shot selection", "Activate empirical foul occurrence",
+        # "Calibrate drive follow-up decisions", "Expand interior scoring opportunities", "Add
+        # interior shot-opportunity generation", and "Calibrate source-conditioned transition
+        # routing".)
+        self.assertEqual(self.diagnosis.engine_accounted_turnovers, 4280)
+        self.assertEqual(self.diagnosis.player_charged_turnovers, 3883)
+        self.assertEqual(self.diagnosis.categories[TurnoverCategory.SHOT_CLOCK_VIOLATION].engine_accounted_turnovers, 397)
 
     def test_steals_are_consistent_with_current_clean_interception_semantics(self):
         steals = sum(o.steal_credited for o in self.diagnosis.observations)

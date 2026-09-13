@@ -15,8 +15,8 @@ from possession_orchestrator import CAPABILITY_GATED_ACTION_TYPES, SUPPORTED_ACT
 from action_opportunity import StructuralContext, generate_opportunities
 from action_perception import PerceivedOpportunity, perceive
 from action_selection import (
-    ActionSelectionMode, ClockContext, FamilySelectionContext, RoleContext, SelectionPolicy,
-    TendencyContext, _score_action, _softmax, family_log_mass, family_probabilities,
+    ActionSelectionMode, ClockContext, FamilyAggregator, FamilySelectionContext, RoleContext,
+    SelectionPolicy, TendencyContext, _score_action, _softmax, family_log_mass, family_probabilities,
 )
 from possession_state import (
     BallState, DribbleState, PlayerBallControl, PossessionPhase, PossessionState, SpatialZone,
@@ -72,14 +72,17 @@ class TestHierarchicalVsFlatEquivalence(unittest.TestCase):
         self.assertNotIn(ActionFamily.OFF_BALL_CREATION, probs)
 
     def test_neutral_hierarchy_reproduces_flat_distribution_exactly(self):
-        """The core mathematical claim: at all-zero family weights, family_probabilities(...)[family(a)]
-        * (softmax of that family's own scores)[a's index within it] == softmax(scores)[a], for
-        EVERY action -- not merely on average."""
+        """The core mathematical claim, true for `FamilyAggregator.LOGSUMEXP` specifically (the
+        DEFAULT is now `LOGMEANEXP` -- see that constant's own docstring for why the flat
+        distribution itself carries an undesirable family-SIZE bias and is deliberately NOT
+        reproduced by default anymore): at all-zero family weights, family_probabilities(...)
+        [family(a)] * (softmax of that family's own scores)[a's index within it] ==
+        softmax(scores)[a], for EVERY action -- not merely on average."""
         scores = [1.2, -0.3, 0.7, 2.1, 0.0]
         families = [ActionFamily.ATTACK, ActionFamily.SHOT, ActionFamily.SHOT,
                     ActionFamily.BALL_MOVEMENT, ActionFamily.OFF_BALL_CREATION]
         flat = _softmax(scores)
-        fam_probs = family_probabilities(scores, families)
+        fam_probs = family_probabilities(scores, families, aggregator=FamilyAggregator.LOGSUMEXP)
         for family in set(families):
             indices = [i for i, f in enumerate(families) if f == family]
             within = _softmax([scores[i] for i in indices])
@@ -284,6 +287,75 @@ class TestSelectionPolicyHierarchicalMode(unittest.TestCase):
             [], RoleContext(), TendencyContext(), clock, "p1", mode=ActionSelectionMode.HIERARCHICAL,
         )
         self.assertIsNone(result)
+
+    def test_family_size_bias_removed_by_logmeanexp(self):
+        """The measured root cause of Stage 2's calibration: under LOGSUMEXP, a family with MORE
+        equal-score members gets MORE total log-mass purely from size (log(n) bonus) -- LOGMEANEXP
+        removes it, leaving two equal-quality families equally likely regardless of member count."""
+        # 4 equal-score ATTACK-like members vs 1 equal-score OFF_BALL_CREATION-like member.
+        scores = [1.0, 1.0, 1.0, 1.0, 1.0]
+        families = [ActionFamily.ATTACK] * 4 + [ActionFamily.OFF_BALL_CREATION]
+        logsumexp_probs = family_probabilities(scores, families, aggregator=FamilyAggregator.LOGSUMEXP)
+        logmeanexp_probs = family_probabilities(scores, families, aggregator=FamilyAggregator.LOGMEANEXP)
+        # LOGSUMEXP: the 4-member family gets ~4x the 1-member family's mass, from size alone.
+        self.assertAlmostEqual(
+            logsumexp_probs[ActionFamily.ATTACK] / logsumexp_probs[ActionFamily.OFF_BALL_CREATION],
+            4.0, places=6,
+        )
+        # LOGMEANEXP: equal per-member quality -> equal family probability, size-independent.
+        self.assertAlmostEqual(logmeanexp_probs[ActionFamily.ATTACK],
+                               logmeanexp_probs[ActionFamily.OFF_BALL_CREATION], places=9)
+
+    def test_single_action_family_score_identical_under_both_aggregators(self):
+        """A single-member family's score is IDENTICAL under LOGSUMEXP and LOGMEANEXP (log(1)=0) --
+        the aggregator choice only matters once a family has 2+ feasible members."""
+        scores = [1.7]
+        families = [ActionFamily.OFF_BALL_CREATION]
+        logsumexp_mass = family_log_mass(scores, families, aggregator=FamilyAggregator.LOGSUMEXP)
+        logmeanexp_mass = family_log_mass(scores, families, aggregator=FamilyAggregator.LOGMEANEXP)
+        self.assertEqual(logsumexp_mass, logmeanexp_mass)
+
+    def test_multi_action_family_score_is_the_per_member_average_under_logmeanexp(self):
+        scores = [1.0, 2.0, 0.0]
+        families = [ActionFamily.BALL_MOVEMENT] * 3
+        mass = family_log_mass(scores, families, aggregator=FamilyAggregator.LOGMEANEXP)
+        import math
+        expected = math.log(sum(math.exp(s) for s in scores) / 3)
+        self.assertAlmostEqual(mass[ActionFamily.BALL_MOVEMENT], expected, places=9)
+
+    def test_family_priors_remain_additive_under_logmeanexp(self):
+        """Family priors are added ONCE, after aggregation -- not scaled or multiplied by member
+        count, regardless of aggregator."""
+        scores = [1.0, 1.0]
+        families = [ActionFamily.ATTACK, ActionFamily.ATTACK]
+        base = family_log_mass(scores, families, aggregator=FamilyAggregator.LOGMEANEXP)[ActionFamily.ATTACK]
+        context = FamilySelectionContext(attack_log_weight=0.5)
+        boosted_probs = family_probabilities(scores, families, context, aggregator=FamilyAggregator.LOGMEANEXP)
+        # reconstruct the boosted family's own log-mass from its probability and confirm it equals
+        # base + 0.5 exactly (only one other, absent, family to normalize against here, so use a
+        # second family to make the additive claim checkable via a ratio instead).
+        families2 = [ActionFamily.ATTACK, ActionFamily.ATTACK, ActionFamily.SHOT]
+        scores2 = [1.0, 1.0, 1.0]
+        neutral = family_probabilities(scores2, families2, aggregator=FamilyAggregator.LOGMEANEXP)
+        boosted = family_probabilities(scores2, families2, FamilySelectionContext(attack_log_weight=0.5),
+                                        aggregator=FamilyAggregator.LOGMEANEXP)
+        import math
+        ratio_neutral = neutral[ActionFamily.ATTACK] / neutral[ActionFamily.SHOT]
+        ratio_boosted = boosted[ActionFamily.ATTACK] / boosted[ActionFamily.SHOT]
+        self.assertAlmostEqual(ratio_boosted / ratio_neutral, math.exp(0.5), places=6)
+
+    def test_common_offset_invariance(self):
+        """Adding the SAME constant to every family's prior changes NOTHING -- this is exactly why
+        BALL_MOVEMENT is left as the neutral/reference family with no independent knob of its own."""
+        scores = [1.0, 0.5, 1.5, 0.2]
+        families = [ActionFamily.ATTACK, ActionFamily.SHOT, ActionFamily.OFF_BALL_CREATION,
+                    ActionFamily.BALL_MOVEMENT]
+        neutral = family_probabilities(scores, families,
+                                        FamilySelectionContext(0.0, 0.0, 0.0, 0.0))
+        shifted = family_probabilities(scores, families,
+                                        FamilySelectionContext(1.0, 1.0, 1.0, 1.0))
+        for family in neutral:
+            self.assertAlmostEqual(neutral[family], shifted[family], places=9)
 
     def test_flat_mode_still_available_and_matches_old_behavior(self):
         """`ActionSelectionMode.FLAT` reproduces the exact pre-hierarchy sampling path (a single
