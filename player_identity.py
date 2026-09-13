@@ -173,6 +173,21 @@ def estimate_attribute_by_id(player_id: str, as_of_season: str, attribute: str, 
     return resolution, pae.estimate_attribute(resolution.canonical_name, as_of_season, attribute, all_seasons)
 
 
+def estimate_shot_zone_attribute_by_id(player_id: str, as_of_season: str, attribute: str, all_seasons: List[str]):
+    """Adapter over the UNMODIFIED shot_zone_estimation.estimate_shot_zone_attribute
+    (`rim_finishing`/`floater_short_mid`/`midrange` -- Phase 5, a SEPARATE module from
+    `player_ability_estimation.py`'s own six attributes, added after this phase's
+    `estimate_attribute_by_id` was written, so it was never routed through the id-based adapter
+    layer until now). Same contract as `estimate_attribute_by_id`: returns
+    (IdentityResolution, ShotZoneEstimationResult_or_None); real math/calibration inside
+    `estimate_shot_zone_attribute` is untouched. "Real player / team truth" phase addition."""
+    import shot_zone_estimation as sze
+    resolution = resolve_id_to_name(player_id)
+    if resolution.state != RESOLVED:
+        return resolution, None
+    return resolution, sze.estimate_shot_zone_attribute(resolution.canonical_name, as_of_season, attribute, all_seasons)
+
+
 def estimate_tendency_by_id(player_id: str, as_of_season: str, all_seasons: List[str], tendency: str):
     """Adapter over the UNMODIFIED player_tendencies_estimation.estimate_tendency.
     The returned PlayerTendencyEstimate has its (new, additive,
