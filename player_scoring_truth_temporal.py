@@ -16,26 +16,41 @@ read (`_player_evidence_by_season`'s own extractors read `player.fg3a` = the sea
 per-game average). A December profile built with `as_of_season="2024-25"` would therefore see
 January-June 2025 games that had not happened yet relative to a December game -- a genuine leak.
 
-============================ PER-TARGET GRANULARITY AUDIT (this phase) ============================
-Checked directly (see player_game_log_ingestion.py's own module docstring for the exact verified
-columns) before writing any code:
+============================ PER-TARGET GRANULARITY AUDIT ============================
+Checked directly before writing any code (see player_game_log_ingestion.py's and
+player_shot_event_ingestion.py's own module docstrings for the exact verified columns/call-budget
+investigation for each source):
 
-| Target | Per-game evidence available? | Classification | V1 pregame strategy |
+| Target | Per-game evidence available? | Source | V1 pregame strategy |
 |---|---|---|---|
-| three_point | YES (FGM/FGA/FG3M/FG3A per game, `leaguegamelog`) | B->A (new cache, already-used endpoint) | current-season games before cutoff + prior seasons, same shrinkage |
-| free_throw | YES (FTM/FTA per game) | B->A | same |
-| three_point_preference | YES (FG3A/FGA per game -- same rows) | B->A | same, tendency-side shrinkage |
-| rim_finishing | NO (zone data is season-aggregate ONLY -- `leaguedashplayershotlocations` has no per-game/date field; no other already-used endpoint carries it) | D | Option B: last COMPLETED prior season's own value only |
-| floater_short_mid | NO (same reason) | D | Option B |
-| midrange | NO (same reason) | D | Option B |
-| midrange_preference | NO (needs the same zone split) | D | Option B |
-| drive_aggression | NO (touches/drives tracking, `shot_creation_ingestion.py`, is season-aggregate only) | D | Option B |
+| three_point | YES (FGM/FGA/FG3M/FG3A per game) | `leaguegamelog` | current-season games before cutoff + prior seasons, same shrinkage |
+| free_throw | YES (FTM/FTA per game) | `leaguegamelog` | same |
+| three_point_preference | YES (FG3A/FGA per game) | `leaguegamelog` | same, tendency-side shrinkage |
+| rim_finishing | YES (per-shot SHOT_ZONE_BASIC="Restricted Area", real, ~10 calls/season) | `shotchartdetail` | current-season shots before cutoff + prior seasons, same shrinkage |
+| floater_short_mid | YES (SHOT_ZONE_BASIC="In The Paint (Non-RA)") | `shotchartdetail` | same |
+| midrange | YES (SHOT_ZONE_BASIC="Mid-Range") | `shotchartdetail` | same |
+| midrange_preference | YES (mid shots / real 2PT-zone-total shots, matching the tendency's own existing denominator exactly) | `shotchartdetail` | same, tendency-side shrinkage |
+| drive_aggression | **NO** -- see determination below | none available | Option B: last COMPLETED prior season's own value only (PRIOR_SEASON_ONLY, unchanged) |
 
-The one real per-shot endpoint that WOULD carry date+zone+game_id per attempt (`ShotChartDetail`)
-requires ~500+ calls/season and was explicitly deferred by Phase 5 -- unchanged by this phase, not
-silently built around. This is an HONEST, documented limitation, not an oversight: 5 of 8 targets
-remain PRIOR_SEASON_ONLY in-season; 3 of 8 (three_point, free_throw, three_point_preference) are
-now genuinely CURRENT_SEASON_PREGAME-capable.
+**Original 500+-calls/season estimate REJECTED as the ingestion design** -- investigated 3 real
+call strategies before choosing one (see `player_shot_event_ingestion.py`'s own module docstring
+for the full investigation): per-player (~500+ calls, works but wasteful), `player_id=0` single
+call (fails silently -- a real, confirmed **102,400-row server-side cap**, truncating a real
+218,700-row season to its first 575 of 1,230 games), and `player_id=0` PAGED BY MONTH (chosen: ~10
+calls/season, real, verified, complete -- 218,700/1,230-games reconciled exactly against this
+project's own already-verified league totals).
+
+============================ DRIVE_AGGRESSION DETERMINATION ============================
+`shotchartdetail`'s own `ACTION_TYPE` field (free text, e.g. "Driving Layup Shot") could flag SOME
+shots as drive-associated, but this project's own `drive_aggression` tendency is explicitly defined
+(`player_tendencies_analysis.py`) as touches-denominated: **P(DRIVE | a real offensive touch)**,
+not "share of FGA that look like a drive." A shot-only source can supply the numerator's own
+FGA-level subset at best, but has NO touches/no-shot-possessions denominator at all (a drive that
+ends in a pass or a turnover, not a shot, is invisible to any per-SHOT source by construction) --
+this is classified **(B) partial proxy only**, not **(A) fully recoverable**. Per this phase's own
+explicit instruction ("If B/C: leave current-season drive_aggression unavailable and retain
+PRIOR_SEASON_ONLY"), `drive_aggression` is NOT touched -- it keeps using
+`_prior_season_only_estimate`, unchanged from the previous phase.
 
 ============================ CUTOFF SEMANTICS ============================
 `evidence game date < as_of_date` (strict). The target game itself, and every later game, are
@@ -364,10 +379,221 @@ def build_scoring_truth_profile_as_of_date(player_id: str, as_of_date: str, as_o
             player_id, canonical_name, as_of_season, as_of_date, attribute, all_seasons, exclude_game_id)
     estimates["three_point_preference"] = _pregame_three_point_preference_estimate(
         player_id, canonical_name, as_of_season, as_of_date, all_seasons, exclude_game_id)
-    for target in ("rim_finishing", "floater_short_mid", "midrange", "midrange_preference", "drive_aggression"):
-        estimates[target] = _prior_season_only_estimate(player_id, as_of_season, target, all_seasons)
+    # "Add pregame shot-event scoring evidence" phase -- these 4 are now genuinely
+    # CURRENT_SEASON_PREGAME-capable via shotchartdetail (see module docstring's updated audit
+    # table). Only drive_aggression remains PRIOR_SEASON_ONLY (Option B) -- see
+    # `_prior_season_only_estimate`'s own docstring / the module docstring's drive_aggression
+    # determination for why shot-event data does not resolve it.
+    for attribute in _SHOT_ZONE_TARGETS:
+        estimates[attribute] = _pregame_shot_zone_ability_estimate(
+            player_id, canonical_name, as_of_season, as_of_date, attribute, all_seasons, exclude_game_id)
+    estimates["midrange_preference"] = _pregame_midrange_preference_estimate(
+        player_id, canonical_name, as_of_season, as_of_date, all_seasons, exclude_game_id)
+    estimates["drive_aggression"] = _prior_season_only_estimate(player_id, as_of_season, "drive_aggression", all_seasons)
 
     return pst.ScoringTruthProfile(
         player_id=player_id, canonical_name=canonical_name, as_of_season=as_of_season,
         identity_state=resolution.state, estimates=estimates, as_of_date=as_of_date,
+    )
+
+
+# =======================================================================
+# Shot-event-derived pregame paths (rim_finishing / floater_short_mid / midrange /
+# midrange_preference) -- "Add pregame shot-event scoring evidence" phase.
+# =======================================================================
+from player_shot_event_ingestion import load_shot_events  # noqa: E402 -- grouped with this section's own imports
+
+# SHOT_ZONE_BASIC -> family, using the EXACT SAME real zone names shot_zone_ingestion.py's own
+# ZONES tuple already uses (see player_shot_event_ingestion.py's own module docstring for the
+# direct verification that this is the SAME taxonomy, not a parallel one). "Backcourt" is
+# deliberately excluded from THREE (a rare desperation heave, not a real shot-quality look -- the
+# SAME exclusion this project's own real 2023-24/2024-25 league-wide zone-share audit already used).
+_ZONE_TO_FAMILY = {
+    "Restricted Area": "rim_finishing",
+    "In The Paint (Non-RA)": "floater_short_mid",
+    "Mid-Range": "midrange",
+    "Left Corner 3": "THREE", "Right Corner 3": "THREE", "Above the Break 3": "THREE",
+}
+_SHOT_ZONE_TARGETS = ("rim_finishing", "floater_short_mid", "midrange")
+
+
+@lru_cache(maxsize=None)
+def _shot_event_prefix_ledger_for(player_id: str, season: str):
+    """(sorted (date, game_id, game_event_id) keys, cumulative prefix sums) for one player/season
+    -- same shape/contract as `_prefix_ledger_for`, one array slot per shot-zone family
+    (rim_fga, rim_fgm, floater_fga, floater_fgm, mid_fga, mid_fgm), or None if this player has no
+    cached shot-event evidence that season."""
+    events = load_shot_events(season).get(player_id)
+    if not events:
+        return None
+    keys = tuple((e["date"], e["game_id"], e["game_event_id"]) for e in events)
+    prefix = [(0, 0, 0, 0, 0, 0)]
+    running = [0, 0, 0, 0, 0, 0]
+    for e in events:
+        family = _ZONE_TO_FAMILY.get(e["zone_basic"])
+        if family == "rim_finishing":
+            running[0] += 1
+            running[1] += int(e["made"])
+        elif family == "floater_short_mid":
+            running[2] += 1
+            running[3] += int(e["made"])
+        elif family == "midrange":
+            running[4] += 1
+            running[5] += int(e["made"])
+        prefix.append(tuple(running))
+    return keys, tuple(prefix)
+
+
+def _shot_family_evidence_before(player_id: str, season: str, as_of_date: str,
+                                  exclude_game_id: Optional[str] = None) -> Optional[Tuple[int, ...]]:
+    """(rim_fga, rim_fgm, floater_fga, floater_fgm, mid_fga, mid_fgm) summed over every real shot
+    strictly before `as_of_date` -- same off-by-one contract as `_evidence_before`."""
+    ledger = _shot_event_prefix_ledger_for(player_id, season)
+    if ledger is None:
+        return None
+    keys, prefix = ledger
+    cut = bisect.bisect_left(keys, (as_of_date, "", -1))
+    return prefix[cut]
+
+
+def _pregame_shot_zone_ability_estimate(player_id: str, canonical_name: Optional[str], as_of_season: str,
+                                         as_of_date: str, attribute: str, all_seasons: List[str],
+                                         exclude_game_id: Optional[str] = None) -> pst.ScoringTruthEstimate:
+    """rim_finishing / floater_short_mid / midrange -- same architecture as
+    `_pregame_ability_estimate`, but the current-season partial row comes from the shot-event
+    ledger instead of the box game-log, and prior seasons still reuse
+    `shot_zone_estimation.estimate_shot_zone_attribute`'s own already-validated per-season rows
+    unmodified."""
+    from shot_zone_estimation import _seasons_through_cutoff, estimate_shot_zone_attribute, resolve_params
+    source = "player_scoring_truth_temporal (shotchartdetail current-season prefix + prior full seasons)"
+    if canonical_name is None:
+        return pst.ScoringTruthEstimate(
+            name=attribute, kind="ability", player_id=player_id, as_of_season=as_of_season,
+            value=None, confidence=None, sample_size=None, source=source, param_source=None,
+            coverage_note="identity not resolved", provenance=MISSING,
+        )
+
+    prior_seasons = [s for s in _seasons_through_cutoff(as_of_season, all_seasons) if s < as_of_season]
+    prior_evidence: List[SeasonEvidence] = []
+    for season in prior_seasons:
+        result = estimate_shot_zone_attribute(canonical_name, season, attribute, [s for s in all_seasons if s <= season])
+        own_row = next((ev for ev in result.seasons_used if ev.season == season), None)
+        if own_row is not None:
+            prior_evidence.append(own_row)
+
+    idx = {"rim_finishing": (0, 1), "floater_short_mid": (2, 3), "midrange": (4, 5)}[attribute]
+    totals = _shot_family_evidence_before(player_id, as_of_season, as_of_date, exclude_game_id)
+    current = None
+    if totals is not None:
+        fga, fgm = totals[idx[0]], totals[idx[1]]
+        current = SeasonEvidence(season=as_of_season, rate=(fgm / fga if fga > 0 else 0.0), sample=float(fga))
+
+    all_evidence = prior_evidence + ([current] if current is not None else [])
+    if not all_evidence:
+        return pst.ScoringTruthEstimate(
+            name=attribute, kind="ability", player_id=player_id, as_of_season=as_of_season,
+            value=None, confidence=None, sample_size=None, source=source, param_source=None,
+            coverage_note="no real evidence (no prior season, no current-season shot events before cutoff)",
+            provenance=MISSING,
+        )
+
+    # Same anti-leakage fix as the box-score pregame path: league average from the last FULLY
+    # COMPLETED season only, never the in-progress as_of_season.
+    recency_decay, prior_strength, param_source = resolve_params(attribute)
+    reference_season = _season_before(as_of_season)
+    reference_all_seasons = [s for s in all_seasons if s <= reference_season]
+    full_result = (estimate_shot_zone_attribute(canonical_name, reference_season, attribute, reference_all_seasons)
+                   if reference_all_seasons else None)
+    league_avg = full_result.league_avg_rate if full_result is not None else None
+
+    weighted_raw, shrunk, total_weight = _weighted_shrunk_estimate(
+        all_evidence, as_of_season, prior_strength, league_avg, recency_decay=recency_decay,
+    )
+    if shrunk is None:
+        return pst.ScoringTruthEstimate(
+            name=attribute, kind="ability", player_id=player_id, as_of_season=as_of_season,
+            value=None, confidence=None, sample_size=None, source=source, param_source=param_source,
+            coverage_note="zero total evidence weight", provenance=MISSING,
+        )
+    confidence = round(total_weight / (total_weight + prior_strength), 3) if prior_strength else None
+    provenance = CURRENT_SEASON_PREGAME if (current is not None and current.sample > 0) else PRIOR_SEASON_ONLY
+    return pst.ScoringTruthEstimate(
+        name=attribute, kind="ability", player_id=player_id, as_of_season=as_of_season,
+        value=shrunk, confidence=confidence, sample_size=total_weight, source=source, param_source=param_source,
+        provenance=provenance,
+    )
+
+
+def _pregame_midrange_preference_estimate(player_id: str, canonical_name: Optional[str], as_of_season: str,
+                                           as_of_date: str, all_seasons: List[str],
+                                           exclude_game_id: Optional[str] = None) -> pst.ScoringTruthEstimate:
+    """midrange_preference -- same shot-event source as the ability path above, but the
+    DENOMINATOR is the real 2PT-ZONE total (rim + floater + mid attempts), matching
+    `player_tendencies_analysis._weight_for`'s own existing definition EXACTLY (never a simpler
+    "mid FGA / all FGA" proxy, per this phase's own explicit instruction not to change the
+    tendency's conceptual denominator)."""
+    import player_tendencies_analysis as pta
+    from player_tendencies_estimation import TENDENCY_LAMBDA, TENDENCY_M, _relative_transform, _league_avg_rate
+    from rim_protection_calibration import _shrunk_rate
+
+    source = "player_scoring_truth_temporal (shotchartdetail current-season prefix + prior full seasons)"
+    tendency = "midrange_preference"
+    if canonical_name is None:
+        return pst.ScoringTruthEstimate(
+            name=tendency, kind="tendency", player_id=player_id, as_of_season=as_of_season,
+            value=None, confidence=None, sample_size=None, source=source, param_source=None,
+            coverage_note="identity not resolved", provenance=MISSING,
+        )
+
+    prior_seasons = [s for s in all_seasons if pta.TENDENCY_FIRST_SEASON_BOX <= s < as_of_season]
+    history: List[Tuple[str, float, float]] = []
+    for season in prior_seasons:
+        rows = pta.build_player_tendency_rows(season)
+        row = next((r for r in rows if r.player_name == canonical_name), None)
+        if row is None:
+            continue
+        rate = pta.midrange_preference(row)
+        if rate is not None:
+            weight = (row.restricted_area_fga or 0.0) + (row.paint_non_ra_fga or 0.0) + (row.midrange_fga or 0.0)
+            history.append((season, rate, weight))
+
+    totals = _shot_family_evidence_before(player_id, as_of_season, as_of_date, exclude_game_id)
+    current_weight = 0.0
+    if totals is not None:
+        rim_fga, _, floater_fga, _, mid_fga, _ = totals
+        two_pt_zone_total = rim_fga + floater_fga + mid_fga
+        if two_pt_zone_total > 0:
+            history.append((as_of_season, mid_fga / two_pt_zone_total, float(two_pt_zone_total)))
+            current_weight = float(two_pt_zone_total)
+
+    if not history:
+        return pst.ScoringTruthEstimate(
+            name=tendency, kind="tendency", player_id=player_id, as_of_season=as_of_season,
+            value=None, confidence=None, sample_size=None, source=source, param_source=None,
+            coverage_note="no real evidence (no prior season, no current-season shot events before cutoff)",
+            provenance=MISSING,
+        )
+
+    reference_season = _season_before(as_of_season)
+    reference_rows = pta.build_player_tendency_rows(reference_season) if reference_season >= pta.TENDENCY_FIRST_SEASON_BOX else []
+    league_avg = _league_avg_rate(reference_rows, tendency) if reference_rows else None
+
+    shrunk = (_shrunk_rate(history, int(as_of_season[:4]), TENDENCY_LAMBDA, TENDENCY_M[tendency], league_avg)
+              if league_avg is not None else None)
+    if shrunk is None:
+        return pst.ScoringTruthEstimate(
+            name=tendency, kind="tendency", player_id=player_id, as_of_season=as_of_season,
+            value=None, confidence=None, sample_size=None, source=source, param_source=None,
+            coverage_note="no safe league-average reference available (no fully-completed prior season)",
+            provenance=MISSING,
+        )
+
+    latent_propensity = round(_relative_transform(shrunk, tendency) - _relative_transform(league_avg, tendency), 4)
+    total_weight = sum(w for _, _, w in history)
+    confidence = 0.9 if total_weight >= 3 * 100.0 else (0.6 if total_weight >= 100.0 else 0.3)
+    provenance = CURRENT_SEASON_PREGAME if current_weight > 0 else PRIOR_SEASON_ONLY
+    return pst.ScoringTruthEstimate(
+        name=tendency, kind="tendency", player_id=player_id, as_of_season=as_of_season,
+        value=latent_propensity, confidence=confidence, sample_size=total_weight, source=source,
+        param_source=None, provenance=provenance,
     )
