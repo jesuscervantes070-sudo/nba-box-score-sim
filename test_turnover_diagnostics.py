@@ -33,21 +33,21 @@ class TestTurnoverDiagnosis(unittest.TestCase):
 
     def test_engine_accounting_is_exactly_once_and_shot_clock_is_explicitly_separate(self):
         assert_turnover_reconciliation(self.diagnosis)
-        # Re-pinned for "Complete shot-family block occurrence": a real, new block-check RNG draw
-        # now happens on every MIDRANGE/THREE_POINT dispatch too, and RIM/FLOATER's own block base
-        # rates were recalibrated -- both change the later deterministic RNG trajectory for
-        # essentially every possession, not a turnover-CLASSIFICATION change (every
-        # classification-focused test in this file still passes unchanged). (Previously re-pinned
-        # for "Calibrate clean shot conversion", "Calibrate defensive floor foul occurrence",
-        # "Calibrate action-specific jump-shot zones", "Calibrate hierarchical action families",
-        # "Use contextual hierarchical action selection", "Activate on-ball screen roll creation",
-        # "Add pass-created interior seal", "Model action-specific jump-shot selection", "Activate
-        # empirical foul occurrence", "Calibrate drive follow-up decisions", "Expand interior
-        # scoring opportunities", "Add interior shot-opportunity generation", and "Calibrate
-        # source-conditioned transition routing".)
-        self.assertEqual(self.diagnosis.engine_accounted_turnovers, 4408)
-        self.assertEqual(self.diagnosis.player_charged_turnovers, 3893)
-        self.assertEqual(self.diagnosis.categories[TurnoverCategory.SHOT_CLOCK_VIOLATION].engine_accounted_turnovers, 515)
+        # Re-pinned for "Calibrate final NBA shot-family mix": `interior_cut_rim_probability`/
+        # `interior_seal_rim_probability`/`transition_push_rim_probability` all moved (see
+        # `PossessionConfig.interior_cut_rim_probability`'s own docstring), changing the later
+        # deterministic RNG trajectory for many possessions -- not a turnover-CLASSIFICATION change
+        # (every classification-focused test in this file still passes unchanged). (Previously
+        # re-pinned for "Complete shot-family block occurrence", "Calibrate clean shot conversion",
+        # "Calibrate defensive floor foul occurrence", "Calibrate action-specific jump-shot zones",
+        # "Calibrate hierarchical action families", "Use contextual hierarchical action selection",
+        # "Activate on-ball screen roll creation", "Add pass-created interior seal", "Model
+        # action-specific jump-shot selection", "Activate empirical foul occurrence", "Calibrate
+        # drive follow-up decisions", "Expand interior scoring opportunities", "Add interior
+        # shot-opportunity generation", and "Calibrate source-conditioned transition routing".)
+        self.assertEqual(self.diagnosis.engine_accounted_turnovers, 4409)
+        self.assertEqual(self.diagnosis.player_charged_turnovers, 3903)
+        self.assertEqual(self.diagnosis.categories[TurnoverCategory.SHOT_CLOCK_VIOLATION].engine_accounted_turnovers, 506)
 
     def test_steals_are_consistent_with_current_clean_interception_semantics(self):
         steals = sum(o.steal_credited for o in self.diagnosis.observations)

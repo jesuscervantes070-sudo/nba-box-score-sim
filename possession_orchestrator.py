@@ -1294,29 +1294,47 @@ class PossessionConfig:
     # ACTIVATED ("Expand interior scoring opportunities" phase). TRANSITION_PUSH's landing spot is
     # no longer hardcoded to RESTRICTED_RIM (see `_resolve_interior_pass_destination` below) --
     # this is the probability the push lands the receiver at RESTRICTED_RIM rather than PAINT.
-    # PROVISIONAL V1, NOT fit to final shot-family totals: no direct event-level "did this
-    # transition push land at the rim vs. the leg of the paint" dataset exists publicly, so this
-    # is a labeled, defensible structural split -- a high-advantage numbers-attacking push (which
-    # is what TRANSITION_PUSH structurally represents: `state.phase == TRANSITION`, a teammate
-    # already running ahead of the ball) should reach the rim MORE often than it stalls at the
-    # nail/paint, but both destinations must remain reachable. 0.65 chosen as the smallest
-    # defensible majority split satisfying "rim > paint" without asserting a precise ratio this
-    # repo cannot observe. Reused, unmodified, by INTERIOR_CUT's own destination roll (see
-    # `interior_cut_rim_probability` below) -- SAME two-zone destination concept, deliberately
-    # SEPARATE, independently-labeled knob (a halfcourt pass-created cut is a different basketball
-    # event than a live numbers-advantage push and is not assumed to share the same split).
-    transition_push_rim_probability: float = 0.65
-    # ACTIVATED ("Expand interior scoring opportunities" phase). INTERIOR_CUT's own destination
-    # split -- see `transition_push_rim_probability`'s docstring for the shared methodology. A
-    # halfcourt cut exploiting a compromised defensive area is judged LESS likely than a live
-    # transition numbers-advantage push to finish directly at the rim (a half-court defense that
-    # is compromised in one area, per `AdvantageModel.compromised_areas()`, has more recovery time
-    # than a defense still getting back in transition) -- set slightly below the transition value.
-    # PROVISIONAL V1, NOT fit to final shot-family totals.
-    interior_cut_rim_probability: float = 0.55
-    # A set-defense seal is more likely to receive in the paint than directly under the rim.
-    # Structural V1 split only; both destinations remain reachable and shot choice stays downstream.
-    interior_seal_rim_probability: float = 0.40
+    # CALIBRATED ("Calibrate final NBA shot-family mix" phase, TRAIN seeds 25000-25049, validated
+    # HELDOUT 25050-25099) -- see `interior_cut_rim_probability`'s own docstring for the full
+    # audit/methodology; raised 0.65 -> 0.80 alongside the other two interior-destination weights,
+    # unchanged relative ordering preserved (transition > cut > seal).
+    transition_push_rim_probability: float = 0.80
+    # RE-CALIBRATED ("Calibrate final NBA shot-family mix" phase). AUDIT FINDING that motivated
+    # this: the consolidated system-freeze audit found the ~29%-combined RIM+FLOATER share is
+    # structurally invariant to `action_selection.py`'s jump-shot zone-selection weights (proven
+    # directly: an aggressive PULL_UP/CATCH_AND_SHOOT three-baseline sweep left RIM+FLOATER's own
+    # combined share completely unchanged across every value tested, while THREE_POINT ballooned
+    # past 50%) -- RIM/FLOATER can ONLY ever originate from a ball position ALREADY at an interior
+    # zone (`action_selection._shot_zone_options`'s own structural fallback, `return
+    # (state.ball_zone,)`, offers no competition once the ball is already interior). This module's
+    # own zone-selection weights are the ONE remaining, already-existing, non-frequency,
+    # non-DRIVE-logic lever that can shift how MUCH of that already-fixed interior volume becomes
+    # RIM specifically vs FLOATER -- confirmed by direct measurement of the canonical baseline
+    # (TRAIN): 0.55/0.40/0.65 produced a materially FLOATER-skewed RIM:FLOATER dispatch-level split
+    # (42.4% RIM) versus the real, project-cached current-era zone data's own ~60:40 RIM-favored
+    # split (Restricted Area / Paint Non-RA, `cache/2023-24|2024-25/player_shot_zones.json`).
+    # Deliberately does NOT touch `drive_resolution.py`'s own `_CLEAN_ZONE_WEIGHTS`/
+    # `_PARTIAL_ZONE_WEIGHTS` (DRIVE logic, explicitly frozen this phase) or any action-selection
+    # frequency (INTERIOR_CUT/INTERIOR_SEAL/TRANSITION_PUSH remain exactly as likely to be SELECTED
+    # as before -- only which interior zone they land in, once selected, changes) -- this is the
+    # SAME "given the action already happened, which zone/family does it become" pattern already
+    # used for `action_selection.PULLUP_THREE_BASELINE_LOG_WEIGHT`, applied to the interior-pass
+    # side instead of the jump-shot side. CALIBRATED (TRAIN 25000-25049: dispatch-level RIM 58.1%;
+    # validated HELDOUT 25050-25099: 57.2%) landing the RIM:FLOATER dispatch ratio inside the real
+    # ~55:45-65:35 target band on both halves, while leaving RIM+FLOATER's own COMBINED share, every
+    # family's own clean/raw conversion, and every family's own block rate completely unaffected
+    # (confirmed directly -- see the phase report). NOTE: the raw BOX-SCORE-level RIM share (which
+    # includes shooting-foul and-one makes) reads somewhat higher than this dispatch-level 58%,
+    # because RIM's own shooting-foul rate is real and substantially higher than FLOATER's
+    # (unrelated, pre-existing, already-accepted foul-occurrence asymmetry, not touched by or
+    # affected by this change) -- this is the TRUE calibrated selection-level ratio.
+    interior_cut_rim_probability: float = 0.75
+    # See `interior_cut_rim_probability`'s own docstring for the full methodology -- calibrated
+    # jointly with it and `transition_push_rim_probability` (TRAIN/HELDOUT as above). Kept BELOW
+    # both (same real, structural ordering as before this phase: a set-defense seal is judged less
+    # likely to finish directly at the rim than a live numbers-advantage push or a compromised-area
+    # halfcourt cut) -- 0.40 -> 0.60.
+    interior_seal_rim_probability: float = 0.60
     # Screen-derived pocket passes use the temporary screen outcome: a clean trailing-defender
     # window reaches the rim more often; a partial/recovering window more often becomes a short roll.
     pocket_pass_clean_rim_probability: float = 0.65
