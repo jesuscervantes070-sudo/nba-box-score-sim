@@ -44,7 +44,10 @@ class TestMidrangeReconnection(unittest.TestCase):
 
     def test_02_profile_carries_native_midrange_rate(self):
         self.assertIn("midrange_shrunk_rate", {field.name for field in fields(PlayerSimulationProfile)})
-        self.assertEqual(PlayerSimulationProfile.synthetic("1", "A").midrange_shrunk_rate, 0.42)
+        # Re-pinned for "Calibrate clean shot conversion": 0.42 -> 0.44 -- a TRAIN/HELDOUT-calibrated
+        # family baseline (see `PlayerSimulationProfile.synthetic`'s own docstring), not a structural
+        # change to how this field is carried/consumed.
+        self.assertEqual(PlayerSimulationProfile.synthetic("1", "A").midrange_shrunk_rate, 0.44)
         custom = PlayerSimulationProfile.synthetic("1", "A", midrange_shrunk_rate=0.317)
         self.assertEqual(custom.midrange_shrunk_rate, 0.317)
 

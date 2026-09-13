@@ -342,12 +342,42 @@ class PlayerSimulationProfile:
         real-world-plausible placeholder values, not empirically derived.
         Used by this phase's own tests/traces; a real profile is built by
         a FUTURE adapter following the construction contract above, not
-        by this helper."""
+        by this helper.
+
+        "Calibrate clean shot conversion" phase -- two categories of change from the prior
+        checkpoint, kept explicitly distinct (see docs/ for the full TRAIN/HELDOUT audit):
+
+        1. BUG FIX, not a calibration knob: `rim_protection_suppression_rate` was `0.0`, not
+           `RIM_PROTECTION_POPULATION_MEAN` (0.00988, `interior_shot_resolution.py`'s own real,
+           already-documented population anchor) -- meaning even a synthetic, "average" primary
+           defender carried a small, systematic NEGATIVE z-score (below the real population mean),
+           universally inflating every unblocked RIM/FLOATER conversion by a fixed amount that had
+           nothing to do with any player's real ability. Fixed to the SAME constant this module's
+           own suppression formula already anchors to, so a league-average defender now contributes
+           genuinely ZERO net suppression, matching this project's own "a synthetic default should
+           represent league-average, by construction" convention (unchanged elsewhere, e.g.
+           `defensive_playmaking_per36=1.5` already exactly equals its own documented population
+           mean and was NOT touched).
+        2. CALIBRATION TARGET (TRAIN 25000-25049, validated HELDOUT 25050-25099): with (1) applied,
+           `rim_finishing_shrunk_rate`/`floater_short_mid_shrunk_rate`/`midrange_shrunk_rate`/
+           `three_point_shrunk_rate` are each a single, family-level baseline/intercept -- the ONE
+           tunable parameter per family this task calls for, sitting alongside the SAME, completely
+           UNCHANGED context terms (posture deltas, contest/release-mode deltas, late-clock delta)
+           this project already uses. Recalibrated so that CLEAN (unblocked, unwhistled) conversion,
+           averaged over this engine's own real mix of realized contest/posture/release contexts,
+           reproduces this project's own trusted real zone-based population estimates (Restricted
+           Area / Paint Non-RA / Midrange / 3PT zone FG%) rather than the raw pre-context pooled
+           rate -- exactly the "context modifies expected conversion around a fixed ability" model
+           this task requires, not a context-compensating hack baked into the skill itself.
+           `free_throw_shrunk_rate` (0.78) was NOT changed -- FT resolution has no context terms at
+           all, and TRAIN/HELDOUT FT% (79.3%/76.7%) already both landed inside this task's own
+           target band (.77-.80) unmodified.
+        """
         defaults = dict(
-            three_point_shrunk_rate=0.36, midrange_shrunk_rate=0.42,
-            rim_finishing_shrunk_rate=0.62, floater_short_mid_shrunk_rate=0.40,
+            three_point_shrunk_rate=0.37, midrange_shrunk_rate=0.44,
+            rim_finishing_shrunk_rate=0.67, floater_short_mid_shrunk_rate=0.38,
             free_throw_shrunk_rate=0.78, rim_access_creation_shrunk_rate=0.5, poa_containment_shrunk_rate=0.0,
-            rim_protection_suppression_rate=0.0, passing_accuracy_ast_pct=0.18, ball_security_error_rate=0.0086,
+            rim_protection_suppression_rate=0.00988, passing_accuracy_ast_pct=0.18, ball_security_error_rate=0.0086,
             defensive_playmaking_per36=1.5, offensive_rebounding_shrunk_rate=0.08, defensive_rebounding_shrunk_rate=0.15,
             drive_aggression=0.0, pass_vs_shoot=0.0, three_point_preference=0.0, midrange_preference=0.0,
             pullup_vs_catch=0.0, role_off_initiation=4.0, role_off_finishing=0.5, role_off_spacing=0.5,
