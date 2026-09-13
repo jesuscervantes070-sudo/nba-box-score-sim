@@ -33,21 +33,21 @@ class TestTurnoverDiagnosis(unittest.TestCase):
 
     def test_engine_accounting_is_exactly_once_and_shot_clock_is_explicitly_separate(self):
         assert_turnover_reconciliation(self.diagnosis)
-        # Re-pinned for "Calibrate clean shot conversion": recalibrated family conversion baselines
-        # plus the `rim_protection_suppression_rate` default bug fix (see
-        # `PlayerSimulationProfile.synthetic`'s own docstring) change every shot's make probability,
-        # changing the later deterministic RNG trajectory for essentially every possession -- not a
-        # turnover-CLASSIFICATION change (every classification-focused test in this file still
-        # passes unchanged). (Previously re-pinned for "Calibrate defensive floor foul occurrence",
+        # Re-pinned for "Complete shot-family block occurrence": a real, new block-check RNG draw
+        # now happens on every MIDRANGE/THREE_POINT dispatch too, and RIM/FLOATER's own block base
+        # rates were recalibrated -- both change the later deterministic RNG trajectory for
+        # essentially every possession, not a turnover-CLASSIFICATION change (every
+        # classification-focused test in this file still passes unchanged). (Previously re-pinned
+        # for "Calibrate clean shot conversion", "Calibrate defensive floor foul occurrence",
         # "Calibrate action-specific jump-shot zones", "Calibrate hierarchical action families",
         # "Use contextual hierarchical action selection", "Activate on-ball screen roll creation",
         # "Add pass-created interior seal", "Model action-specific jump-shot selection", "Activate
         # empirical foul occurrence", "Calibrate drive follow-up decisions", "Expand interior
         # scoring opportunities", "Add interior shot-opportunity generation", and "Calibrate
         # source-conditioned transition routing".)
-        self.assertEqual(self.diagnosis.engine_accounted_turnovers, 4368)
-        self.assertEqual(self.diagnosis.player_charged_turnovers, 3897)
-        self.assertEqual(self.diagnosis.categories[TurnoverCategory.SHOT_CLOCK_VIOLATION].engine_accounted_turnovers, 471)
+        self.assertEqual(self.diagnosis.engine_accounted_turnovers, 4408)
+        self.assertEqual(self.diagnosis.player_charged_turnovers, 3893)
+        self.assertEqual(self.diagnosis.categories[TurnoverCategory.SHOT_CLOCK_VIOLATION].engine_accounted_turnovers, 515)
 
     def test_steals_are_consistent_with_current_clean_interception_semantics(self):
         steals = sum(o.steal_credited for o in self.diagnosis.observations)

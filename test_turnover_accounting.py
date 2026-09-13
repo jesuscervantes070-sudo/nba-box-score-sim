@@ -110,19 +110,20 @@ class TestTurnoverAccountingReconciliation(unittest.TestCase):
         # Top-level family choice changes continuation/flip state and therefore
         # the later deterministic RNG trajectory; these pin the first shot-mix
         # baseline without changing turnover logic.
-        # Re-pinned for "Calibrate clean shot conversion": recalibrated family conversion baselines
-        # (rim/floater/midrange/three_point) and the `rim_protection_suppression_rate` default bug
-        # fix change every shot's make probability, which changes the later deterministic RNG
-        # trajectory for many possessions -- not a turnover-CLASSIFICATION change. (Previously
-        # re-pinned for "Calibrate defensive floor foul occurrence", "Calibrate action-specific
-        # jump-shot zones", "Calibrate hierarchical action families", "Use contextual hierarchical
-        # action selection", "Activate on-ball screen roll creation", "Add pass-created interior
-        # seal", "Model action-specific jump-shot selection", "Activate empirical foul occurrence",
-        # "Calibrate drive follow-up decisions", "Expand interior scoring opportunities", "Add
-        # interior shot-opportunity generation", "Calibrate source-conditioned transition routing",
-        # and "Fix missed and-one rebound continuation".)
-        self.assertEqual(team_total, 4368)
-        self.assertEqual(player_total, 3897)
+        # Re-pinned for "Complete shot-family block occurrence": a real, new block-check RNG draw
+        # now happens on EVERY MIDRANGE/THREE_POINT dispatch too (previously only RIM/FLOATER), and
+        # the RIM/FLOATER block base rates themselves were also recalibrated -- both change the
+        # later deterministic RNG trajectory for essentially every possession, not a turnover-
+        # CLASSIFICATION change. (Previously re-pinned for "Calibrate clean shot conversion",
+        # "Calibrate defensive floor foul occurrence", "Calibrate action-specific jump-shot zones",
+        # "Calibrate hierarchical action families", "Use contextual hierarchical action selection",
+        # "Activate on-ball screen roll creation", "Add pass-created interior seal", "Model
+        # action-specific jump-shot selection", "Activate empirical foul occurrence", "Calibrate
+        # drive follow-up decisions", "Expand interior scoring opportunities", "Add interior
+        # shot-opportunity generation", "Calibrate source-conditioned transition routing", and
+        # "Fix missed and-one rebound continuation".)
+        self.assertEqual(team_total, 4408)
+        self.assertEqual(player_total, 3893)
 
     def test_basketball_output_digest_matches_first_shot_mix_baseline(self):
         payload = []
@@ -155,26 +156,26 @@ class TestTurnoverAccountingReconciliation(unittest.TestCase):
                             "ot": result.overtime_periods, "rows": rows})
         digest = hashlib.sha256(json.dumps(payload, sort_keys=True,
                                            separators=(",", ":")).encode()).hexdigest()
-        # Re-pinned for "Calibrate clean shot conversion": recalibrated family conversion baselines
-        # (`three_point_shrunk_rate` 0.36->0.37, `midrange_shrunk_rate` 0.42->0.44,
-        # `rim_finishing_shrunk_rate` 0.62->0.67, `floater_short_mid_shrunk_rate` 0.40->0.38) plus a
-        # bug fix (`rim_protection_suppression_rate` default 0.0 -> its own documented population
-        # mean 0.00988, so a synthetic defender is genuinely neutral) -- see
-        # `PlayerSimulationProfile.synthetic`'s own updated docstring for the full TRAIN/HELDOUT
-        # rationale. Every shot's make probability changes, which changes the later deterministic
-        # RNG trajectory for essentially every possession -- intentional, real behavior change, not
-        # a regression: canonical family clean conversion now matches this project's own trusted
-        # real zone-based population estimates, and the V1 opportunity mix / foul occurrence / block
-        # occurrence are all unchanged within rounding (see docs/phase report). (Previously re-pinned
-        # for "Calibrate defensive floor foul occurrence", "Calibrate action-specific jump-shot
-        # zones", "Calibrate hierarchical action families", "Use contextual hierarchical action
-        # selection", "Activate on-ball screen roll creation", "Add pass-created interior seal",
-        # "Model action-specific jump-shot selection", "Activate empirical foul occurrence",
-        # "Calibrate drive follow-up decisions", "Expand interior scoring opportunities", "Add
-        # interior shot-opportunity generation", "Calibrate source-conditioned transition routing",
-        # "Model drive floor fouls as observable outcomes", and "Fix missed and-one rebound
-        # continuation".)
-        self.assertEqual(digest, "edad5aef4b337833c7ff8899eeb317a6a8276ae38abf4d90bacae3a1b1eae1e0")
+        # Re-pinned for "Complete shot-family block occurrence": MIDRANGE/THREE_POINT attempts now
+        # run a real block check (new RNG draw) via `shot_resolution.perimeter_block_probability`/
+        # `resolve_perimeter_shot`, and RIM/FLOATER's own block base rates were recalibrated
+        # (`interior_shot_resolution.RIM_BASE_BLOCK_LOGIT`/`FLOATER_BASE_BLOCK_LOGIT`, split from
+        # the prior single shared `BASE_BLOCK_LOGIT`) to match this project's own trusted empirical
+        # family block-rate anchors -- see `shot_resolution.py`/`interior_shot_resolution.py`'s own
+        # updated docstrings for the full TRAIN/HELDOUT rationale. This changes every possession's
+        # later deterministic RNG trajectory -- intentional, real behavior change, not a regression:
+        # canonical family block rates now match the trusted empirical anchors, clean/raw shooting
+        # conversion baselines are unchanged, and the V1 opportunity mix / foul occurrence are
+        # unchanged within rounding (see docs/phase report). (Previously re-pinned for "Calibrate
+        # clean shot conversion", "Calibrate defensive floor foul occurrence", "Calibrate
+        # action-specific jump-shot zones", "Calibrate hierarchical action families", "Use
+        # contextual hierarchical action selection", "Activate on-ball screen roll creation", "Add
+        # pass-created interior seal", "Model action-specific jump-shot selection", "Activate
+        # empirical foul occurrence", "Calibrate drive follow-up decisions", "Expand interior
+        # scoring opportunities", "Add interior shot-opportunity generation", "Calibrate
+        # source-conditioned transition routing", "Model drive floor fouls as observable outcomes",
+        # and "Fix missed and-one rebound continuation".)
+        self.assertEqual(digest, "049032ab7cc2731359f239c8a874245948f147227d773409889527a2bcf07a31")
 
 
 if __name__ == "__main__":

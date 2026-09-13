@@ -564,14 +564,16 @@ class TestActionSpecificJumpShotSelection(unittest.TestCase):
         """`_select_shot_zone` picks the zone BEFORE resolution -- `shot_family` is derived ONCE,
         purely from that already-chosen zone (`possession_orchestrator._dispatch_shot`'s own
         `if zone == SpatialZone.RESTRICTED_RIM: shot_family = ... elif ...` chain), BEFORE either
-        resolver (`apply_interior_shot_to_engine`/`apply_shot_resolution_to_engine`) is ever
+        resolver (`apply_interior_shot_to_engine`/`apply_perimeter_shot_to_engine` -- the latter
+        renamed from `apply_shot_resolution_to_engine` in "Complete shot-family block occurrence",
+        which added a block-aware perimeter entry point without changing this ordering) is ever
         called -- neither resolver's own return value is ever assigned back into `shot_family`."""
         import inspect
         import possession_orchestrator as po
         source = inspect.getsource(po._dispatch_shot)
         assign_index = source.index("shot_family = InteriorShotFamily.RIM")
         interior_call_index = source.index("apply_interior_shot_to_engine(")
-        perimeter_call_index = source.index("apply_shot_resolution_to_engine(")
+        perimeter_call_index = source.index("apply_perimeter_shot_to_engine(")
         self.assertLess(assign_index, interior_call_index)
         self.assertLess(assign_index, perimeter_call_index)
         # the ONLY re-assignment STATEMENTS of the name `shot_family` between the zone-derived

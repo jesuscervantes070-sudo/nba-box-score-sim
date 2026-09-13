@@ -173,11 +173,11 @@ class TestShotConversionDiagnostics(unittest.TestCase):
         self.assertTrue(17 <= pf <= 22, pf)
 
     # Block occurrence untouched -- explicitly out of scope this phase.
-    def test_block_occurrence_untouched(self):
-        tgs = team_games(self.games)
-        n = len(tgs)
-        blocks = sum(tg.blocks for tg in tgs) / n
-        self.assertAlmostEqual(blocks, 1.33, delta=0.15)
+    # Block occurrence was explicitly out of scope for "Calibrate clean shot conversion" (this
+    # test's own original guard pinned it at the PRE-block-completion value, 1.33/team). It is
+    # the deliberate, in-scope target of the later "Complete shot-family block occurrence" phase
+    # -- see `test_block_occurrence.py`'s own coverage of that phase's real target range instead
+    # of duplicating/re-pinning a now-obsolete boundary here.
 
     # O. Rebound conditional mechanics preserved -- OREB% conditional on available misses stays
     # in a healthy range even though raw miss VOLUME naturally drops with higher conversion.

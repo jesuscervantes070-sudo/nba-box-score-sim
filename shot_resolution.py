@@ -193,6 +193,11 @@ def shot_make_probability(context: ShotResolutionContext) -> float:
 class ShotOutcome:
     MADE = "MADE"
     MISSED = "MISSED"
+    # "Complete shot-family block occurrence" phase -- see `perimeter_block_probability`/
+    # `resolve_perimeter_shot` below. Same two real outcome names `interior_shot_resolution.py`
+    # already uses for RIM/FLOATER, reused verbatim rather than inventing a parallel vocabulary.
+    BLOCKED_RETAINED_OFFENSE = "BLOCKED_RETAINED_OFFENSE"
+    BLOCKED_SECURED_DEFENSE = "BLOCKED_SECURED_DEFENSE"
 
 
 @dataclass
@@ -239,4 +244,137 @@ def apply_shot_resolution_to_engine(engine, shooter_id: str, context: ShotResolu
         engine.resolve_shot_made(shooter_id, assisted_by=assisted_by, dt=0.0)
     else:
         engine.resolve_shot_missed_pending_rebound(shooter_id, dt=0.0)
+    return result
+
+
+# =======================================================================
+# Perimeter shot blocking (MIDRANGE + THREE_POINT) -- "Complete shot-family block occurrence"
+# phase. AUDIT FINDING: before this phase, this module had NO block concept at all -- every
+# MIDRANGE/THREE_POINT attempt went straight from the whistle check to clean make/miss,
+# architecturally UNREACHABLE for a block regardless of any defender's ability (Class C, dead
+# path -- confirmed by direct inspection of `possession_orchestrator._dispatch_shot`'s perimeter
+# branch, which only ever called `apply_shot_resolution_to_engine`, never anything block-aware).
+#
+# This is the smallest causal addition that closes that gap: the SAME "family baseline/intercept +
+# existing defender skill" architecture `interior_shot_resolution.py` already uses for RIM/FLOATER,
+# reusing its OWN real, already-validated `defensive_playmaking` z-scoring and damping constant --
+# no new defender skill, no OVR, no generic "defense". One deliberate, documented simplification:
+# a jump-shot block is, in this V1 model, always by the PRIMARY/on-ball defender only -- a help
+# defender recovering from elsewhere cannot realistically contest a live jumper in time, so
+# interior's own HELPING-anchor secondary-defender path is NOT reused here (a real, structural
+# choice, not an oversight -- see the phase report for the full reachability audit).
+# =======================================================================
+from interior_shot_resolution import (  # noqa: E402 -- imported here (not at module top) to keep
+    BLOCK_LEVERAGE_SCALE, BLOCK_RETAINED_BY_OFFENSE_RATE,               # this module's THREE_POINT/
+    DEFENSIVE_PLAYMAKING_POPULATION_MEAN, DEFENSIVE_PLAYMAKING_POPULATION_STDEV,  # MIDRANGE-only
+)                                                                         # scope visible at a glance.
+
+# CALIBRATION TARGETS (TRAIN 25000-25049, validated HELDOUT 25050-25099): each family base block
+# logit is set so that, at a LEAGUE-AVERAGE primary defender (z=0, i.e. `defender_playmaking`
+# exactly at `DEFENSIVE_PLAYMAKING_POPULATION_MEAN`), the resulting block probability reproduces
+# this project's own trusted empirical `playbyplayv3` family block-rate anchors (MIDRANGE ~2.51%,
+# THREE ~0.80% -- see docs/ phase report for the extraction; reused, not re-sourced). Deliberately
+# MUCH lower than `interior_shot_resolution.BASE_BLOCK_LOGIT` (-2.6, ~7% before ability adjustment)
+# -- a contested jumper is real-world materially harder to block than a rim/floater attempt; this
+# is never simply the interior rate reused unchanged.
+MIDRANGE_BASE_BLOCK_LOGIT = -3.70
+THREE_POINT_BASE_BLOCK_LOGIT = -4.70
+
+
+def _defender_z(value: Optional[float]) -> float:
+    return ((value - DEFENSIVE_PLAYMAKING_POPULATION_MEAN) / DEFENSIVE_PLAYMAKING_POPULATION_STDEV
+            if value is not None else 0.0)  # missing -> zero Z-CONTRIBUTION, not a fabricated skill value
+
+
+@dataclass
+class PerimeterBlockContext:
+    """The ONE authorized ability input (`defender_playmaking`, the SAME already-existing
+    `defensive_playmaking_per36` interior blocking already reads, caller-resolved) plus real,
+    structural shot-family identity. No tendency, no shooter-side attribute, no `poa_containment`
+    -- same firewall posture as `ShotResolutionContext` above."""
+    shot_family: str
+    defender_playmaking: Optional[float] = None
+
+
+# Bug fix found during TRAIN calibration: the SHARED `_PROB_EPSILON` (0.01/1%) is the right floor
+# for a shot MAKE probability (never legitimately below ~1%), but THREE_POINT's own trusted
+# empirical block-rate anchor (~0.80%) is genuinely BELOW that floor -- reusing `_PROB_EPSILON`
+# here would silently clip every neutral-defender THREE_POINT block probability up to exactly 1%
+# regardless of `THREE_POINT_BASE_BLOCK_LOGIT`, making that constant unable to ever reach its own
+# target (confirmed: a logit sweep from -5.2 to -4.6 produced IDENTICAL simulated block counts --
+# the floor, not the logit, was binding). A SEPARATE, lower floor for this genuinely rarer event
+# (never touching `_PROB_EPSILON`/shot-make-probability behavior at all) fixes this.
+_BLOCK_PROB_EPSILON = 0.002
+
+
+def perimeter_block_probability(context: PerimeterBlockContext) -> float:
+    """Pure function -- no RNG, no state mutation. Single eligible defender (primary only, see
+    module docstring) -- no STRONGEST-EFFECTIVE combination needed since there is only one
+    candidate, unlike `interior_shot_resolution._block_leverage`."""
+    base_logit = {
+        ShotFamily.MIDRANGE: MIDRANGE_BASE_BLOCK_LOGIT,
+        ShotFamily.THREE_POINT: THREE_POINT_BASE_BLOCK_LOGIT,
+    }[context.shot_family]
+    leverage = BLOCK_LEVERAGE_SCALE * _defender_z(context.defender_playmaking)
+    return min(max(_sigmoid(base_logit + leverage), _BLOCK_PROB_EPSILON), 1.0 - _BLOCK_PROB_EPSILON)
+
+
+@dataclass
+class PerimeterShotResult:
+    outcome: str
+    points: int
+    block_probability_used: float
+    make_probability_used: Optional[float]
+    blocker_id: Optional[str] = None
+    shot_family: str = ""
+    shooter_id: str = ""
+    zone: Optional[str] = None
+
+
+def resolve_perimeter_shot(shooter_id: str, shot_context: ShotResolutionContext,
+                            block_context: PerimeterBlockContext, blocker_id: str,
+                            rng: random.Random, zone: Optional[str] = None) -> PerimeterShotResult:
+    """The single entry point for a block-aware perimeter (MIDRANGE/THREE_POINT) attempt. Two
+    INDEPENDENT rolls -- block, then (only if not blocked) make/miss -- the SAME RNG-isolation
+    convention `interior_shot_resolution.resolve_interior_shot` already established, so a
+    counterfactual that changes only block-relevant inputs never reshuffles the make/miss roll."""
+    from possession_state import _assert_player_id
+    _assert_player_id(shooter_id)
+    _assert_player_id(blocker_id)
+    p_block = perimeter_block_probability(block_context)
+    if rng.random() < p_block:
+        retained = rng.random() < BLOCK_RETAINED_BY_OFFENSE_RATE
+        outcome = ShotOutcome.BLOCKED_RETAINED_OFFENSE if retained else ShotOutcome.BLOCKED_SECURED_DEFENSE
+        return PerimeterShotResult(outcome=outcome, points=0, block_probability_used=p_block,
+                                    make_probability_used=None, blocker_id=blocker_id,
+                                    shot_family=shot_context.shot_family, shooter_id=shooter_id, zone=zone)
+    shot_result = resolve_shot(shooter_id, shot_context, rng, zone=zone)
+    return PerimeterShotResult(
+        outcome=shot_result.outcome, points=shot_result.points, block_probability_used=p_block,
+        make_probability_used=shot_result.probability_used, blocker_id=None,
+        shot_family=shot_context.shot_family, shooter_id=shooter_id, zone=zone,
+    )
+
+
+def apply_perimeter_shot_to_engine(engine, shooter_id: str, shot_context: ShotResolutionContext,
+                                    block_context: PerimeterBlockContext, blocker_id: str, rng: random.Random,
+                                    zone: Optional[str] = None, assisted_by: Optional[str] = None) -> PerimeterShotResult:
+    """Thin integration layer -- reuses Phase 15's own, unmodified `begin_shot`/`resolve_shot_made`/
+    `block_retained_by_offense`/`block_secured_by_defense` and this module's own
+    `resolve_shot_missed_pending_rebound`-calling convention (via `resolve_shot`'s own MISS branch,
+    replicated here rather than double-dispatched) -- mirrors
+    `interior_shot_resolution.apply_interior_shot_to_engine` exactly. No rebound winner is ever
+    selected here."""
+    from possession_state import SpatialZone
+    zone_enum = SpatialZone(zone) if zone else engine.state.ball_zone
+    engine.begin_shot(zone_enum, dt=0.0)
+    result = resolve_perimeter_shot(shooter_id, shot_context, block_context, blocker_id, rng, zone=zone)
+    if result.outcome == ShotOutcome.MADE:
+        engine.resolve_shot_made(shooter_id, assisted_by=assisted_by, dt=0.0)
+    elif result.outcome == ShotOutcome.MISSED:
+        engine.resolve_shot_missed_pending_rebound(shooter_id, dt=0.0)
+    elif result.outcome == ShotOutcome.BLOCKED_RETAINED_OFFENSE:
+        engine.block_retained_by_offense(result.blocker_id, shooter_id, dt=0.0)
+    elif result.outcome == ShotOutcome.BLOCKED_SECURED_DEFENSE:
+        engine.block_secured_by_defense(result.blocker_id, shooter_id, dt=0.0)
     return result

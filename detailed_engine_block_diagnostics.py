@@ -5,15 +5,18 @@ completed `DetailedGameResult` objects. It does not simulate, mutate state, cons
 supply any value to production code.
 
 ============================ WHY A SEPARATE MODULE ============================
-Blocks are resolved entirely inside `interior_shot_resolution.py`'s `resolve_interior_shot` --
-RIM and FLOATER shots only (confirmed by direct source read of that module's own docstring:
-"Phase 18B -- Interior/Rim Shot Resolution + Blocks (rim + floater only)"). `shot_resolution.py`
-(MIDRANGE/THREE_POINT) has no block concept at all (confirmed: its own module docstring states
-it resolves "... without blocks, shooting fouls, free throws, putbacks, or rebounds" for the
-perimeter family, and direct source read finds zero occurrences of "block"/"BLOCK" in that file).
-This funnel is therefore structurally family-specific in a way the shooting-foul funnel (which
-runs identically across all four families) is not -- a dedicated module keeps that asymmetry
-visible rather than folding it into the foul diagnostics' own per-family tables.
+Blocks were, before "Complete shot-family block occurrence", resolved ONLY inside
+`interior_shot_resolution.py`'s `resolve_interior_shot` (RIM/FLOATER) -- `shot_resolution.py`
+(MIDRANGE/THREE_POINT) had no block concept at all. That phase closed the gap with the SAME
+"family baseline/intercept + existing defender skill" architecture, reusing `defensive_playmaking`
+and the SAME `BLOCK_LEVERAGE_SCALE` damping constant via `shot_resolution.perimeter_block_probability`/
+`resolve_perimeter_shot` -- one deliberate simplification: a perimeter (jump-shot) block is
+PRIMARY-DEFENDER-ONLY, no help-defender anchor (unlike interior's own HELPING-posture secondary
+path), since a help defender recovering from elsewhere cannot realistically contest a live jumper
+in time. All FOUR families are therefore now block-capable, sharing the exact same
+`block_checks_by_family`/`blocks_by_family`/... funnel below -- kept as a dedicated module (rather
+than folded into the foul diagnostics' own per-family tables) because the block funnel's own
+ordering guarantee (see below) is a real, separate invariant worth its own reconciliation.
 
 ============================ ORDERING WITH THE SHOOTING-FOUL CHECK ============================
 `possession_orchestrator._dispatch_shot` evaluates `resolve_contact_and_whistle` (the shooting-
@@ -35,10 +38,16 @@ if TYPE_CHECKING:
     from detailed_game import DetailedGameResult
 
 SHOT_ACTIONS = frozenset({"PULL_UP", "CATCH_AND_SHOOT"})
-# Block-capable shot families, per interior_shot_resolution.py's own documented scope --
-# MIDRANGE/THREE_POINT are deliberately absent, not an oversight (see module docstring).
-BLOCK_CAPABLE_FAMILIES = frozenset({"RIM", "FLOATER"})
+# Block-capable shot families -- ALL FOUR, since "Complete shot-family block occurrence" (see
+# module docstring). Kept as an explicit, named constant (not inlined) so a future family
+# addition has one obvious place to update, same convention as before this phase.
+BLOCK_CAPABLE_FAMILIES = frozenset({"RIM", "FLOATER", "MIDRANGE", "THREE_POINT"})
 BLOCKED_OUTCOMES = frozenset({"BLOCKED_RETAINED_OFFENSE", "BLOCKED_SECURED_DEFENSE"})
+# A clean (unblocked, unwhistled) miss is logged as "MISSED_UNBLOCKED" by the interior resolver
+# and plain "MISSED" by the perimeter resolver (`shot_resolution.ShotOutcome.MISSED`, unchanged
+# by this phase) -- two real, pre-existing distinct vocabularies for the SAME real event, not a
+# new one invented here.
+CLEAN_MISS_OUTCOMES = frozenset({"MISSED_UNBLOCKED", "MISSED"})
 
 
 @dataclass
@@ -121,7 +130,7 @@ def diagnose_blocks(results: Sequence["DetailedGameResult"]) -> BlockDiagnostics
                     outcome = shot_row.get("outcome")
                     if outcome == "MADE":
                         diagnosis.made_by_family[family] += 1
-                    elif outcome == "MISSED_UNBLOCKED":
+                    elif outcome in CLEAN_MISS_OUTCOMES:
                         diagnosis.missed_unblocked_by_family[family] += 1
                     elif outcome in BLOCKED_OUTCOMES:
                         diagnosis.blocks_by_family[family] += 1
@@ -129,10 +138,6 @@ def diagnose_blocks(results: Sequence["DetailedGameResult"]) -> BlockDiagnostics
                             diagnosis.blocked_retained_offense_by_family[family] += 1
                         else:
                             diagnosis.blocked_secured_defense_by_family[family] += 1
-                else:
-                    outcome = shot_row.get("outcome")
-                    if outcome == "MADE":
-                        diagnosis.made_by_family[family] += 1
 
             for event in record.events:
                 if event.event_type.name in ("BLOCK_RETAINED_BY_OFFENSE", "BLOCK_SECURED_BY_DEFENSE"):

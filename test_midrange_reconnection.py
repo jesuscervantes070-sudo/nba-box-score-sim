@@ -52,8 +52,13 @@ class TestMidrangeReconnection(unittest.TestCase):
         self.assertEqual(custom.midrange_shrunk_rate, 0.317)
 
     def test_03_autonomous_midrange_uses_existing_perimeter_resolver(self):
-        real_apply = possession_orchestrator.apply_shot_resolution_to_engine
-        with patch.object(possession_orchestrator, "apply_shot_resolution_to_engine",
+        # Re-pointed for "Complete shot-family block occurrence": `_dispatch_shot`'s perimeter
+        # branch now calls the new, block-aware `apply_perimeter_shot_to_engine` (which itself
+        # calls the ORIGINAL, unmodified `resolve_shot` internally whenever the block roll misses)
+        # instead of calling `apply_shot_resolution_to_engine` directly -- same shot_context
+        # positional slot (args[2]), so this test's own assertion is otherwise unchanged.
+        real_apply = possession_orchestrator.apply_perimeter_shot_to_engine
+        with patch.object(possession_orchestrator, "apply_perimeter_shot_to_engine",
                           wraps=real_apply) as resolver:
             run_benchmark_sample([25000])
         contexts = [call.args[2] for call in resolver.call_args_list]

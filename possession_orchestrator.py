@@ -163,7 +163,7 @@ from rebound_resolution import (
     ReboundCandidate, ReboundOpportunity, ReboundOutcome, ReboundSource,
     _candidate_log_weight, apply_rebound_to_engine, eligible_rebound_candidates,
 )
-from shot_resolution import ContestBucket, ReleaseMode, ShotFamily, ShotOutcome, ShotResolutionContext, apply_shot_resolution_to_engine, shot_make_probability
+from shot_resolution import ContestBucket, PerimeterBlockContext, ReleaseMode, ShotFamily, ShotOutcome, ShotResolutionContext, apply_perimeter_shot_to_engine, apply_shot_resolution_to_engine, shot_make_probability
 
 PerimeterShotFamily = ShotFamily  # alias: foul_resolution.ContactContext.shot_family is a plain string key,
 # not tied to any specific enum -- this project's convention (Phase 18A/18B/18C all use plain string family
@@ -2268,7 +2268,16 @@ def _dispatch_shot(engine: PossessionEngine, world: PossessionWorld, intent: Act
                                   else ReboundSource.UNRESOLVED_BLOCK, shot_family, steps,
                                   offense_team_id=offense_team_id, defense_team_id=defense_team_id)
     else:
-        result = apply_shot_resolution_to_engine(engine, shooter_id, perimeter_ctx, rng, zone=zone.value)
+        # "Complete shot-family block occurrence" phase -- the SAME primary-defender identity/
+        # ability already resolved above for the whistle check, reused (not re-fetched) for the
+        # new block roll; `defender_id or shooter_id` matches the interior branch's own fallback
+        # convention exactly (a real, structural "no assigned defender" edge case, not fabricated).
+        perimeter_block_ctx = PerimeterBlockContext(
+            shot_family=shot_family,
+            defender_playmaking=defender_profile.defensive_playmaking_per36 if defender_profile else None,
+        )
+        result = apply_perimeter_shot_to_engine(engine, shooter_id, perimeter_ctx, perimeter_block_ctx,
+                                                 defender_id or shooter_id, rng, zone=zone.value)
         _charge_time(engine, action_seconds, world, "SHOT_EXECUTION", steps,
                      shot_clock_stops_segment=False)
         world.stats.fga += 1
@@ -2284,7 +2293,10 @@ def _dispatch_shot(engine: PossessionEngine, world: PossessionWorld, intent: Act
                 world.stats.fg3m += 1
             world.stats.points += result.points
             return _terminal(PossessionTerminalReason.MADE_FG, engine, world, steps)
-        return _dispatch_rebound(engine, world, config, rng, ReboundSource.MISSED_FG, shot_family, steps,
+        if result.blocker_id is not None and result.outcome in (ShotOutcome.BLOCKED_RETAINED_OFFENSE, ShotOutcome.BLOCKED_SECURED_DEFENSE):
+            world.stats.blocks += 1
+        return _dispatch_rebound(engine, world, config, rng, ReboundSource.MISSED_FG if result.outcome == ShotOutcome.MISSED
+                                  else ReboundSource.UNRESOLVED_BLOCK, shot_family, steps,
                                   offense_team_id=offense_team_id, defense_team_id=defense_team_id)
 
 

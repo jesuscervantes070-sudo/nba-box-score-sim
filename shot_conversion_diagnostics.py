@@ -29,6 +29,8 @@ from typing import Dict, Iterable, Sequence, Tuple
 from detailed_engine_benchmark import BenchmarkGame
 from detailed_game import DetailedGameResult
 from interior_shot_resolution import InteriorShotFamily, InteriorShotOutcome
+from possession_events import EventType
+from rebound_resolution import ReboundSource
 from shot_resolution import ShotFamily
 
 FAMILIES: Tuple[str, ...] = (
@@ -45,7 +47,10 @@ _ORIGIN_ACTIONS = frozenset({"DRIVE", "ON_BALL_SCREEN", "TRANSITION_PUSH", "INTE
 
 @dataclass(frozen=True)
 class FamilyConversionStats:
-    attempts: int                 # real CLEAN-OR-BLOCKED dispatches (excludes whistled attempts)
+    attempts: int                 # real CLEAN-OR-BLOCKED dispatches (excludes whistled attempts) -- also
+                                   # the real BLOCK-CHECK count: every one of these runs exactly one block
+                                   # roll ("Complete shot-family block occurrence" phase), whether or not
+                                   # it results in a block.
     blocked: int
     shooting_fouls: int
     clean_attempts: int
@@ -54,8 +59,14 @@ class FamilyConversionStats:
     and_one_makes: int            # whistled AND made -- the only whistled outcome counted as raw FGA/FGM
     final_recorded_attempts: int  # raw box-score FGA for this family
     final_recorded_makes: int     # raw box-score FGM for this family
+    block_credits_by_blocker: Dict[str, int]      # every credited block, keyed by the DEFENDER credited
+    blocked_shot_rebound_outcomes: Dict[str, int]  # the real `rebound_opportunity_log` outcome each blocked shot's own live rebound opportunity resolved to
     by_release_action: Dict[str, "FamilyConversionStats"]
     by_origin: Dict[str, "FamilyConversionStats"]
+
+    @property
+    def block_rate(self) -> float:
+        return self.blocked / self.attempts if self.attempts else 0.0
 
     @property
     def clean_make_pct(self) -> float:
@@ -96,7 +107,8 @@ def _results(items: Sequence[object]) -> Iterable[DetailedGameResult]:
 
 class _Bucket:
     """Plain, mutable accumulator -- converted to the frozen public dataclass at the end."""
-    __slots__ = ("attempts", "blocked", "shooting_fouls", "clean_makes", "and_one_makes")
+    __slots__ = ("attempts", "blocked", "shooting_fouls", "clean_makes", "and_one_makes",
+                 "block_credits_by_blocker", "blocked_shot_rebound_outcomes")
 
     def __init__(self):
         self.attempts = 0
@@ -104,6 +116,8 @@ class _Bucket:
         self.shooting_fouls = 0
         self.clean_makes = 0
         self.and_one_makes = 0
+        self.block_credits_by_blocker = Counter()
+        self.blocked_shot_rebound_outcomes = Counter()
 
     def freeze(self, sub_by_release=None, sub_by_origin=None) -> FamilyConversionStats:
         clean_attempts = self.attempts - self.blocked
@@ -120,6 +134,8 @@ class _Bucket:
             and_one_makes=self.and_one_makes,
             final_recorded_attempts=self.attempts + self.and_one_makes,
             final_recorded_makes=self.clean_makes + self.and_one_makes,
+            block_credits_by_blocker=dict(self.block_credits_by_blocker),
+            blocked_shot_rebound_outcomes=dict(self.blocked_shot_rebound_outcomes),
             by_release_action={k: v.freeze() for k, v in (sub_by_release or {}).items()},
             by_origin={k: v.freeze() for k, v in (sub_by_origin or {}).items()},
         )
@@ -158,6 +174,20 @@ def diagnose_shot_conversion(items: Sequence[object]) -> ShotConversionDiagnosis
         if actions:
             origin_by_step.setdefault(actions[0]["step"], "ORDINARY")
 
+        # Block-credit attribution: `BLOCK_RETAINED_BY_OFFENSE`/`BLOCK_SECURED_BY_DEFENSE` events
+        # (primary=blocker_id, secondary=shooter_id) and blocked `world.trace` rows are each
+        # produced exactly once, together, by the SAME `_dispatch_shot` call -- their relative
+        # order within one record's own event/trace lists is therefore identical, so the Nth
+        # blocked trace row corresponds to the Nth block event (verified via the length-equality
+        # check in the reconciliation pass below, not merely assumed).
+        block_events = [e for e in record.events
+                        if e.event_type in (EventType.BLOCK_RETAINED_BY_OFFENSE, EventType.BLOCK_SECURED_BY_DEFENSE)]
+        block_event_index = 0
+        rebound_by_step_family = {
+            (row["step"], row["shot_family"]): row for row in world.rebound_opportunity_log
+            if row["source"] == ReboundSource.UNRESOLVED_BLOCK and row.get("cascade_depth", 0) == 0
+        }
+
         for row in world.trace:
             action = row.get("action")
             family = row.get("shot_family")
@@ -173,6 +203,20 @@ def diagnose_shot_conversion(items: Sequence[object]) -> ShotConversionDiagnosis
                         bucket.blocked += 1
                     elif outcome not in ("MISSED_UNBLOCKED", "MISSED"):
                         mismatches.append(f"{record.possession_id} step {step}: unexpected shot outcome {outcome!r}")
+                if outcome in _BLOCKED_OUTCOMES:
+                    # blocker credit and downstream rebound linkage are tracked ONCE per blocked
+                    # shot (at the family top level only, not re-attributed per release/origin
+                    # sub-bucket -- those already got their own `blocked` increment above).
+                    if block_event_index < len(block_events):
+                        blocker_id = block_events[block_event_index].primary_player_id
+                        top[family].block_credits_by_blocker[blocker_id] += 1
+                    block_event_index += 1
+                    rebound_row = rebound_by_step_family.get((step, family))
+                    if rebound_row is not None:
+                        top[family].blocked_shot_rebound_outcomes[rebound_row["outcome"]] += 1
+                    else:
+                        mismatches.append(f"{record.possession_id} step {step}: blocked {family} shot has "
+                                          f"no matching UNRESOLVED_BLOCK rebound opportunity")
             elif action == "SHOOTING_FOUL" and family in top:
                 step = row.get("step")
                 origin = origin_by_step.get(step, "ORDINARY")
@@ -182,6 +226,10 @@ def diagnose_shot_conversion(items: Sequence[object]) -> ShotConversionDiagnosis
                         bucket.and_one_makes += 1
             elif action == "BONUS_FLOOR_FOUL_FREE_THROWS":
                 pass  # not a shooting-family event -- owned by foul diagnostics, not this module
+
+        if block_event_index != len(block_events):
+            mismatches.append(f"{record.possession_id}: {block_event_index} blocked trace rows vs "
+                              f"{len(block_events)} block events -- credit attribution is not 1:1")
 
         ft_attempts += record.provisional_deltas.fta
         ft_makes += record.provisional_deltas.ftm
@@ -206,6 +254,12 @@ def diagnose_shot_conversion(items: Sequence[object]) -> ShotConversionDiagnosis
             mismatches.append(f"{family}: clean makes+misses != clean attempts")
         if stats.blocked + stats.clean_attempts != stats.attempts:
             mismatches.append(f"{family}: blocked+clean != attempts")
+        credited = sum(stats.block_credits_by_blocker.values())
+        if credited != stats.blocked:
+            mismatches.append(f"{family}: block credits {credited} != recorded blocks {stats.blocked}")
+        rebound_linked = sum(stats.blocked_shot_rebound_outcomes.values())
+        if rebound_linked != stats.blocked:
+            mismatches.append(f"{family}: blocked-shot rebound linkage {rebound_linked} != recorded blocks {stats.blocked}")
 
     return ShotConversionDiagnosis(
         games=len(results), possessions=len(records), by_family=by_family,

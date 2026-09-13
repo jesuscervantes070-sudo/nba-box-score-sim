@@ -155,6 +155,15 @@ def _effective_suppression(primary: InteriorDefenderContext, secondary: Optional
     return max(primary_component, _HELPER_PRESENT_SUPPRESSION_DELTA)
 
 
+# BLOCK_LEVERAGE_SCALE: a real, flagged damping placeholder -- an unscaled z-score pushed an elite
+# shot-blocker (BLK/36 ~4.0) toward an implausible ~70%+ block rate; 0.5 keeps the DIRECTION correct
+# while avoiding a wildly unrealistic magnitude, still explicitly unvalidated (see report Sec. 23).
+# Promoted to module level ("Complete shot-family block occurrence" phase, no value change) so
+# `shot_resolution.py`'s own new MIDRANGE/THREE block leverage can reuse the SAME damping constant
+# instead of silently redefining a second copy of the same unvalidated number.
+BLOCK_LEVERAGE_SCALE = 0.5
+
+
 def _block_leverage(primary: InteriorDefenderContext, secondary: Optional[InteriorDefenderContext],
                      shot_family: str) -> float:
     """Same strongest-effective principle, applied to the BLOCK branch
@@ -164,23 +173,23 @@ def _block_leverage(primary: InteriorDefenderContext, secondary: Optional[Interi
     eligible = [d for d in candidates if geometric_block_eligibility(shot_family, d)]
     if not eligible:
         return float("-inf")  # no eligible defender -- block probability floor applies (near-zero, never fabricated)
-    # BLOCK_LEVERAGE_SCALE: a real, flagged damping placeholder -- an unscaled z-score
-    # pushed an elite shot-blocker (BLK/36 ~4.0) toward an implausible ~70%+ block rate;
-    # 0.5 keeps the DIRECTION correct while avoiding a wildly unrealistic magnitude, still
-    # explicitly unvalidated (see report Sec. 23).
-    BLOCK_LEVERAGE_SCALE = 0.5
     return BLOCK_LEVERAGE_SCALE * max(
         _z(d.defensive_playmaking, DEFENSIVE_PLAYMAKING_POPULATION_MEAN, DEFENSIVE_PLAYMAKING_POPULATION_STDEV)
         for d in eligible)  # the single MOST dangerous eligible shot-blocker, not a sum of all eligible defenders
 
 
-# Real, hand-set, explicitly-flagged placeholder base rates -- no public
-# per-attempt block/make ground truth exists (same honest limitation as
-# every prior resolution phase). Real anchor: rim_finishing/floater_short_mid
-# supply the make-probability BASE; these two constants set the OVERALL
-# scale of block risk and interior contest, not fit to any per-shot
-# target.
-BASE_BLOCK_LOGIT = -2.6   # a real, rough population base rate for "this eligible defender blocks THIS specific attempt" (~7% before any ability adjustment) -- placeholder
+# CALIBRATION TARGETS (TRAIN 25000-25049, validated HELDOUT 25050-25099, "Complete shot-family
+# block occurrence" phase): two DISTINCT family base logits, not one shared value -- an audit of
+# this project's own trusted empirical `playbyplayv3` family block-rate anchors found RIM (~10.33%)
+# and FLOATER (~8.93%) are real, materially DIFFERENT rates, which a single shared
+# `BASE_BLOCK_LOGIT` (the prior, pre-audit value, -2.6) could not represent for both at once --
+# confirmed by direct canonical measurement: the shared value produced RIM ~7.4%/FLOATER ~6.5%,
+# each roughly 25-30% relatively below its own real anchor. Splitting into one intercept per
+# family (same "family baseline/intercept + existing defender skill" architecture this project
+# already uses everywhere else) closes that gap without adding any new defender skill or
+# eligibility rule -- `_block_leverage`/`geometric_block_eligibility` below are UNCHANGED.
+RIM_BASE_BLOCK_LOGIT = -2.20
+FLOATER_BASE_BLOCK_LOGIT = -2.15
 _PROB_EPSILON = 0.01
 
 
@@ -197,7 +206,8 @@ def block_probability(context: InteriorShotContext) -> float:
     leverage = _block_leverage(context.primary_defender, context.secondary_defender, context.shot_family)
     if leverage == float("-inf"):
         return _PROB_EPSILON  # no eligible defender -- floor, never exactly zero (still technically possible in a real, chaotic sequence) but structurally near-impossible
-    return min(max(_sigmoid(BASE_BLOCK_LOGIT + leverage), _PROB_EPSILON), 1.0 - _PROB_EPSILON)
+    base_logit = RIM_BASE_BLOCK_LOGIT if context.shot_family == InteriorShotFamily.RIM else FLOATER_BASE_BLOCK_LOGIT
+    return min(max(_sigmoid(base_logit + leverage), _PROB_EPSILON), 1.0 - _PROB_EPSILON)
 
 
 def unblocked_make_probability(context: InteriorShotContext) -> float:

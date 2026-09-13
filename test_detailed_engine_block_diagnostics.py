@@ -17,12 +17,26 @@ class TestBlockDiagnostics(unittest.TestCase):
     def test_block_accounting_reconciles_exactly(self):
         assert_block_reconciliation(self.diagnosis)
 
-    def test_only_rim_and_floater_ever_produce_a_block(self):
-        """Diagnostic confirmation (not a behavior assertion) of the engine's own documented
-        scope: MIDRANGE/THREE_POINT structurally cannot be blocked today."""
-        self.assertEqual(set(self.diagnosis.blocks_by_family.keys()) - {"RIM", "FLOATER"}, set())
-        self.assertGreater(self.diagnosis.dispatched_shots_by_family.get("MIDRANGE", 0), 0)
-        self.assertGreater(self.diagnosis.dispatched_shots_by_family.get("THREE_POINT", 0), 0)
+    def test_all_four_families_can_now_produce_a_block(self):
+        """Re-purposed for "Complete shot-family block occurrence": MIDRANGE/THREE_POINT were
+        structurally UNREACHABLE for a block before this phase (the old test's own name/docstring
+        confirmed this as the engine's then-documented scope) -- `shot_resolution.py`'s new
+        `perimeter_block_probability`/`resolve_perimeter_shot` close that gap, reusing the SAME
+        `defensive_playmaking`-driven architecture `interior_shot_resolution.py` already uses for
+        RIM/FLOATER (primary-defender-only, no help-defender anchor -- see that module's own
+        updated docstring). All four families should now show a nonzero block count over a real
+        sample, with RIM/FLOATER each notably more frequent than MIDRANGE/THREE_POINT (an
+        empirically-anchored family ordering, not merely "nonzero")."""
+        blocks = self.diagnosis.blocks_by_family
+        for family in ("RIM", "FLOATER", "MIDRANGE", "THREE_POINT"):
+            self.assertGreater(blocks.get(family, 0), 0, family)
+        rim_rate = self.diagnosis.block_rate_per_check("RIM")
+        floater_rate = self.diagnosis.block_rate_per_check("FLOATER")
+        midrange_rate = self.diagnosis.block_rate_per_check("MIDRANGE")
+        three_rate = self.diagnosis.block_rate_per_check("THREE_POINT")
+        self.assertGreater(rim_rate, midrange_rate)
+        self.assertGreater(floater_rate, midrange_rate)
+        self.assertGreater(midrange_rate, three_rate)
 
     def test_every_block_capable_dispatch_is_whistled_xor_block_checked(self):
         for family in BLOCK_CAPABLE_FAMILIES:
