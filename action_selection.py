@@ -350,12 +350,32 @@ CATCH_AND_SHOOT_THREE_BASELINE_LOG_WEIGHT = 0.7
 # regression this task explicitly rejects. Closing the rest of the MIDRANGE gap honestly requires
 # RIM/FLOATER's own combined share to rise (a separate, later phase), not a further push on this
 # knob alone.
-PULLUP_THREE_BASELINE_LOG_WEIGHT = 0.2
-# PULL_UP's own baseline -- a pull-up jumper is a genuinely different, more contested shot context
-# than a catch-and-shoot; real NBA offense still runs meaningful pull-up-midrange volume (unlike a
-# spot-up catch), so this stays far closer to neutral than CATCH_AND_SHOOT's own weight above,
-# preserving a real, still-live competition between pull-up three and pull-up midrange rather than
-# defaulting either family. `context.three_point_baseline_log_weight` (-0.2, UNCHANGED,
+PULLUP_THREE_BASELINE_LOG_WEIGHT = 0.9
+# RE-CALIBRATED ("Calibrate action-specific jump-shot zones" phase, under the now-corrected
+# hierarchical/LOGMEANEXP possession architecture -- see docs). AUDIT FINDING that motivated this:
+# decomposing canonical shots by originating action found PULL_UP (11,351 shots, far more volume
+# than CATCH_AND_SHOOT's 7,063) was resolving its own perimeter-vs-MIDRANGE competition at
+# essentially a 55/45 MIDRANGE-favored split (2,098 MID vs 1,707 THREE among its non-interior
+# attempts) -- the OLD value (0.2) combined with the ERA weight (-0.2) nets to 0.0, an exactly
+# NEUTRAL coin flip before `midrange_preference`/late-clock terms tilt it further toward MIDRANGE.
+# This was PULL_UP's single largest lever on the whole engine's MIDRANGE share (SCREEN_BALL_HANDLER
+# shots, which are almost entirely PULL_UP, were 57.9% MIDRANGE at the old value). The OLD value's
+# near-50/50 split was calibrated under the PRE-hierarchy flat softmax, where PULL_UP reached this
+# competition far less often (a much smaller share of total decisions) -- it no longer matches the
+# volume PULL_UP now carries post-hierarchy (11,351 vs CATCH_AND_SHOOT's 7,063). NOTE the
+# calibrated value (0.9) ends up NUMERICALLY ABOVE CATCH_AND_SHOOT's own baseline (0.7) -- this is
+# NOT a claim that a pull-up is now a "more reliable three" than a catch-and-shoot look; it is a
+# DATA-DRIVEN aggregate fit: PULL_UP is selected far more often than CATCH_AND_SHOOT, so a stronger
+# per-decision pull toward three is needed to reach the SAME real aggregate THREE/MIDRANGE mix.
+# Both remain real, independently-calibrated, action-specific priors -- neither is derived from or
+# constrained to be less than the other.
+# CALIBRATED (TRAIN seeds 25000-25049, validated HELDOUT 25050-25099): 0.9 lands overall THREE
+# share inside the real 2025-26-adjacent 38-44% target on BOTH halves (TRAIN 42.9%, HELDOUT 42.0%)
+# while cutting MIDRANGE from 36.1% to ~29-30% -- WITHOUT touching RIM+FLOATER's own share at all
+# (this lever only reallocates within PULL_UP's existing perimeter/midrange menu; interior share
+# stayed at 27.4% TRAIN / 29.0% HELDOUT, both within noise of the pre-recalibration 28.2% baseline)
+# and WITHOUT moving drive->shot (43.5-44.3%, DRIVE/ATTACK-family behavior is untouched by this
+# purely within-SHOT-family knob). `context.three_point_baseline_log_weight` (-0.2, UNCHANGED,
 # `PossessionConfig.three_point_family_log_weight`) is NOT replaced -- it is still added on top,
 # ADDITIVELY, as the era/environment adjustment it always was; this constant is the NEW, separate
 # action-specific term layered alongside it, not instead of it.
