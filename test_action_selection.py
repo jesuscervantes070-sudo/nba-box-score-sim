@@ -29,7 +29,7 @@ def _held_state(carrier="1", control_state=DribbleState.LIVE_DRIBBLE, zone=Spati
 class TestObjectiveVsPerceived(unittest.TestCase):
     def test_opportunity_exists_but_not_perceived(self):
         state = _held_state()
-        ctx = StructuralContext(roller_id="4", screen_active=True)  # licenses a real POCKET_PASS opportunity
+        ctx = StructuralContext(teammate_ids=["4"], roller_id="4", screen_active=True)  # licenses a real POCKET_PASS opportunity
         opps = generate_opportunities(state, ctx)
         self.assertTrue(any(o.action_type == ActionType.POCKET_PASS for o in opps))
         rng = random.Random(1)
@@ -145,7 +145,7 @@ class TestStructuralDefensiveOpportunities(unittest.TestCase):
         state = _held_state()
         no_roller = generate_opportunities(state, StructuralContext(screen_active=True))
         self.assertFalse(any(o.action_type == ActionType.POCKET_PASS for o in no_roller))
-        with_roller = generate_opportunities(state, StructuralContext(roller_id="4", screen_active=True))
+        with_roller = generate_opportunities(state, StructuralContext(teammate_ids=["4"], roller_id="4", screen_active=True))
         self.assertTrue(any(o.action_type == ActionType.POCKET_PASS for o in with_roller))
 
 

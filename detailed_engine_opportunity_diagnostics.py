@@ -57,6 +57,37 @@ class InteriorOriginFunnel:
 
 
 @dataclass
+class ScreenOriginFunnel:
+    """Zero-RNG audit of screen initiation, its one live response, and resulting release."""
+    opportunities_offered: int = 0
+    selected: int = 0
+    rollers_assigned: int = 0
+    pocket_passes: int = 0
+    drives: int = 0
+    pull_ups: int = 0
+    passes_or_resets: int = 0
+    turnovers: int = 0
+    successful_pocket_passes: int = 0
+    paint_destinations: int = 0
+    rim_destinations: int = 0
+    rim_shots: int = 0
+    floater_shots: int = 0
+    midrange_shots: int = 0
+    three_shots: int = 0
+    fouls: int = 0
+    invalid_active_states: int = 0
+    stale_terminal_states: int = 0
+    duplicate_screen_ids: int = 0
+    missing_clear_events: int = 0
+    # A real, legitimate edge case: the shot clock can expire WHILE `ON_BALL_SCREEN` itself is
+    # being charged (`_dispatch_on_ball_screen`'s own `EXPIRED_BEFORE_SCREEN` branch) -- the action
+    # is genuinely "selected" (it appears in `world.action_log`) but never creates real screen
+    # state, so it is never eligible for `rollers_assigned`. Counted separately so
+    # `rollers_assigned + expired_before_screen == selected` remains an exact invariant.
+    expired_before_screen: int = 0
+
+
+@dataclass
 class OpportunityDiagnostics:
     total_possessions: int = 0
 
@@ -74,6 +105,7 @@ class OpportunityDiagnostics:
     interior_origin_funnels: Dict[str, InteriorOriginFunnel] = field(
         default_factory=lambda: defaultdict(InteriorOriginFunnel)
     )
+    screen_origin_funnel: ScreenOriginFunnel = field(default_factory=ScreenOriginFunnel)
 
     # ---- G. drive funnel ----
     drives_selected: int = 0
@@ -171,13 +203,87 @@ def diagnose_opportunities(results: Sequence["DetailedGameResult"]) -> Opportuni
             for decision in world.decision_log:
                 for opp in decision.get("objective_opportunities", ()):
                     diag.objective_opportunities_by_action[opp["action_type"]] += 1
+                    if opp["action_type"] == "ON_BALL_SCREEN":
+                        diag.screen_origin_funnel.opportunities_offered += 1
                     if opp["action_type"] in _INTERIOR_PASS_ORIGINS:
                         diag.interior_origin_funnels[opp["action_type"]].opportunities_offered += 1
 
             actions_list = world.action_log
+            screen_traces = [r for r in world.trace if r.get("action") == "ON_BALL_SCREEN"
+                             and r.get("screen_id") is not None]
+            clear_traces = [r for r in world.trace if r.get("action") == "SCREEN_CONTEXT_CLEARED"]
+            screen_ids = [r["screen_id"] for r in screen_traces]
+            diag.screen_origin_funnel.duplicate_screen_ids += len(screen_ids) - len(set(screen_ids))
+            clear_ids = [r.get("screen_id") for r in clear_traces]
+            diag.screen_origin_funnel.missing_clear_events += sum(clear_ids.count(sid) != 1 for sid in screen_ids)
+            if (world.screen_active or world.roller_id is not None or world.active_screen_id is not None
+                    or world.screen_ball_handler_id is not None):
+                diag.screen_origin_funnel.stale_terminal_states += 1
             for i, action in enumerate(actions_list):
                 at = action["action_type"]
                 diag.selected_actions_by_type[at] += 1
+
+                if at == "ON_BALL_SCREEN":
+                    funnel = diag.screen_origin_funnel
+                    funnel.selected += 1
+                    screen_id = action.get("screen_context_id")
+                    activation = next((r for r in screen_traces if r.get("screen_id") == screen_id), None)
+                    if activation is not None and activation.get("roller") in world.team_a_five:
+                        funnel.rollers_assigned += 1
+                    elif activation is not None:
+                        funnel.invalid_active_states += 1
+                    elif screen_id is None:
+                        # the real EXPIRED_BEFORE_SCREEN edge case (see `ScreenOriginFunnel.expired_before_screen`'s
+                        # own docstring) -- no screen state was ever created, so no roller assignment
+                        # is expected or missing here.
+                        funnel.expired_before_screen += 1
+                    else:
+                        funnel.invalid_active_states += 1  # a screen_id was recorded but its activation row is missing entirely
+                    if i + 1 < len(actions_list):
+                        response = actions_list[i + 1]
+                        response_type = response["action_type"]
+                        if not response.get("screen_active_before_action") or response.get("screen_context_id") != screen_id:
+                            funnel.invalid_active_states += 1
+                        if response_type == "POCKET_PASS":
+                            funnel.pocket_passes += 1
+                            rows = [r for r in world.trace if r.get("step") == response["step"]]
+                            pass_row = next((r for r in rows if r.get("action") == "POCKET_PASS"), None)
+                            if pass_row is not None and pass_row.get("outcome") in ("COMPLETED_CLEAN", "COMPLETED_ADJUSTED"):
+                                funnel.successful_pocket_passes += 1
+                                if pass_row.get("zone") == "PAINT":
+                                    funnel.paint_destinations += 1
+                                elif pass_row.get("zone") == "RESTRICTED_RIM":
+                                    funnel.rim_destinations += 1
+                        elif response_type == "DRIVE":
+                            funnel.drives += 1
+                        elif response_type == "PULL_UP":
+                            funnel.pull_ups += 1
+                        elif response_type in ("SWING_PASS", "RESET_PASS", "KICKOUT", "INTERIOR_CUT", "INTERIOR_SEAL"):
+                            funnel.passes_or_resets += 1
+                        if (i + 1 == len(actions_list) - 1
+                                and record.terminal_result.reason in ("TURNOVER", "OFFENSIVE_FOUL_TURNOVER",
+                                                                      "SHOT_CLOCK_VIOLATION")):
+                            funnel.turnovers += 1
+
+                    # A screen-origin release is either the immediate ball-handler shot or the
+                    # immediate shot after the one screen response (DRIVE or successful POCKET_PASS).
+                    shot_index = None
+                    if i + 1 < len(actions_list) and actions_list[i + 1]["action_type"] in SHOT_ACTIONS:
+                        shot_index = i + 1
+                    elif (i + 2 < len(actions_list)
+                          and actions_list[i + 1]["action_type"] in ("DRIVE", "POCKET_PASS")
+                          and actions_list[i + 2]["action_type"] in SHOT_ACTIONS):
+                        shot_index = i + 2
+                    if shot_index is not None:
+                        shot_action = actions_list[shot_index]
+                        rows = [r for r in world.trace if r.get("step") == shot_action["step"]]
+                        shot_row, family = _shot_row_and_family(rows, shot_action["action_type"])
+                        if family == "RIM": funnel.rim_shots += 1
+                        elif family == "FLOATER": funnel.floater_shots += 1
+                        elif family == "MIDRANGE": funnel.midrange_shots += 1
+                        elif family == "THREE_POINT": funnel.three_shots += 1
+                        if shot_row is not None and shot_row.get("action") == "SHOOTING_FOUL":
+                            funnel.fouls += 1
 
                 if at in _INTERIOR_PASS_ORIGINS:
                     funnel = diag.interior_origin_funnels[at]
@@ -233,7 +339,14 @@ def diagnose_opportunities(results: Sequence["DetailedGameResult"]) -> Opportuni
                         if n_actions == 1:
                             diag.one_action_by_shot_family[family] += 1
                         preceding_type = actions_list[i - 1]["action_type"] if i > 0 else None
-                        origin = preceding_type if preceding_type in _ORIGINATING_CONTEXT_ACTIONS else "ORDINARY"
+                        two_back = actions_list[i - 2]["action_type"] if i > 1 else None
+                        if preceding_type == "POCKET_PASS" and two_back == "ON_BALL_SCREEN":
+                            origin = "SCREEN_ROLL"
+                        elif preceding_type == "ON_BALL_SCREEN" or (
+                                preceding_type == "DRIVE" and two_back == "ON_BALL_SCREEN"):
+                            origin = "SCREEN_BALL_HANDLER"
+                        else:
+                            origin = preceding_type if preceding_type in _ORIGINATING_CONTEXT_ACTIONS else "ORDINARY"
                         diag.shot_family_by_originating_context[origin][family] += 1
 
             reason = record.terminal_result.reason
@@ -280,3 +393,13 @@ def assert_opportunity_reconciliation(diag: OpportunityDiagnostics) -> None:
             raise AssertionError(f"{origin} funnel selection does not match selected-actions total")
         if funnel.opportunities_offered != diag.objective_opportunities_by_action[origin]:
             raise AssertionError(f"{origin} funnel opportunities do not match objective total")
+    screen = diag.screen_origin_funnel
+    if screen.selected != diag.selected_actions_by_type["ON_BALL_SCREEN"]:
+        raise AssertionError("screen funnel selection does not match selected-actions total")
+    if screen.opportunities_offered != diag.objective_opportunities_by_action["ON_BALL_SCREEN"]:
+        raise AssertionError("screen funnel opportunities do not match objective total")
+    if screen.rollers_assigned + screen.expired_before_screen != screen.selected:
+        raise AssertionError("every selected screen must either assign one valid offensive roller "
+                              "or be the real EXPIRED_BEFORE_SCREEN edge case")
+    if screen.invalid_active_states or screen.stale_terminal_states or screen.duplicate_screen_ids or screen.missing_clear_events:
+        raise AssertionError("screen-state lifecycle reconciliation failed")

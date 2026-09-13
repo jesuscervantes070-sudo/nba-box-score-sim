@@ -57,6 +57,9 @@ class ActionType(Enum):
     # already deployed at the midrange/high-post slot establishes a seal and receives a real pass.
     # Distinct from INTERIOR_CUT:
     # no drive, displaced on-ball defender, cut, screen, roller, or invented post skill is required.
+    ON_BALL_SCREEN = "ON_BALL_SCREEN"  # non-terminal two-player setup event: assigns a real
+    # teammate as the temporary roller and creates one downstream screen decision. It does not
+    # itself shoot, drive, pass, or move either offensive player into an interior zone.
 
 
 # Action-type groupings used by selection/clock logic -- named sets, not
@@ -74,7 +77,8 @@ PASS_ACTIONS = frozenset({ActionType.SWING_PASS, ActionType.KICKOUT, ActionType.
 TERMINAL_ACTIONS = frozenset({ActionType.DRIVE, ActionType.ISOLATION_ATTACK, ActionType.PULL_UP,
                                ActionType.CATCH_AND_SHOOT, ActionType.CLOSEOUT_ATTACK})
 CREATION_ACTIONS = frozenset({ActionType.DRIVE, ActionType.ISOLATION_ATTACK, ActionType.PULL_UP, ActionType.POCKET_PASS,
-                               ActionType.TRANSITION_PUSH, ActionType.INTERIOR_CUT, ActionType.INTERIOR_SEAL})  # Phase 20B addition -- pushing the ball
+                               ActionType.TRANSITION_PUSH, ActionType.INTERIOR_CUT, ActionType.INTERIOR_SEAL,
+                               ActionType.ON_BALL_SCREEN})  # Phase 20B addition -- pushing the ball
 # upcourt is initiation-adjacent, so role_off_initiation's existing CREATION_ACTIONS boost legitimately extends to it,
 # reusing Phase 16's scoring function unmodified. INTERIOR_CUT ("Expand interior scoring opportunities" phase) is the
 # same kind of scoring-chance-creating pass POCKET_PASS already is, so it belongs in this grouping for the same reason.
@@ -106,6 +110,7 @@ _DEFAULT_CHECKPOINTS: Dict[ActionType, Tuple[str, ...]] = {
     ActionType.OUTLET_PASS: ("release", "reception"),
     ActionType.INTERIOR_CUT: ("cut_begins", "release", "reception"),
     ActionType.INTERIOR_SEAL: ("seal_established", "release", "reception"),
+    ActionType.ON_BALL_SCREEN: ("screen_arrives", "screen_contact", "roller_releases"),
 }
 
 

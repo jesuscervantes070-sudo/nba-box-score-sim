@@ -63,6 +63,9 @@ class StructuralContext:
     perimeter_receiver_ids: Dict[str, SpatialZone] = field(default_factory=dict)  # teammate_id -> the perimeter zone they occupy, if any
     roller_id: Optional[str] = None            # a teammate currently rolling/popping in a live PnR action, if any
     screen_active: bool = False                # a live on-ball screen/DHO is currently engaged
+    screen_setter_id: Optional[str] = None     # eligible teammate who can initiate a new on-ball screen
+    on_ball_screen_enabled: bool = True
+    pocket_pass_enabled: bool = True
     nearest_teammate_id: Optional[str] = None  # for the "obvious safety reset/swing" case
     nearest_teammate_zone: Optional[SpatialZone] = None  # receiver's actual coarse location; None preserves caller compatibility
     just_caught_pass: bool = False             # True only on the frame immediately after a reception -- gates CATCH_AND_SHOOT/CLOSEOUT_ATTACK
@@ -178,11 +181,28 @@ def generate_opportunities(state: PossessionState, context: StructuralContext,
                                                                 target_player_id=receiver_id, target_zone=receiver_zone,
                                                                 source=f"advantage:{area.zone.value}"))
 
-    # Pocket pass: requires a live roller in an interior receiving window -- no roller, no pocket pass, ever
-    if context.roller_id is not None and context.screen_active:
+    # Pocket pass: requires a live, on-court teammate roller in an interior receiving window.
+    if (context.pocket_pass_enabled and context.roller_id is not None and context.screen_active
+            and context.roller_id != carrier and context.roller_id in context.teammate_ids):
         opportunities.append(ObjectiveOpportunity(_next_id(ActionType.POCKET_PASS), ActionType.POCKET_PASS,
                                                     carrier, target_player_id=context.roller_id,
                                                     target_zone=SpatialZone.PAINT, source="live_roller"))
+
+    # On-ball screen initiation is a non-terminal context-creation action. It is available only
+    # in a live-dribble halfcourt state, from an outer/midrange ball location, with a real eligible
+    # teammate. An already-active screen cannot recursively create a second screen state.
+    if (context.on_ball_screen_enabled and not context.screen_active
+            and state.phase == PossessionPhase.HALFCOURT
+            and control == DribbleState.LIVE_DRIBBLE
+            and state.ball_zone in (PERIMETER_ZONES | MIDRANGE_ZONES)
+            and context.screen_setter_id is not None
+            and context.screen_setter_id != carrier
+            and context.screen_setter_id in context.teammate_ids):
+        opportunities.append(ObjectiveOpportunity(
+            _next_id(ActionType.ON_BALL_SCREEN), ActionType.ON_BALL_SCREEN, carrier,
+            target_player_id=context.screen_setter_id, target_zone=state.ball_zone,
+            source="eligible_on_ball_screen_setter",
+        ))
 
     # Transition push ("Add interior shot-opportunity generation"): only in the TRANSITION phase,
     # and only when a real teammate exists to receive it -- a genuine PASS (dispatched via the

@@ -41,7 +41,12 @@ class TestShotClockViolationDiagnostics(unittest.TestCase):
 
     def test_causal_timing_stage_is_distinct_from_terminal_source(self):
         observed_stages = set(self.diagnosis.expiration_stages)
-        self.assertTrue(observed_stages <= {"INTER_ACTION", "PASS_FLIGHT", "LOOSE_BALL_RECOVERY"})
+        # "ON_BALL_SCREEN_EXECUTION" ("Activate on-ball screen roll creation" phase): a real, new
+        # time-consuming stage -- `_dispatch_on_ball_screen` charges its own real duration via the
+        # SAME `_charge_time` primitive DRIVE_EXECUTION/SHOT_EXECUTION already use, so a screen can
+        # legitimately exhaust the shot clock exactly like any other timed action.
+        self.assertTrue(observed_stages <= {"INTER_ACTION", "PASS_FLIGHT", "LOOSE_BALL_RECOVERY",
+                                            "ON_BALL_SCREEN_EXECUTION"})
         self.assertIn("TOP_OF_LOOP", self.diagnosis.terminal_sources)
         self.assertNotEqual(self.diagnosis.expiration_stages, self.diagnosis.terminal_sources)
 

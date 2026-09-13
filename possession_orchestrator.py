@@ -69,7 +69,7 @@ phases already built and tested.
 ============================ SUPPORTED VS. CAPABILITY-GATED ACTIONS ============================
 `SUPPORTED_ACTION_TYPES` = DRIVE, PULL_UP, CATCH_AND_SHOOT, SWING_PASS,
 KICKOUT, RESET_PASS, POCKET_PASS, TRANSITION_PUSH, INTERIOR_CUT,
-INTERIOR_SEAL -- every action family with a coherent,
+INTERIOR_SEAL, ON_BALL_SCREEN -- every action family with a coherent,
 already-built resolver this module can route into without inventing new
 mechanics. `CAPABILITY_GATED_ACTION_TYPES` = ISOLATION_ATTACK,
 CLOSEOUT_ATTACK, TRANSITION_PUSH, OUTLET_PASS, RECOVER_LOOSE_BALL -- NONE
@@ -183,6 +183,7 @@ SUPPORTED_ACTION_TYPES = frozenset({
     # (same PASS_ACTIONS branch, same reuse posture as TRANSITION_PUSH above).
     ActionType.INTERIOR_CUT,
     ActionType.INTERIOR_SEAL,
+    ActionType.ON_BALL_SCREEN,
 })
 CAPABILITY_GATED_ACTION_TYPES = frozenset({
     ActionType.ISOLATION_ATTACK, ActionType.CLOSEOUT_ATTACK,
@@ -678,6 +679,16 @@ class PossessionWorld:
     player_zones: Dict[str, SpatialZone] = field(default_factory=dict)
     just_caught_pass_player_id: Optional[str] = None
     interior_seal_enabled: bool = True
+    on_ball_screen_enabled: bool = True
+    pocket_pass_enabled: bool = True
+    screen_active: bool = False
+    roller_id: Optional[str] = None
+    screen_ball_handler_id: Optional[str] = None
+    screen_defender_id: Optional[str] = None
+    screen_previous_posture: Optional[DefensivePosture] = None
+    screen_advantage: Optional[str] = None
+    active_screen_id: Optional[str] = None
+    screen_sequence_count: int = 0
     loose_ball_favored_team_id: Optional[str] = None
     foul_state: FoulAdministrationState = field(default_factory=FoulAdministrationState)
     stats: StatDeltas = field(default_factory=StatDeltas)
@@ -848,8 +859,7 @@ def build_structural_context(engine: PossessionEngine, world: PossessionWorld) -
       perimeter_receiver_ids  -> teammates whose world.player_zones entry is a PERIMETER_ZONE
       ball_handler_defender_id-> engine.state.assignments (whoever guards the carrier)
       just_caught_pass        -> world.just_caught_pass_player_id == carrier (consumed once by the caller)
-      roller_id / screen_active -> always None / False -- Phase 22A's off-ball screen primitive remains
-                                     caller-triggered; V0 never fabricates a live screen (per explicit instruction)
+      roller_id / screen_active -> temporary production on-ball-screen state owned by `world`
       nearest_teammate_id     -> _nearest_teammate_id (coarse zone topology, see above)
       nearest_teammate_zone   -> that same teammate's existing world.player_zones location
       nearest_teammate_finishing_role -> that same teammate's own real, already-existing
@@ -859,6 +869,11 @@ def build_structural_context(engine: PossessionEngine, world: PossessionWorld) -
     """
     carrier = engine.state.ball_carrier
     teammates = tuple(p for p in world.offense_five(engine) if p != carrier)
+    if world.screen_active and (
+        world.roller_id is None or world.roller_id not in teammates
+        or world.screen_ball_handler_id != carrier or world.active_screen_id is None
+    ):
+        raise ValueError("active on-ball screen must have the current ball handler, a valid offensive roller, and an id")
     perimeter_receivers = {p: world.player_zones[p] for p in teammates
                             if world.player_zones.get(p) in PERIMETER_ZONES}
     defender_id = _primary_defender(engine, carrier) if carrier else None
@@ -866,6 +881,24 @@ def build_structural_context(engine: PossessionEngine, world: PossessionWorld) -
     nearest_id = _nearest_teammate_id(engine, world, carrier) if carrier else None
     nearest_finishing_role = (world.profiles[nearest_id].role_off_finishing
                                if nearest_id is not None and nearest_id in world.profiles else None)
+    # V1 roller selection is deployment/context only: choose a real teammate with existing
+    # finishing-role evidence, preferring the current high-post/MIDRANGE occupant, then the larger
+    # finishing role, with stable lineup order as the final tie-break. No screening/roll rating is
+    # invented, and missing role evidence is not converted to a numeric fallback.
+    screen_candidates = [
+        pid for pid in teammates
+        if world.profiles.get(pid) is not None
+        and world.profiles[pid].role_off_finishing is not None
+    ]
+    screen_setter_id = max(
+        screen_candidates,
+        key=lambda pid: (
+            world.player_zones.get(pid) == SpatialZone.MIDRANGE,
+            world.profiles[pid].role_off_finishing,
+            -teammates.index(pid),
+        ),
+        default=None,
+    )
     # Best eligible seal target among teammates already deployed in the coarse MIDRANGE/high-post
     # slot, using existing finishing deployment role and a deterministic lineup-order tie-break.
     # Missing role evidence is excluded, never converted to zero or league average.
@@ -882,7 +915,10 @@ def build_structural_context(engine: PossessionEngine, world: PossessionWorld) -
     )
     return StructuralContext(
         teammate_ids=list(teammates), perimeter_receiver_ids=perimeter_receivers,
-        roller_id=None, screen_active=False,
+        roller_id=world.roller_id, screen_active=world.screen_active,
+        screen_setter_id=screen_setter_id,
+        on_ball_screen_enabled=world.on_ball_screen_enabled,
+        pocket_pass_enabled=world.pocket_pass_enabled,
         nearest_teammate_id=nearest_id,
         nearest_teammate_zone=world.player_zones.get(nearest_id) if nearest_id else None,
         nearest_teammate_finishing_role=nearest_finishing_role,
@@ -893,6 +929,28 @@ def build_structural_context(engine: PossessionEngine, world: PossessionWorld) -
         interior_seal_enabled=world.interior_seal_enabled,
         just_caught_pass=just_caught, ball_handler_defender_id=defender_id,
     )
+
+
+def _clear_screen_context(engine: PossessionEngine, world: PossessionWorld, step: int,
+                          consumed_by: str, restore_posture: bool = True) -> None:
+    """Consume the one-decision screen context without RNG or stale carryover."""
+    if not world.screen_active:
+        return
+    screen_id = world.active_screen_id
+    roller_id = world.roller_id
+    if (restore_posture and world.screen_defender_id is not None
+            and world.screen_previous_posture is not None
+            and world.screen_defender_id in engine.state.assignments):
+        engine.update_posture(world.screen_defender_id, world.screen_previous_posture)
+    world.screen_active = False
+    world.roller_id = None
+    world.screen_ball_handler_id = None
+    world.screen_defender_id = None
+    world.screen_previous_posture = None
+    world.screen_advantage = None
+    world.active_screen_id = None
+    world.log_trace(step=step, action="SCREEN_CONTEXT_CLEARED", screen_id=screen_id,
+                    roller=roller_id, consumed_by=consumed_by)
 
 
 # ---------------------------------------------------------------------
@@ -997,6 +1055,7 @@ class PossessionConfig:
     drive_action_seconds: float = 2.5
     pull_up_action_seconds: float = 1.5
     catch_and_shoot_action_seconds: float = 1.0
+    on_ball_screen_action_seconds: float = 1.0  # provisional V1 setup/contact duration; next read is immediate
     loose_ball_action_seconds: float = 0.5
     max_steps_per_possession: int = 100
     force_on_ball_contact_established: bool = False
@@ -1061,6 +1120,30 @@ class PossessionConfig:
     # not a player tendency or finishing-ability term.
     interior_seal_selection_log_weight: float = -1.2
     interior_seal_enabled: bool = True
+    # Temporary on-ball-screen cadence and response priors. These are environment/action-context
+    # terms, not player abilities or tendencies. The screen event itself remains non-terminal.
+    on_ball_screen_enabled: bool = True
+    pocket_pass_enabled: bool = True
+    # ACTIVATED ("Activate on-ball screen roll creation" phase). HONEST FINDING: ON_BALL_SCREEN is
+    # a NEW candidate competing at BASE_WEIGHT parity in the SAME softmax as CATCH_AND_SHOOT/PULL_UP/
+    # SWING_PASS/RESET_PASS/INTERIOR_CUT/INTERIOR_SEAL -- its mere EXISTENCE (even at weight 0.0)
+    # dilutes every other action's selection probability via softmax renormalization, which was
+    # measured to push THREE share below this task's own 38% floor and pace/FGA below their own
+    # floors (0.0: pace 95.2/team, FGA 85.5/team, THREE 36.9% on the full canonical sample -- all
+    # three already out of band with the screen simply present, before any deliberate "boost").
+    # Small TRAIN grid (25000-25049; -2.0/-1.0/-0.5/0.0/0.5), validated HELDOUT (25050-25099) at the
+    # two closest finalists: -1.25 is the least-negative (highest-volume) value keeping THREE at or
+    # within rounding of 38% and pace/FGA in-band on BOTH halves (TRAIN: pace 97.6, FGA 87.6, THREE
+    # 38.6%; HELDOUT: pace 96.2, FGA 87.8, THREE 37.9%). Same negative-weight convention this
+    # codebase already established for `interior_seal_selection_log_weight` (-1.2) -- a real,
+    # measured cost of adding ANY new competing action to this shared softmax, not specific to
+    # screens. Canonical yield at this value: ~8.2 screens selected/team-game, interior share
+    # 20.2%->21.3% (a real but SMALL net gain) -- see the phase report for the full diagnosis of why
+    # this ceiling exists (dilution forces the weight back toward/below parity to hold guardrails,
+    # capping any single new action's net contribution regardless of which one is added).
+    on_ball_screen_selection_log_weight: float = -1.25
+    screen_pocket_pass_log_weight: float = 1.0
+    on_ball_screen_clean_advantage_probability: float = 0.50
     # ------------------------------------------------------------------
     # Structural Timing Hook -- see docs/DETAILED_ENGINE_FIRST_DIAGNOSTIC_REPORT.md's
     # own "Structural Timing Hook" section. These three fields are the ONLY place LIVE
@@ -1106,6 +1189,10 @@ class PossessionConfig:
     # A set-defense seal is more likely to receive in the paint than directly under the rim.
     # Structural V1 split only; both destinations remain reachable and shot choice stays downstream.
     interior_seal_rim_probability: float = 0.40
+    # Screen-derived pocket passes use the temporary screen outcome: a clean trailing-defender
+    # window reaches the rim more often; a partial/recovering window more often becomes a short roll.
+    pocket_pass_clean_rim_probability: float = 0.65
+    pocket_pass_partial_rim_probability: float = 0.35
     # ACTIVATED ("Calibrate source-conditioned transition routing" phase). Real, first-pass value
     # -- NOT a target-fit, NOT a midpoint of `transition_entry_seconds`/`ordinary_entry_seconds`:
     # derived directly from `transition_rate_ingestion.py`'s real 2025-26 extraction, specifically
@@ -1256,6 +1343,9 @@ def _continuation_minimum_seconds_by_opportunity(perceived, ball_zone: SpatialZo
     requirements: Dict[str, float] = {}
     for perceived_opportunity in perceived:
         opportunity = perceived_opportunity.opportunity
+        if opportunity.action_type == ActionType.ON_BALL_SCREEN:
+            requirements[opportunity.opportunity_id] = config.on_ball_screen_action_seconds
+            continue
         if opportunity.action_type not in PASS_ACTIONS:
             continue
         destination = opportunity.target_zone or ball_zone
@@ -2192,8 +2282,62 @@ def _loose_ball_continuation_or_terminal(engine: PossessionEngine, world: Posses
 # ---------------------------------------------------------------------
 # 14. Dispatcher -- the one authoritative seam.
 # ---------------------------------------------------------------------
+def _dispatch_on_ball_screen(engine: PossessionEngine, world: PossessionWorld, intent: ActionIntent,
+                              config: PossessionConfig, rng: random.Random,
+                              steps: int) -> Optional[PossessionTerminalResult]:
+    """Create one temporary roller/ball-handler context; resolve no terminal basketball action."""
+    carrier = engine.state.ball_carrier
+    roller = intent.target_player_id
+    if (world.screen_active or carrier != intent.actor_player_id
+            or engine.state.phase != PossessionPhase.HALFCOURT
+            or engine.state.ball_control is None
+            or engine.state.ball_control.state != DribbleState.LIVE_DRIBBLE
+            or roller is None or roller == carrier
+            or roller not in world.teammates_of(engine, carrier)):
+        raise ValueError("ON_BALL_SCREEN requires a live halfcourt ball handler and a valid offensive teammate")
+    probability = config.on_ball_screen_clean_advantage_probability
+    if not 0.0 <= probability <= 1.0:
+        raise ValueError("on_ball_screen_clean_advantage_probability must be in [0, 1]")
+    preflight = advance_live_clocks(
+        config.on_ball_screen_action_seconds,
+        engine.state.shot_clock_remaining,
+        engine.state.game_clock_remaining,
+    )
+    if preflight.terminal_cause != ClockTerminalCause.NONE:
+        _charge_time(engine, config.on_ball_screen_action_seconds, world, "ON_BALL_SCREEN_EXECUTION", steps)
+        world.log_trace(step=steps, action=ActionType.ON_BALL_SCREEN.value,
+                        outcome="EXPIRED_BEFORE_SCREEN", roller=roller)
+        return None
+
+    defender = _primary_defender(engine, carrier)
+    previous_posture = engine.state.assignments[defender].posture if defender is not None else None
+    advantage = "CLEAN" if rng.random() < probability else "PARTIAL"
+    if defender is not None:
+        engine.update_posture(
+            defender,
+            DefensivePosture.TRAILING if advantage == "CLEAN" else DefensivePosture.RECOVERING,
+        )
+    world.screen_sequence_count += 1
+    screen_id = f"{engine.state.possession_id}:screen:{world.screen_sequence_count}"
+    world.screen_active = True
+    world.roller_id = roller
+    world.screen_ball_handler_id = carrier
+    world.screen_defender_id = defender
+    world.screen_previous_posture = previous_posture
+    world.screen_advantage = advantage
+    world.active_screen_id = screen_id
+    engine._log(EventType.REACTION_CHECKPOINT, 0.0, primary=carrier, secondary=roller,
+                meta={"checkpoint": "on_ball_screen_activated", "screen_id": screen_id,
+                      "screen_advantage": advantage})
+    _charge_time(engine, config.on_ball_screen_action_seconds, world, "ON_BALL_SCREEN_EXECUTION", steps)
+    world.log_trace(step=steps, action=ActionType.ON_BALL_SCREEN.value, outcome=advantage,
+                    screen_id=screen_id, ball_handler=carrier, roller=roller, defender=defender)
+    return None
+
+
 def _resolve_interior_pass_destination(action_type: ActionType, config: PossessionConfig,
-                                        rng: random.Random) -> SpatialZone:
+                                        rng: random.Random,
+                                        screen_advantage: Optional[str] = None) -> SpatialZone:
     """Resolve the real two-zone destination for an interior-creation pass.
 
     TRANSITION_PUSH/INTERIOR_CUT/INTERIOR_SEAL do not
@@ -2213,6 +2357,11 @@ def _resolve_interior_pass_destination(action_type: ActionType, config: Possessi
         rim_probability = config.interior_cut_rim_probability
     elif action_type == ActionType.INTERIOR_SEAL:
         rim_probability = config.interior_seal_rim_probability
+    elif action_type == ActionType.POCKET_PASS:
+        rim_probability = (
+            config.pocket_pass_clean_rim_probability
+            if screen_advantage == "CLEAN" else config.pocket_pass_partial_rim_probability
+        )
     else:
         raise UnsupportedActionError(f"_resolve_interior_pass_destination has no split defined for {action_type}")
     return SpatialZone.RESTRICTED_RIM if rng.random() < rim_probability else SpatialZone.PAINT
@@ -2220,6 +2369,7 @@ def _resolve_interior_pass_destination(action_type: ActionType, config: Possessi
 
 _INTERIOR_DESTINATION_ACTIONS = frozenset({
     ActionType.TRANSITION_PUSH, ActionType.INTERIOR_CUT, ActionType.INTERIOR_SEAL,
+    ActionType.POCKET_PASS,
 })
 
 
@@ -2230,11 +2380,15 @@ def dispatch_action(engine: PossessionEngine, world: PossessionWorld, intent: Ac
                                       f"it is capability-gated (CAPABILITY_GATED_ACTION_TYPES) or unknown")
     if intent.action_type == ActionType.DRIVE:
         return _dispatch_drive(engine, world, intent, config, rng, steps)
+    if intent.action_type == ActionType.ON_BALL_SCREEN:
+        return _dispatch_on_ball_screen(engine, world, intent, config, rng, steps)
     if intent.action_type in (ActionType.PULL_UP, ActionType.CATCH_AND_SHOOT):
         return _dispatch_shot(engine, world, intent, config, rng, steps)
     if intent.action_type in PASS_ACTIONS:
         if intent.action_type in _INTERIOR_DESTINATION_ACTIONS:
-            destination = _resolve_interior_pass_destination(intent.action_type, config, rng)
+            destination = _resolve_interior_pass_destination(
+                intent.action_type, config, rng, screen_advantage=world.screen_advantage,
+            )
             intent = replace(intent, target_zone=destination.value)
         return _dispatch_pass(engine, world, intent, rng, steps, config)
     raise UnsupportedActionError(f"dispatch_action has no route for {intent.action_type} despite it being "
@@ -2286,7 +2440,9 @@ def simulate_possession(
     world = PossessionWorld(team_a_id=offense_team_id, team_b_id=defense_team_id,
                              team_a_five=tuple(offensive_five), team_b_five=tuple(defensive_five),
                              profiles=dict(profiles), foul_state=foul_state or FoulAdministrationState(),
-                             interior_seal_enabled=config.interior_seal_enabled)
+                             interior_seal_enabled=config.interior_seal_enabled,
+                             on_ball_screen_enabled=config.on_ball_screen_enabled,
+                             pocket_pass_enabled=config.pocket_pass_enabled)
 
     engine.inbound(inbound_receiver_id, config.initial_ball_zone, config.initial_phase)
     zones = initial_player_zones if initial_player_zones is not None else \
@@ -2326,6 +2482,7 @@ def simulate_possession(
 
     for step in range(config.max_steps_per_possession):
         if engine.state.shot_clock_remaining is not None and engine.state.shot_clock_remaining <= 0.0:
+            _clear_screen_context(engine, world, step, "POSSESSION_END")
             world.log_trace(step=step, action="SHOT_CLOCK_VIOLATION_DIAGNOSTIC",
                             source="TOP_OF_LOOP", shot_clock_remaining=engine.state.shot_clock_remaining)
             _record_shot_clock_violation(world, engine, step, "TOP_OF_LOOP")
@@ -2333,6 +2490,7 @@ def simulate_possession(
             world.stats.add_team_only_turnover()
             return _terminal(PossessionTerminalReason.SHOT_CLOCK_VIOLATION, engine, world, step)
         if engine.state.game_clock_remaining is not None and engine.state.game_clock_remaining <= 0.0:
+            _clear_screen_context(engine, world, step, "POSSESSION_END")
             engine.period_expiration()
             return _terminal(PossessionTerminalReason.PERIOD_END, engine, world, step)
 
@@ -2388,7 +2546,10 @@ def simulate_possession(
                                 drive_selection_log_weight=config.drive_selection_log_weight,
                                 post_drive_outcome=pending_drive_outcome,
                                 interior_cut_selection_log_weight=config.interior_cut_selection_log_weight,
-                                interior_seal_selection_log_weight=config.interior_seal_selection_log_weight)
+                                interior_seal_selection_log_weight=config.interior_seal_selection_log_weight,
+                                on_ball_screen_selection_log_weight=config.on_ball_screen_selection_log_weight,
+                                screen_pocket_pass_log_weight=config.screen_pocket_pass_log_weight,
+                                screen_active=ctx.screen_active)
         # consumed for exactly this ONE decision, regardless of what gets selected next --
         # re-armed below only if THIS iteration's own dispatched action is itself a DRIVE.
         pending_drive_outcome = None
@@ -2429,6 +2590,9 @@ def simulate_possession(
             "feasible_action_types": feasible_action_types,
             "selected_action_type": intent.action_type.value if intent is not None else None,
             "selected_target_zone": intent.target_zone if intent is not None else None,
+            "screen_active": ctx.screen_active,
+            "screen_id": world.active_screen_id,
+            "roller_id": ctx.roller_id,
             "late_clock_filter_activated": clock_feasibility.late_clock_filter_activated,
             "late_clock_removed_actions": removed_late_clock,
             "late_clock_terminal_shots_available": [
@@ -2444,6 +2608,7 @@ def simulate_possession(
         if intent is None:
             # genuinely no feasible supported action (e.g. clock too low for anything but an
             # already-infeasible RESET_PASS) -- the real, structural analog of a shot-clock violation.
+            _clear_screen_context(engine, world, step, "POSSESSION_END")
             world.log_trace(step=step, action="SHOT_CLOCK_VIOLATION_DIAGNOSTIC",
                             source="NO_FEASIBLE_ACTION", shot_clock_remaining=engine.state.shot_clock_remaining)
             _record_shot_clock_violation(world, engine, step, "NO_FEASIBLE_ACTION")
@@ -2462,7 +2627,17 @@ def simulate_possession(
         clock_before = engine.state.game_clock_remaining
         shot_clock_before = engine.state.shot_clock_remaining
         stage_log_len_before = len(world.stage_timing_log)
+        screen_active_before_action = world.screen_active
+        screen_id_before_action = world.active_screen_id
+        screen_roller_before_action = world.roller_id
         terminal = dispatch_action(engine, world, intent, config, rng, step)
+        if screen_active_before_action and intent.action_type != ActionType.ON_BALL_SCREEN:
+            _clear_screen_context(
+                engine, world, step, intent.action_type.value,
+                restore_posture=intent.action_type != ActionType.DRIVE,
+            )
+            if terminal is not None:
+                terminal = replace(terminal, engine_state=engine.state, world=world)
         clock_after = (terminal.engine_state if terminal is not None else engine.state).game_clock_remaining
         shot_clock_after = (terminal.engine_state if terminal is not None else engine.state).shot_clock_remaining
         elapsed = (clock_before - clock_after) if clock_before is not None and clock_after is not None else None
@@ -2474,7 +2649,14 @@ def simulate_possession(
         world.action_log.append({"step": step, "action_type": intent.action_type.value,
                                  "elapsed_game_clock_seconds": elapsed,
                                  "shot_clock_before": shot_clock_before,
-                                 "shot_clock_after": shot_clock_after})
+                                 "shot_clock_after": shot_clock_after,
+                                 "screen_active_before_action": screen_active_before_action,
+                                 "screen_context_id": (
+                                     screen_id_before_action or world.active_screen_id
+                                 ),
+                                 "screen_roller_id": (
+                                     screen_roller_before_action or world.roller_id
+                                 )})
         if intent.action_type == ActionType.DRIVE:
             # Re-arm for exactly the NEXT decision -- read straight off the SAME real trace row
             # `_dispatch_drive` already writes (`world.trace`'s own "DRIVE" action/outcome entry,
@@ -2519,7 +2701,9 @@ def simulate_possession(
         # loop checks (next iteration) catch it and terminate via the real, existing
         # `shot_clock_violation()`/`period_expiration()` methods -- no action ever dispatches past an
         # expired clock, and no separate expiration handling is duplicated here.
-        if engine.state.ball_state != BallState.LOOSE and len(world.stage_timing_log) == stage_log_len_before:
+        if (intent.action_type != ActionType.ON_BALL_SCREEN
+                and engine.state.ball_state != BallState.LOOSE
+                and len(world.stage_timing_log) == stage_log_len_before):
             _charge_inter_action_time(engine, world, config, step)
 
     raise PossessionSimulationFault(

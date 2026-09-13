@@ -33,17 +33,16 @@ class TestTurnoverDiagnosis(unittest.TestCase):
 
     def test_engine_accounting_is_exactly_once_and_shot_clock_is_explicitly_separate(self):
         assert_turnover_reconciliation(self.diagnosis)
-        # Re-pinned for "Add pass-created interior seal": the new ORDINARY-halfcourt INTERIOR_SEAL
-        # opportunity/selection path intentionally shifts the later RNG trajectory (a
-        # newly-live pass opportunity, sometimes selected, sometimes failing/turning over via the
-        # SAME existing `resolve_pass` machinery) -- not a turnover-CLASSIFICATION change.
-        # (Previously re-pinned for "Model action-specific jump-shot selection", "Activate
-        # empirical foul occurrence", "Calibrate drive follow-up decisions", "Expand interior
-        # scoring opportunities", "Add interior shot-opportunity generation", and "Calibrate
-        # source-conditioned transition routing".)
-        self.assertEqual(self.diagnosis.engine_accounted_turnovers, 3816)
-        self.assertEqual(self.diagnosis.player_charged_turnovers, 3462)
-        self.assertEqual(self.diagnosis.categories[TurnoverCategory.SHOT_CLOCK_VIOLATION].engine_accounted_turnovers, 354)
+        # Re-pinned for "Activate on-ball screen roll creation": the new ON_BALL_SCREEN
+        # opportunity/selection path (and its downstream POCKET_PASS activation) intentionally
+        # shifts the later RNG trajectory -- not a turnover-CLASSIFICATION change. (Previously
+        # re-pinned for "Add pass-created interior seal", "Model action-specific jump-shot
+        # selection", "Activate empirical foul occurrence", "Calibrate drive follow-up decisions",
+        # "Expand interior scoring opportunities", "Add interior shot-opportunity generation", and
+        # "Calibrate source-conditioned transition routing".)
+        self.assertEqual(self.diagnosis.engine_accounted_turnovers, 3813)
+        self.assertEqual(self.diagnosis.player_charged_turnovers, 3439)
+        self.assertEqual(self.diagnosis.categories[TurnoverCategory.SHOT_CLOCK_VIOLATION].engine_accounted_turnovers, 374)
 
     def test_steals_are_consistent_with_current_clean_interception_semantics(self):
         steals = sum(o.steal_credited for o in self.diagnosis.observations)
