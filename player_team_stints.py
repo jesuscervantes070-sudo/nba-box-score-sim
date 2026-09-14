@@ -140,3 +140,62 @@ def current_team(player_id: str, as_of_season: str) -> Optional[str]:
 
 def was_traded(player_id: str, as_of_season: str) -> bool:
     return len(team_stints_for_player(player_id, as_of_season)) > 1
+
+
+def team_roster_as_of_date(team_name: str, as_of_date: str, as_of_season: str) -> List[str]:
+    """Availability + Expected Minutes + Rotations V1 addition (same module, additive). Real,
+    date-safe roster reconstruction, combining TWO real sources the same way `team_stints_for_player`
+    already does for one player at a time:
+
+    1. `roster_membership.json`'s real per-team name list -- checked directly: this cache only
+       carries entries for players it needed to correct (trades/mid-season movement), NOT a
+       player's full static roster -- a player who spent the whole season on one team and needed
+       no correction is typically ABSENT from this list entirely (confirmed: Indiana Pacers'
+       2023-24 entry has only 2 rows -- the two real players actually involved in the Siakam
+       trade -- not their full ~15-man roster).
+    2. `loader.load_teams`'s own static, name-keyed roster (`rosters.json`) -- the same
+       whole-season fallback `_static_fallback_stint` already uses -- for every player NOT already
+       covered by (1), i.e. every player with no recorded stint anywhere this season (never
+       traded, single team all year).
+
+    A player covered by (1) is included only if their own `team_as_of_date` resolves to
+    `team_name` on `as_of_date` (excludes them once they've moved on). A player only covered by
+    (2) is included if `team_name` is their one real static team. Unresolvable/ambiguous names are
+    silently excluded (never guessed)."""
+    from loader import load_teams
+
+    membership = _roster_membership_by_name(as_of_season)
+    rows = membership.get(team_name, [])
+    roster = []
+    seen = set()
+    for row in rows:
+        name = row.get("name")
+        if not name:
+            continue
+        resolution = pid.resolve_name_to_id(name, season_hint=as_of_season)
+        if resolution.state != "RESOLVED" or resolution.player_id in seen:
+            continue
+        if team_as_of_date(resolution.player_id, as_of_date, as_of_season) == team_name:
+            roster.append(resolution.player_id)
+            seen.add(resolution.player_id)
+
+    # every real name appearing ANYWHERE in roster_membership this season already has a stint
+    # record and is excluded from the static fallback below (their real team-as-of-date already
+    # decided their inclusion above).
+    names_with_stints = {row.get("name") for rows_ in membership.values() for row in rows_ if row.get("name")}
+
+    try:
+        teams = load_teams(as_of_season)
+    except FileNotFoundError:
+        teams = {}
+    team = teams.get(team_name)
+    if team is not None:
+        for player in team.players:
+            if player.name in names_with_stints:
+                continue
+            resolution = pid.resolve_name_to_id(player.name, season_hint=as_of_season)
+            if resolution.state != "RESOLVED" or resolution.player_id in seen:
+                continue
+            roster.append(resolution.player_id)
+            seen.add(resolution.player_id)
+    return roster
