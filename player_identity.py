@@ -202,6 +202,51 @@ def estimate_tendency_by_id(player_id: str, as_of_season: str, all_seasons: List
     return resolution, replace(result, player_id=player_id)
 
 
+def estimate_rim_protection_by_id(player_id: str, as_of_season: str, all_seasons: List[str]):
+    """Adapter over the UNMODIFIED rim_protection_estimation.estimate_rim_protection (Phase 7).
+    Returns (IdentityResolution, RimProtectionReport_or_None); real math/calibration inside
+    estimate_rim_protection is untouched. Defensive Truth V1 phase addition."""
+    import rim_protection_estimation as rpe
+    resolution = resolve_id_to_name(player_id)
+    if resolution.state != RESOLVED:
+        return resolution, None
+    return resolution, rpe.estimate_rim_protection(resolution.canonical_name, as_of_season, all_seasons)
+
+
+def estimate_poa_containment_by_id(player_id: str, as_of_season: str, all_seasons: List[str]):
+    """Adapter over the UNMODIFIED poa_containment_estimation.estimate_poa_containment (Phase 10).
+    Returns (IdentityResolution, PoaContainmentReport_or_None); real math/calibration inside
+    estimate_poa_containment is untouched. Defensive Truth V1 phase addition."""
+    import poa_containment_estimation as pce
+    resolution = resolve_id_to_name(player_id)
+    if resolution.state != RESOLVED:
+        return resolution, None
+    return resolution, pce.estimate_poa_containment(resolution.canonical_name, as_of_season, all_seasons)
+
+
+def estimate_foul_discipline_by_id(player_id: str, as_of_season: str, all_seasons: List[str]):
+    """Adapter over the UNMODIFIED foul_estimation.estimate_foul_discipline (Phase 6).
+    Returns (IdentityResolution, FoulDisciplineReport_or_None); real math/calibration inside
+    estimate_foul_discipline is untouched. Defensive Truth V1 phase addition."""
+    import foul_estimation as fe
+    resolution = resolve_id_to_name(player_id)
+    if resolution.state != RESOLVED:
+        return resolution, None
+    return resolution, fe.estimate_foul_discipline(resolution.canonical_name, as_of_season, all_seasons)
+
+
+def estimate_defensive_playmaking_by_id(player_id: str, as_of_season: str, all_seasons: List[str]):
+    """Adapter over the UNMODIFIED defensive_playmaking_estimation.estimate_defensive_playmaking
+    (Defensive Truth V1 -- a NEW, richer construct than player_ability_estimation.py's own
+    same-named, cruder STL+BLK/36 attribute; see that module's own docstring for why both
+    honestly coexist). Returns (IdentityResolution, DefensivePlaymakingResult_or_None)."""
+    import defensive_playmaking_estimation as dpe
+    resolution = resolve_id_to_name(player_id)
+    if resolution.state != RESOLVED:
+        return resolution, None
+    return resolution, dpe.estimate_defensive_playmaking(resolution.canonical_name, as_of_season, all_seasons)
+
+
 # --------------------------- unified, temporally-safe lookup ---------------------------
 
 def attach_player_id_to_ability_profile(profile, season_hint: Optional[str] = None):
