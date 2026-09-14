@@ -20,8 +20,21 @@ exactly the V1 role dimensions this phase is asked to build, real and complete:
 Source: `player_role_off.json` (real `leaguedashptstats`+`leaguedashplayerstats` season-aggregate
 tracking, id-keyed, real floor 2013-14 -- `role_off_ingestion.ROLE_TRACKING_FIRST_SEASON`; this
 phase backfilled the cache from the previously-populated 2022-23/2023-24-only snapshot to the full
-2013-14+ range, no new ingestion module needed). `build_role_profile(player_id, as_of_season)` is
-already id-keyed directly -- no name-resolution adapter needed.
+2013-14+ range, no new ingestion module needed). Already id-keyed directly -- no name-resolution
+adapter needed.
+
+REAL, DISCOVERED INTEGRATION DEFECT (found and fixed during the Historical Pregame Game Snapshot
+phase's composition work, documented here since this is the module it lives in): this module
+originally called `role_off_estimation.build_role_profile(player_id, as_of_season)`, which ALSO
+unconditionally computes `role_def_perimeter_interior` via
+`role_off_analysis.defensive_deployment_axis` -> `poa_containment_ingestion.fetch_matchup_data` --
+a genuinely LIVE, UNCACHED `leagueseasonmatchups` network call (90s timeout, 4 retries) that this
+module's own three V1 dimensions never read. A real composition pass (many players x one season)
+was therefore paying for a slow live network round-trip it never needed. Fixed by calling the
+cheaper `role_off_analysis.role_off_initiation/finishing/spacing` extractors directly against the
+same already-cached `role_off_ingestion.load_role_off` row -- byte-identical real values, zero
+network calls, `role_off_estimation.py`/`role_off_analysis.py`'s own math untouched and reused by
+import, not duplicated.
 
 None of that estimator math is touched, duplicated, or re-derived here. This module ONLY: (1) adapts
 `PlayerRoleProfile`'s `RoleObservation` shape into this project's now-standard value/confidence/
@@ -65,7 +78,8 @@ from dataclasses import dataclass, field, replace
 from typing import Dict, List, Optional, Tuple
 
 import player_scoring_truth_temporal as psst  # reused for the SAME provenance vocabulary, not redefined
-import role_off_estimation as roe
+import role_off_analysis as roa
+import role_off_ingestion as roi
 from player_team_stints import team_as_of_date, current_team, was_traded
 from possession_orchestrator import PlayerSimulationProfile
 from role_off_profile import MEASURED_TRACKING
@@ -187,20 +201,48 @@ class RoleTruthProfile:
         )
 
 
+_ROLE_ANALYSIS_FN = {
+    "role_off_initiation": roa.role_off_initiation,
+    "role_off_finishing": roa.role_off_finishing,
+    "role_off_spacing": roa.role_off_spacing,
+}
+
+
 def _estimate(player_id: str, as_of_season: str, attribute: str, team_name: Optional[str],
               coverage_note: str, provenance: str) -> RoleTruthEstimate:
-    source = "role_off_estimation.build_role_profile"
-    profile = roe.build_role_profile(player_id, as_of_season)
-    observation = getattr(profile, attribute)
-    if observation.evidence_mode != MEASURED_TRACKING or observation.value is None:
+    """Deliberately does NOT call `role_off_estimation.build_role_profile` -- a REAL, discovered
+    integration defect: that function unconditionally also computes
+    `role_def_perimeter_interior` (`role_off_analysis.defensive_deployment_axis` ->
+    `poa_containment_ingestion.fetch_matchup_data`), a genuinely LIVE, UNCACHED
+    `leagueseasonmatchups` network call (90s timeout, 4 retries) -- this project's V1 role
+    dimensions here (initiation/finishing/spacing) never read that field at all, so a real
+    per-player composition pass was paying for a slow live network call for a value it never
+    uses. This module (owned by this project's own Roles phase, not a frozen prior-phase
+    estimator) calls the cheaper underlying `role_off_analysis.role_off_initiation/finishing/
+    spacing` extractors directly against the already-cached `role_off_ingestion.load_role_off`
+    row -- byte-identical real values, zero network calls, and none of
+    `role_off_estimation.py`/`role_off_analysis.py`'s own math is modified or duplicated (the
+    exact same extractor functions are reused by import)."""
+    source = "role_off_analysis (direct, bypassing build_role_profile's unused defensive-axis network call)"
+    if as_of_season < roi.ROLE_TRACKING_FIRST_SEASON:
+        return RoleTruthEstimate(
+            name=attribute, player_id=player_id, as_of_season=as_of_season, value=None, confidence=None,
+            sample_size=None, source=source, param_source=None, team_name=team_name,
+            coverage_note=f"before the real role-tracking floor ({roi.ROLE_TRACKING_FIRST_SEASON})",
+            provenance=psst.MISSING,
+        )
+    row = roi.load_role_off(as_of_season).get(player_id)
+    value = _ROLE_ANALYSIS_FN[attribute](row) if row is not None else None
+    if row is None or value is None:
         return RoleTruthEstimate(
             name=attribute, player_id=player_id, as_of_season=as_of_season, value=None, confidence=None,
             sample_size=None, source=source, param_source=None, team_name=team_name,
             coverage_note="no real role-tracking evidence for this player-season", provenance=psst.MISSING,
         )
+    sample_size = int(row.get("MIN") or 0)
     return RoleTruthEstimate(
-        name=attribute, player_id=player_id, as_of_season=as_of_season, value=observation.value,
-        confidence=_confidence_from_minutes(observation.sample_size), sample_size=observation.sample_size,
+        name=attribute, player_id=player_id, as_of_season=as_of_season, value=value,
+        confidence=_confidence_from_minutes(sample_size), sample_size=sample_size,
         source=source, param_source="none (exposure-based confidence, no shrinkage -- see module docstring)",
         team_name=team_name, coverage_note=coverage_note, provenance=provenance,
     )
