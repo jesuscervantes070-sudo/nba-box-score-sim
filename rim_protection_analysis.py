@@ -39,6 +39,7 @@ F. FOUL DISCIPLINE -- legal-contest ability, already a real, separate
   one player's individual skill with data available this phase. Reported
   as FUTURE ONLY (would need a genuine, larger on/off ingestion effort).
 """
+import functools
 import math
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
@@ -71,6 +72,7 @@ class PlayerRimRow:
     gp: Optional[int]
 
 
+@functools.lru_cache(maxsize=None)
 def build_player_rim_rows(season: str) -> List[PlayerRimRow]:
     rim_data = rpi.load_rim_protection(season)
     if not rim_data:
@@ -306,3 +308,12 @@ def _load_lmp(season: str) -> Optional[float]:
         return None
     with open(path) as f:
         return json.load(f).get("mean_possessions")
+
+
+def clear_reference_caches() -> None:
+    """Test/debug reset hook -- clears `build_player_rim_rows`'s process-local per-season cache
+    (HISTORICAL SNAPSHOT PERFORMANCE V1). `build_player_rim_rows(season)` is a pure function of its
+    real, on-disk, per-season cache files (rim/advanced-stat/team/foul caches); this cache assumes
+    those files are static for the life of the process. Call this after mutating any of them
+    mid-process (e.g. a leakage-poison test)."""
+    build_player_rim_rows.cache_clear()

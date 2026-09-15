@@ -37,6 +37,7 @@ multi-era sample (1996-97, 2000-01, 2005-06, 2009-10, 2013-14, 2018-19,
 count -- never silently forced into another bucket (per the task's
 explicit "do not silently discard unknown turnover descriptions").
 """
+import functools
 import json
 import os
 import time
@@ -148,6 +149,7 @@ def _turnover_cache_path(season: str) -> Path:
     return _season_cache_dir(season) / "player_turnover_subtypes.json"
 
 
+@functools.lru_cache(maxsize=None)
 def resolve_full_name(player_id: int) -> Optional[str]:
     """
     Real player_id -> real full display name, via nba_api's bundled
@@ -163,10 +165,31 @@ def resolve_full_name(player_id: int) -> Optional[str]:
     player_advanced.json's full-name keys on its own. Returns None if
     the id isn't in the static list (should not happen for a real NBA
     player id, but never silently guessed).
+
+    `nba_api.stats.static.players.find_player_by_id` does a linear scan
+    (with per-row unicode normalization) over its entire bundled static
+    player list on EVERY call -- no network call, but real, measured,
+    repeated CPU cost (profiled: ~28s of a single defensive-truth build
+    was this one function, called ~1,400 times over an unchanged
+    per-season reference population inside `rim_protection_analysis`/
+    `foul_analysis`). The static list is immutable for the life of the
+    process (it ships with the installed `nba_api` package), so this is
+    a real, process-local `functools.lru_cache` target -- HISTORICAL
+    SNAPSHOT PERFORMANCE V1, purely computational reuse, no change to
+    the id->name mapping itself. See `clear_reference_caches()` for the
+    test/debug reset hook.
     """
     from nba_api.stats.static import players
     info = players.find_player_by_id(player_id)
     return info["full_name"] if info else None
+
+
+def clear_reference_caches() -> None:
+    """Test/debug reset hook -- clears `resolve_full_name`'s process-local cache. Call this after
+    mutating underlying static/cache data mid-process (e.g. a poison test that swaps cache files
+    out from under an already-running process); normal runs assume cache files are static for the
+    life of the process. Part of HISTORICAL SNAPSHOT PERFORMANCE V1's cache-clear architecture."""
+    resolve_full_name.cache_clear()
 
 
 def fetch_game_turnovers(game_id: str, retries: int = 4, timeout: int = 20) -> List[dict]:

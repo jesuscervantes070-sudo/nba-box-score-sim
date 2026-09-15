@@ -74,6 +74,7 @@ which are out of scope for this phase. This is a MEASURED conclusion, not an
 assumed one -- a future 3PT-attribute phase should re-run this exact check
 before trusting 1994-95-1996-97 3PT-zone data.
 """
+import functools
 import json
 import os
 import time
@@ -234,6 +235,7 @@ def build_and_cache_shot_zones(season: str, season_type: str = "Regular Season",
     return payload
 
 
+@functools.lru_cache(maxsize=None)
 def load_shot_zones(season: str, season_type: str = "Regular Season") -> Dict[str, dict]:
     """
     {player_id_str: {...}} for `season`, or {} if not cached / before the
@@ -242,12 +244,26 @@ def load_shot_zones(season: str, season_type: str = "Regular Season") -> Dict[st
     evidence (they weren't in the API response at all -- extremely rare
     per this phase's own coverage check, but possible), distinguishable
     from a present player_id with fgm=0/fga=0 (real true zero).
+
+    Process-local `lru_cache` by `(season, season_type)` (HISTORICAL SNAPSHOT PERFORMANCE V1): this
+    is called repeatedly, for the SAME season, by every one of this track's own callers
+    (`shot_zone_estimation.py`, `foul_analysis.py`, `player_identity.py`,
+    `player_tendencies_analysis.py`, `role_off_analysis.py`) -- confirmed (grep) NEVER called by
+    the legacy simulator (`game_engine.py`/`season.py`/`awards.py`/`models.py`/`transactions.py`).
+    Read-only downstream everywhere it's used; assumes the on-disk cache file is static for the
+    life of the process. See `clear_reference_caches()` for the test/debug reset hook.
     """
     cache_path = _shot_zone_cache_path(season, season_type)
     if not cache_path.exists():
         return {}
     with open(cache_path) as f:
         return json.load(f)["players"]
+
+
+def clear_reference_caches() -> None:
+    """Test/debug reset hook -- clears `load_shot_zones`'s process-local cache. Call after
+    mutating the on-disk shot-zone cache mid-process (e.g. a leakage-poison test)."""
+    load_shot_zones.cache_clear()
 
 
 def build_and_cache_shot_zones_range(seasons: List[str], season_type: str = "Regular Season", force: bool = False) -> Dict[str, Optional[dict]]:

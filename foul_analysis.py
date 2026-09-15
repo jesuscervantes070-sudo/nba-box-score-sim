@@ -33,6 +33,7 @@ task-specified ESA (tested, not assumed):
      new API calls)
   F. Touches (real leaguedashptstats field, 2013-14+, already cached)
 """
+import functools
 import math
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
@@ -102,6 +103,7 @@ def _scale_to_full_season(count: float, games_done: int, games_total: int) -> fl
     return count * (games_total / games_done)
 
 
+@functools.lru_cache(maxsize=None)
 def build_player_foul_rows(season: str) -> List[PlayerFoulRow]:
     """Every player with real foul-event evidence (drawn AND/OR committed)
     for `season`, joined against real box/shot-zone/tracking data by the
@@ -354,3 +356,11 @@ def disc_role_bias_report(rows: List[PlayerFoulRow], denominator: str, min_expos
         "corr_rate_vs_usage": _pearson(xs_usg, ys), "n_usage": len(xs_usg),
         "corr_rate_vs_reb_pct (rough big-vs-perimeter proxy)": _pearson(xs_reb, ys2), "n_reb": len(xs_reb),
     }
+
+
+def clear_reference_caches() -> None:
+    """Test/debug reset hook -- clears `build_player_foul_rows`'s process-local per-season cache
+    (HISTORICAL SNAPSHOT PERFORMANCE V1). Pure function of real, on-disk per-season cache files;
+    assumes those files are static for the life of the process. Call after mutating any of them
+    mid-process (e.g. a leakage-poison test)."""
+    build_player_foul_rows.cache_clear()

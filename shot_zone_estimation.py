@@ -28,6 +28,7 @@ as the real sample-size weight for recency/shrinkage, never as a value
 that raises or lowers the rating itself (see `_extract_zone_pct` below:
 the rate returned is always real FG_PCT for that zone, nothing else).
 """
+import functools
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
@@ -129,7 +130,21 @@ def _build_reference_population(attribute: str, as_of_season: str, all_seasons: 
     player-season (gp/mpg floor, same as player_ability_estimation.py's
     own reference-population convention) through `as_of_season` ONLY --
     the leak-free source for both the percentile mapping and the
-    shrinkage-prior league average."""
+    shrinkage-prior league average.
+
+    Thin, list-accepting wrapper around `_build_reference_population_cached` (HISTORICAL SNAPSHOT
+    PERFORMANCE V1) -- this function's own real output depends ONLY on
+    (attribute, as_of_season, the exact set of seasons through the cutoff, min_gp, min_mpg,
+    min_zone_fga), never on which PLAYER is asking, yet every real player in a full-roster
+    composition previously triggered its own from-scratch league-wide scan (real, measured: ~90
+    calls, ~4s, dominated by re-reading every season's team/advanced-stat/shot-zone cache file)."""
+    return _build_reference_population_cached(attribute, as_of_season, tuple(all_seasons), min_gp, min_mpg, min_zone_fga)
+
+
+@functools.lru_cache(maxsize=4096)
+def _build_reference_population_cached(attribute: str, as_of_season: str, all_seasons: Tuple[str, ...],
+                                        min_gp: int, min_mpg: float, min_zone_fga: float
+                                        ) -> Tuple[List[float], Optional[float]]:
     prefix = ZONE_PREFIX_FOR_ATTRIBUTE[attribute]
     seasons = _seasons_through_cutoff(as_of_season, all_seasons)
     values = []
@@ -201,3 +216,10 @@ def result_to_attribute_estimate(result: ShotZoneEstimationResult) -> AttributeE
         value=result.percentile_rating, confidence=confidence,
         sample_size=int(round(result.total_weight)),
     )
+
+
+def clear_reference_caches() -> None:
+    """Test/debug reset hook -- clears `_build_reference_population_cached`'s process-local cache
+    (HISTORICAL SNAPSHOT PERFORMANCE V1). Assumes real, on-disk per-season cache files are static
+    for the life of the process. Call after mutating any of them mid-process."""
+    _build_reference_population_cached.cache_clear()

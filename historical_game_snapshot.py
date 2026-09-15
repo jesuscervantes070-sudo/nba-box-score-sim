@@ -63,6 +63,14 @@ import player_rotation_truth as prt_rot
 import rebound_engine_adapter as rebound_adapter
 import defensive_engine_adapter as defense_adapter
 import rotation_engine_adapter as rotation_adapter
+import turnover_ingestion as ti
+import rim_protection_analysis as rpa
+import foul_analysis as fa
+import poa_containment_analysis as pca
+import player_shot_event_ingestion as psei
+import shot_zone_estimation as sze
+import player_ability_estimation as pae
+import shot_zone_ingestion as szi
 from game_metadata import GameMetadata, get_game_metadata
 from player_team_stints import team_roster_as_of_date
 from possession_orchestrator import PlayerSimulationProfile
@@ -100,6 +108,46 @@ _build_defensive_truth_cached = functools.lru_cache(maxsize=4096)(
 _build_role_truth_cached = functools.lru_cache(maxsize=4096)(
     lambda player_id, as_of_date, as_of_season:
     prt_role.build_role_truth_profile_as_of_date(player_id, as_of_date, as_of_season))
+
+
+def clear_estimator_caches() -> None:
+    """HISTORICAL SNAPSHOT PERFORMANCE V1's single central cache-reset hook. Clears every
+    process-local `lru_cache` this composition layer either owns directly (the 5 per-player truth
+    caches above) or that sit inside upstream, REUSED-BY-IMPORT modules and were added this phase
+    purely for computational reuse (never touching their math/thresholds/priors):
+
+      - `turnover_ingestion.resolve_full_name`       (id->name static crosswalk)
+      - `rim_protection_analysis.build_player_rim_rows`        (per-season reference population)
+      - `foul_analysis.build_player_foul_rows`                 (per-season reference population)
+      - `poa_containment_analysis.build_player_containment_rows` (per-season reference population)
+      - `player_shot_event_ingestion.load_shot_events`         (per-season shot-event JSON)
+      - `shot_zone_estimation._build_reference_population_cached`     (per-(attribute,season) league population)
+      - `player_ability_estimation._build_reference_population_cached` (per-(attribute,season) league population)
+      - `player_ability_estimation._cached_load_teams` / `_cached_load_player_advanced_stats` /
+        `_cached_load_player_rebound_splits` (module-local read-through caches over `loader.py`'s
+        own, UNMODIFIED functions -- see that module's own docstring for why this is safe)
+      - `shot_zone_ingestion.load_shot_zones`                  (per-(season,season_type) JSON, confirmed
+        never used by the legacy simulator)
+
+    Every one of these caches assumes its underlying on-disk cache file(s) are static for the life
+    of the process -- a real, explicitly-documented limitation (not a filesystem watcher). Call
+    this after mutating any source cache file mid-process (poison tests, data regeneration, a
+    long-running backtest process that needs to pick up freshly-ingested data). A test that mutates
+    source data, clears these caches, and rebuilds MUST get the exact same output as a fresh
+    process would -- stale cache state must never fake a passing leakage test."""
+    _build_scoring_truth_cached.cache_clear()
+    _build_playmaking_truth_cached.cache_clear()
+    _build_rebounding_truth_cached.cache_clear()
+    _build_defensive_truth_cached.cache_clear()
+    _build_role_truth_cached.cache_clear()
+    ti.clear_reference_caches()
+    rpa.clear_reference_caches()
+    fa.clear_reference_caches()
+    pca.clear_reference_caches()
+    psei.clear_reference_caches()
+    sze.clear_reference_caches()
+    pae.clear_reference_caches()
+    szi.clear_reference_caches()
 
 
 def _summarize_provenance(profile) -> str:

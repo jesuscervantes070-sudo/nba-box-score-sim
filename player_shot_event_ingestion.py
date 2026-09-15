@@ -50,6 +50,7 @@ classifier only reads `SHOT_ZONE_BASIC`/`SHOT_MADE_FLAG`) -- `action_type`, `dis
 for a future phase that might need them (e.g. a real drive-origin heuristic, corner-vs-above-break
 3 splits, or shot-quality-by-distance work).
 """
+import functools
 import json
 import os
 import time
@@ -169,15 +170,30 @@ def build_and_cache_shot_events(season: str, force: bool = False) -> Optional[di
     return payload
 
 
+@functools.lru_cache(maxsize=None)
 def load_shot_events(season: str) -> Dict[str, List[dict]]:
     """{player_id_str: [ {game_id, game_event_id, date, made, shot_type, zone_basic, zone_area,
     zone_range, distance, action_type, loc_x, loc_y}, ... ]}, already sorted by (date, game_id,
-    game_event_id), or {} if not cached / before the real floor / genuinely empty."""
+    game_event_id), or {} if not cached / before the real floor / genuinely empty.
+
+    Process-local `lru_cache` by `season` only (HISTORICAL SNAPSHOT PERFORMANCE V1): this reads
+    one whole league-wide, per-season JSON file from disk; every distinct player composed for the
+    same season/game previously re-read and re-parsed the entire file from scratch. The returned
+    dict is only ever read (`.get(player_id)` + iteration) downstream, never mutated -- safe to
+    share the same object across callers within one process. Assumes the on-disk cache file is
+    static for the life of the process; see `clear_reference_caches()` for the test/debug reset
+    hook."""
     cache_path = _shot_event_cache_path(season)
     if not cache_path.exists():
         return {}
     with open(cache_path) as f:
         return json.load(f)["players"]
+
+
+def clear_reference_caches() -> None:
+    """Test/debug reset hook -- clears `load_shot_events`'s process-local per-season cache. Call
+    after mutating the on-disk shot-event cache mid-process (e.g. a leakage-poison test)."""
+    load_shot_events.cache_clear()
 
 
 def build_and_cache_shot_events_range(seasons: List[str], force: bool = False) -> Dict[str, Optional[dict]]:

@@ -169,6 +169,13 @@ class TestTrueReboundSplits(unittest.TestCase):
     def test_missing_true_data_falls_back_explicitly_not_silently(self):
         import player_ability_estimation as pae
         orig = pae.load_player_rebound_splits
+        # HISTORICAL SNAPSHOT PERFORMANCE V1 added a process-local, per-season `lru_cache` over
+        # `load_player_rebound_splits` reads (see player_ability_estimation.py's own docstring on
+        # `_cached_load_player_rebound_splits`). A stale REAL cached result for this same season,
+        # left over from an earlier test in this same process, would otherwise mask this
+        # monkeypatch entirely -- clear before AND after so this test's own fallback-empty result
+        # never leaks into a later, real-data test either.
+        pae.clear_reference_caches()
         try:
             pae.load_player_rebound_splits = lambda s: {}  # simulate no true data cached for any season
             result = pae.estimate_attribute("Stephen Curry", "2015-16", "offensive_rebounding", ALL_SEASONS)
@@ -179,6 +186,7 @@ class TestTrueReboundSplits(unittest.TestCase):
                 self.assertEqual(ev.mode, "fallback")
         finally:
             pae.load_player_rebound_splits = orig
+            pae.clear_reference_caches()
 
     def test_other_attributes_report_na_mode(self):
         result = estimate_attribute("Stephen Curry", "2015-16", "three_point", ALL_SEASONS)

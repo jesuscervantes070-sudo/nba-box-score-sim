@@ -35,11 +35,45 @@ no simulation integration, no expansion to all 18 attributes. Only:
 three_point, free_throw, passing, ball_security, offensive_rebounding,
 defensive_rebounding, defensive_playmaking.
 """
+import functools
 from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional, Tuple
 
 from loader import load_teams, load_player_advanced_stats, load_player_rebound_splits
 from player_ability_profile import AttributeEstimate
+
+# HISTORICAL SNAPSHOT PERFORMANCE V1: module-LOCAL, per-season read-through caches over `loader`'s
+# own `load_teams`/`load_player_advanced_stats`/`load_player_rebound_splits`. These wrap (never
+# replace) `loader.py`'s own exported functions -- `loader.load_teams` etc. stay completely
+# unmodified, so every OTHER caller (the legacy simulator's `season.py`/`awards.py`/
+# `transactions.py`, explicitly off-limits to this track) is entirely unaffected and keeps getting
+# a real, independent call every time. Only THIS module's own hot loop (`_player_evidence_by_season`,
+# called once per real ability attribute for the same player/season, previously re-reading the same
+# season's team/advanced-stat files from scratch on every one of those calls) reads through this
+# cache. Safe because this module (checked directly) never mutates the returned Team/Player objects
+# or advanced-stats dict -- only ever reads them.
+#
+# Deliberately real `def` wrappers (NOT `functools.lru_cache(maxsize=None)(load_teams)`) -- a
+# direct partial-application would permanently bind the ORIGINAL function object at module-import
+# time, immune to a caller later reassigning the module-level name (e.g. this project's own
+# existing `test_player_ability_estimation.py::test_missing_true_data_falls_back_explicitly_not_silently`,
+# which does `pae.load_player_rebound_splits = lambda s: {}` to simulate missing TRUE data -- a
+# real, already-existing test pattern this phase must not silently break). Calling
+# `load_player_rebound_splits(season)` UNQUALIFIED inside a real function body resolves that name
+# from this module's global namespace at CALL TIME, so such a monkeypatch is still honored.
+@functools.lru_cache(maxsize=None)
+def _cached_load_teams(season):
+    return load_teams(season)
+
+
+@functools.lru_cache(maxsize=None)
+def _cached_load_player_advanced_stats(season):
+    return load_player_advanced_stats(season)
+
+
+@functools.lru_cache(maxsize=None)
+def _cached_load_player_rebound_splits(season):
+    return load_player_rebound_splits(season)
 
 # =====================================================================
 # PROVISIONAL CONFIGURATION -- explicitly not empirically calibrated.
@@ -238,10 +272,10 @@ def _player_evidence_by_season(name: str, seasons: List[str],
     evidence = []
     for s in seasons:
         try:
-            teams = load_teams(s)
+            teams = _cached_load_teams(s)
         except FileNotFoundError:
             continue
-        advanced = load_player_advanced_stats(s)
+        advanced = _cached_load_player_advanced_stats(s)
         player = None
         for team in teams.values():
             player = team.get_player(name)
@@ -252,7 +286,7 @@ def _player_evidence_by_season(name: str, seasons: List[str],
         adv_row = advanced.get(name, {})
         rebound_row = None
         if needs_rebound_splits:
-            rebound_row = load_player_rebound_splits(s).get(name)
+            rebound_row = _cached_load_player_rebound_splits(s).get(name)
         result = extract(player, adv_row, rebound_row)
         if result is None:
             continue
@@ -393,22 +427,31 @@ def _build_reference_population(attribute: str, as_of_season: str, all_seasons: 
     are both built from. Same RATING_MIN_GAMES/MPG floor ratings.py
     already uses, for consistency, not re-derived.
 
-    NOTE on cost: this re-walks real cached seasons up to the cutoff
-    every call -- acceptable for this prototype's small diagnostic
-    sample (per this phase's "avoid giant data/research jobs"
-    instruction), not something this file tries to cache/optimize.
+    HISTORICAL SNAPSHOT PERFORMANCE V1: thin, list-accepting wrapper around
+    `_build_reference_population_cached`. This result depends ONLY on
+    (attribute, as_of_season, the season set, min_gp, min_mpg) -- NEVER on which player is asking
+    -- yet every real player in a full-roster historical composition previously re-walked every
+    cached season's team/advanced-stat files from scratch to rebuild the identical league-wide
+    population (real, measured: ~60 calls for a single player's ability attributes, ~2s). Pure
+    computational reuse; no change to the extraction/shrinkage/percentile math below.
     """
+    return _build_reference_population_cached(attribute, as_of_season, tuple(all_seasons), min_gp, min_mpg)
+
+
+@functools.lru_cache(maxsize=4096)
+def _build_reference_population_cached(attribute: str, as_of_season: str, all_seasons: Tuple[str, ...],
+                                        min_gp: int, min_mpg: float) -> Tuple[List[float], Optional[float]]:
     extractor = ATTRIBUTE_EXTRACTORS[attribute]
     needs_splits = attribute in ATTRIBUTES_NEEDING_REBOUND_SPLITS
     seasons = _seasons_through_cutoff(as_of_season, all_seasons)
     values = []
     for s in seasons:
         try:
-            teams = load_teams(s)
+            teams = _cached_load_teams(s)
         except FileNotFoundError:
             continue
-        advanced = load_player_advanced_stats(s)
-        splits = load_player_rebound_splits(s) if needs_splits else {}
+        advanced = _cached_load_player_advanced_stats(s)
+        splits = _cached_load_player_rebound_splits(s) if needs_splits else {}
         for team in teams.values():
             for player in team.players:
                 adv_row = advanced.get(player.name)
@@ -494,3 +537,16 @@ def result_to_attribute_estimate(result: EstimationResult) -> AttributeEstimate:
         value=result.percentile_rating, confidence=confidence,
         sample_size=int(round(result.total_weight)),
     )
+
+
+def clear_reference_caches() -> None:
+    """Test/debug reset hook -- clears `_build_reference_population_cached`'s and the module-local
+    `_cached_load_teams`/`_cached_load_player_advanced_stats`/`_cached_load_player_rebound_splits`
+    process-local caches (HISTORICAL SNAPSHOT PERFORMANCE V1). Assumes real, on-disk per-season
+    cache files are static for the life of the process. Call after mutating any of them
+    mid-process. Does NOT touch `loader.py`'s own `load_teams`/`load_player_advanced_stats` (they
+    were never wrapped/modified -- only read through, module-locally, from here)."""
+    _build_reference_population_cached.cache_clear()
+    _cached_load_teams.cache_clear()
+    _cached_load_player_advanced_stats.cache_clear()
+    _cached_load_player_rebound_splits.cache_clear()

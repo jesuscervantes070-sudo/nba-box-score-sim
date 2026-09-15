@@ -18,6 +18,7 @@ when this player is the primary defender). Deliberately excludes
 domain, see `steals_overlap_report`) and `SFL` (that's `foul_discipline`'s
 domain, see `foul_interaction_report`).
 """
+import functools
 import math
 from dataclasses import dataclass
 from typing import Dict, List, Optional
@@ -49,6 +50,7 @@ class PlayerContainmentRow:
     gp: Optional[int]
 
 
+@functools.lru_cache(maxsize=None)
 def build_player_containment_rows(season: str) -> List[PlayerContainmentRow]:
     poa_data = pci.load_poa_containment(season)
     if not poa_data:
@@ -201,3 +203,11 @@ def team_scheme_bias_report(rows: List[PlayerContainmentRow], season: str, min_e
         "n_vs_team_def_fgpct": len(xs_def), "corr_vs_team_def_fgpct": _pearson(xs_def, ys_def),
         "n_vs_team_opp_rim_freq": len(xs_rim), "corr_vs_team_opp_rim_freq": _pearson(xs_rim, ys_rim),
     }
+
+
+def clear_reference_caches() -> None:
+    """Test/debug reset hook -- clears `build_player_containment_rows`'s process-local per-season
+    cache (HISTORICAL SNAPSHOT PERFORMANCE V1). Pure function of real, on-disk per-season cache
+    files; assumes those files are static for the life of the process. Call after mutating any of
+    them mid-process (e.g. a leakage-poison test)."""
+    build_player_containment_rows.cache_clear()
