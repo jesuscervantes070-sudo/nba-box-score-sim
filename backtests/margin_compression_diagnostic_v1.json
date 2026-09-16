@@ -1,0 +1,859 @@
+{
+  "adapter_compression_check": {
+    "defensive_playmaking": {
+      "engine_sd": 0.5326704023190597,
+      "n": 102,
+      "rank_corr (pearson, proxy)": 1.0,
+      "source_sd": 1.011067656436949
+    },
+    "defensive_rebounding": {
+      "engine_sd": 0.031658594006418087,
+      "n": 102,
+      "rank_corr (pearson, proxy)": 0.9872354296992611,
+      "source_sd": 0.035496173083130654
+    },
+    "offensive_rebounding": {
+      "engine_sd": 0.017575757217736725,
+      "n": 102,
+      "rank_corr (pearson, proxy)": 0.9848272066779622,
+      "source_sd": 0.037309139985014166
+    }
+  },
+  "bench_minute_share_summary": {
+    "mean_bench_minute_share": 0.338331589533061
+  },
+  "development_sample": {
+    "game_ids": [
+      "0022300006",
+      "0022300030",
+      "0022300032",
+      "0022300045",
+      "0022300057",
+      "0022300068",
+      "0022300133",
+      "0022300139",
+      "0022300140",
+      "0022300153",
+      "0022300162",
+      "0022300164",
+      "0022300172",
+      "0022300173",
+      "0022300175",
+      "0022300204",
+      "0022300206",
+      "0022300219",
+      "0022300228",
+      "0022300278",
+      "0022300308",
+      "0022300321",
+      "0022300325",
+      "0022300328",
+      "0022300332",
+      "0022300345",
+      "0022300347",
+      "0022300376",
+      "0022300395",
+      "0022300412",
+      "0022300422",
+      "0022300439",
+      "0022300460",
+      "0022300462",
+      "0022300499",
+      "0022300507",
+      "0022300546",
+      "0022300565",
+      "0022300568",
+      "0022300597",
+      "0022300622",
+      "0022300626",
+      "0022300649",
+      "0022300661",
+      "0022300671",
+      "0022300725",
+      "0022300730",
+      "0022300773",
+      "0022300783",
+      "0022300786",
+      "0022300812",
+      "0022300820",
+      "0022300838",
+      "0022300846",
+      "0022300847",
+      "0022300872",
+      "0022300900",
+      "0022300928",
+      "0022300929",
+      "0022300931",
+      "0022300947",
+      "0022300997",
+      "0022301005",
+      "0022301026",
+      "0022301034",
+      "0022301044",
+      "0022301046",
+      "0022301051",
+      "0022301064",
+      "0022301066",
+      "0022301088",
+      "0022301100",
+      "0022301165",
+      "0022301166",
+      "0022301176",
+      "0022301180"
+    ],
+    "n_games": 76
+  },
+  "fixed_five_bench_rows_sample": [
+    {
+      "actual_team_margin": 11,
+      "bench_minute_share": 0.24896265560165975,
+      "bench_minutes": 60.0,
+      "bench_quality": {
+        "floater_short_mid_shrunk_rate": 0.42989183644720996,
+        "free_throw_shrunk_rate": 0.7216887103616856,
+        "midrange_shrunk_rate": 0.37726848912096195,
+        "rim_access_creation_shrunk_rate": 0.5,
+        "rim_finishing_shrunk_rate": 0.6464064282220728,
+        "three_point_shrunk_rate": 0.3363372176807634
+      },
+      "game_id": "0022300006",
+      "is_home": true,
+      "n_bench_players": 4,
+      "net_rating": 7.2,
+      "rotation_weighted_three_point": 0.3651785158855857,
+      "team": "Denver Nuggets",
+      "top5_minute_share": 0.7510373443983402,
+      "top5_minutes": 181.0,
+      "top5_only_three_point": 0.37482763178980993,
+      "top5_quality": {
+        "floater_short_mid_shrunk_rate": 0.43821394007806275,
+        "free_throw_shrunk_rate": 0.7865061886763872,
+        "midrange_shrunk_rate": 0.4153712968016406,
+        "rim_access_creation_shrunk_rate": 0.5,
+        "rim_finishing_shrunk_rate": 0.692675860150021,
+        "three_point_shrunk_rate": 0.37482763178980993
+      }
+    },
+    {
+      "actual_team_margin": -11,
+      "bench_minute_share": 0.3333333333333333,
+      "bench_minutes": 80.0,
+      "bench_quality": {
+        "floater_short_mid_shrunk_rate": 0.40768373929339424,
+        "free_throw_shrunk_rate": 0.7735582479522944,
+        "midrange_shrunk_rate": 0.4257513481881005,
+        "rim_access_creation_shrunk_rate": 0.5,
+        "rim_finishing_shrunk_rate": 0.6636226575317445,
+        "three_point_shrunk_rate": 0.36012487635085044
+      },
+      "game_id": "0022300006",
+      "is_home": false,
+      "n_bench_players": 7,
+      "net_rating": -0.0975609756097561,
+      "rotation_weighted_three_point": 0.36949906904207236,
+      "team": "Dallas Mavericks",
+      "top5_minute_share": 0.6666666666666666,
+      "top5_minutes": 160.0,
+      "top5_only_three_point": 0.37539006597914754,
+      "top5_quality": {
+        "floater_short_mid_shrunk_rate": 0.4620610827899575,
+        "free_throw_shrunk_rate": 0.7872317000821116,
+        "midrange_shrunk_rate": 0.4019627837827951,
+        "rim_access_creation_shrunk_rate": 0.5,
+        "rim_finishing_shrunk_rate": 0.6662208166888759,
+        "three_point_shrunk_rate": 0.37539006597914754
+      }
+    },
+    {
+      "actual_team_margin": 23,
+      "bench_minute_share": 0.28512396694214875,
+      "bench_minutes": 69.0,
+      "bench_quality": {
+        "floater_short_mid_shrunk_rate": 0.4123683513286674,
+        "free_throw_shrunk_rate": 0.7265438085733972,
+        "midrange_shrunk_rate": 0.39694127897051423,
+        "rim_access_creation_shrunk_rate": 0.5,
+        "rim_finishing_shrunk_rate": 0.6636847015205989,
+        "three_point_shrunk_rate": 0.3472446095168142
+      },
+      "game_id": "0022300030",
+      "is_home": true,
+      "n_bench_players": 7,
+      "net_rating": -0.9090909090909091,
+      "rotation_weighted_three_point": 0.33970282808261326,
+      "team": "Cleveland Cavaliers",
+      "top5_minute_share": 0.7148760330578512,
+      "top5_minutes": 173.0,
+      "top5_only_three_point": 0.3304663784023746,
+      "top5_quality": {
+        "floater_short_mid_shrunk_rate": 0.44318336320518364,
+        "free_throw_shrunk_rate": 0.7746552088402074,
+        "midrange_shrunk_rate": 0.39025880594971835,
+        "rim_access_creation_shrunk_rate": 0.5,
+        "rim_finishing_shrunk_rate": 0.6636150306914764,
+        "three_point_shrunk_rate": 0.3304663784023746
+      }
+    },
+    {
+      "actual_team_margin": -23,
+      "bench_minute_share": 0.37916666666666665,
+      "bench_minutes": 91.0,
+      "bench_quality": {
+        "floater_short_mid_shrunk_rate": 0.4228192271674117,
+        "free_throw_shrunk_rate": 0.7674003304230942,
+        "midrange_shrunk_rate": 0.4005912016339701,
+        "rim_access_creation_shrunk_rate": 0.5,
+        "rim_finishing_shrunk_rate": 0.6517289808774384,
+        "three_point_shrunk_rate": 0.32092774698311394
+      },
+      "game_id": "0022300030",
+      "is_home": false,
+      "n_bench_players": 6,
+      "net_rating": -18.583333333333332,
+      "rotation_weighted_three_point": 0.3350210179545058,
+      "team": "Detroit Pistons",
+      "top5_minute_share": 0.6208333333333333,
+      "top5_minutes": 149.0,
+      "top5_only_three_point": 0.3477651449666177,
+      "top5_quality": {
+        "floater_short_mid_shrunk_rate": 0.39081301179655575,
+        "free_throw_shrunk_rate": 0.7713713784336305,
+        "midrange_shrunk_rate": 0.40865590226277265,
+        "rim_access_creation_shrunk_rate": 0.5,
+        "rim_finishing_shrunk_rate": 0.5962939846513557,
+        "three_point_shrunk_rate": 0.3477651449666177
+      }
+    },
+    {
+      "actual_team_margin": -9,
+      "bench_minute_share": 0.30962343096234307,
+      "bench_minutes": 74.0,
+      "bench_quality": {
+        "floater_short_mid_shrunk_rate": 0.40139742896396663,
+        "free_throw_shrunk_rate": 0.7188160896298517,
+        "midrange_shrunk_rate": 0.3872418027326415,
+        "rim_access_creation_shrunk_rate": 0.5,
+        "rim_finishing_shrunk_rate": 0.6301591152903602,
+        "three_point_shrunk_rate": 0.35496836522869246
+      },
+      "game_id": "0022300032",
+      "is_home": true,
+      "n_bench_players": 6,
+      "net_rating": -11.545454545454545,
+      "rotation_weighted_three_point": 0.3359199286314599,
+      "team": "San Antonio Spurs",
+      "top5_minute_share": 0.6903765690376569,
+      "top5_minutes": 165.0,
+      "top5_only_three_point": 0.3237161590412138,
+      "top5_quality": {
+        "floater_short_mid_shrunk_rate": 0.4358064289366328,
+        "free_throw_shrunk_rate": 0.7541102694234113,
+        "midrange_shrunk_rate": 0.3971247394085178,
+        "rim_access_creation_shrunk_rate": 0.5,
+        "rim_finishing_shrunk_rate": 0.6499353085687178,
+        "three_point_shrunk_rate": 0.3237161590412138
+      }
+    },
+    {
+      "actual_team_margin": 9,
+      "bench_minute_share": 0.3112033195020747,
+      "bench_minutes": 75.0,
+      "bench_quality": {
+        "floater_short_mid_shrunk_rate": 0.44746032960424664,
+        "free_throw_shrunk_rate": 0.7521721846330083,
+        "midrange_shrunk_rate": 0.398085707391955,
+        "rim_access_creation_shrunk_rate": 0.5,
+        "rim_finishing_shrunk_rate": 0.6629305500191734,
+        "three_point_shrunk_rate": 0.3389507027900333
+      },
+      "game_id": "0022300032",
+      "is_home": false,
+      "n_bench_players": 5,
+      "net_rating": 2.6,
+      "rotation_weighted_three_point": 0.3541442632940362,
+      "team": "Sacramento Kings",
+      "top5_minute_share": 0.6887966804979253,
+      "top5_minutes": 166.0,
+      "top5_only_three_point": 0.3584259993445685,
+      "top5_quality": {
+        "floater_short_mid_shrunk_rate": 0.4467506394906015,
+        "free_throw_shrunk_rate": 0.79530198584239,
+        "midrange_shrunk_rate": 0.40634680313448124,
+        "rim_access_creation_shrunk_rate": 0.5,
+        "rim_finishing_shrunk_rate": 0.6705708492452663,
+        "three_point_shrunk_rate": 0.3584259993445685
+      }
+    },
+    {
+      "actual_team_margin": 2,
+      "bench_minute_share": 0.3458333333333333,
+      "bench_minutes": 83.0,
+      "bench_quality": {
+        "floater_short_mid_shrunk_rate": 0.42452922904494,
+        "free_throw_shrunk_rate": 0.7233497033885685,
+        "midrange_shrunk_rate": 0.3866346276723959,
+        "rim_access_creation_shrunk_rate": 0.5,
+        "rim_finishing_shrunk_rate": 0.6506578047305633,
+        "three_point_shrunk_rate": 0.37206237429345834
+      },
+      "game_id": "0022300045",
+      "is_home": true,
+      "n_bench_players": 4,
+      "net_rating": 5.142857142857143,
+      "rotation_weighted_three_point": 0.35843091755856277,
+      "team": "New York Knicks",
+      "top5_minute_share": 0.6541666666666667,
+      "top5_minutes": 157.0,
+      "top5_only_three_point": 0.3505794967755163,
+      "top5_quality": {
+        "floater_short_mid_shrunk_rate": 0.43623420369304483,
+        "free_throw_shrunk_rate": 0.7513901177128297,
+        "midrange_shrunk_rate": 0.3834201131599646,
+        "rim_access_creation_shrunk_rate": 0.5,
+        "rim_finishing_shrunk_rate": 0.6322466251332187,
+        "three_point_shrunk_rate": 0.3505794967755163
+      }
+    },
+    {
+      "actual_team_margin": -2,
+      "bench_minute_share": 0.275,
+      "bench_minutes": 66.0,
+      "bench_quality": {
+        "floater_short_mid_shrunk_rate": 0.40971354191314474,
+        "free_throw_shrunk_rate": 0.7627002905910103,
+        "midrange_shrunk_rate": 0.4066606651669908,
+        "rim_access_creation_shrunk_rate": 0.5,
+        "rim_finishing_shrunk_rate": 0.6512345952891369,
+        "three_point_shrunk_rate": 0.3540578738283996
+      },
+      "game_id": "0022300045",
+      "is_home": false,
+      "n_bench_players": 4,
+      "net_rating": 2.7333333333333334,
+      "rotation_weighted_three_point": 0.3463921006123383,
+      "team": "Miami Heat",
+      "top5_minute_share": 0.725,
+      "top5_minutes": 174.0,
+      "top5_only_three_point": 0.34391899554390504,
+      "top5_quality": {
+        "floater_short_mid_shrunk_rate": 0.4463181410489336,
+        "free_throw_shrunk_rate": 0.8250073014705048,
+        "midrange_shrunk_rate": 0.4085818953858902,
+        "rim_access_creation_shrunk_rate": 0.5,
+        "rim_finishing_shrunk_rate": 0.6484532748446539,
+        "three_point_shrunk_rate": 0.34391899554390504
+      }
+    },
+    {
+      "actual_team_margin": 33,
+      "bench_minute_share": 0.34024896265560167,
+      "bench_minutes": 82.0,
+      "bench_quality": {
+        "floater_short_mid_shrunk_rate": 0.42427700949664604,
+        "free_throw_shrunk_rate": 0.7293421803352671,
+        "midrange_shrunk_rate": 0.3915938832319307,
+        "rim_access_creation_shrunk_rate": 0.5,
+        "rim_finishing_shrunk_rate": 0.6561939308002086,
+        "three_point_shrunk_rate": 0.3483205662507566
+      },
+      "game_id": "0022300057",
+      "is_home": true,
+      "n_bench_players": 7,
+      "net_rating": 4.4375,
+      "rotation_weighted_three_point": 0.36128044414340466,
+      "team": "New York Knicks",
+      "top5_minute_share": 0.6597510373443983,
+      "top5_minutes": 159.0,
+      "top5_only_three_point": 0.3596278983398401,
+      "top5_quality": {
+        "floater_short_mid_shrunk_rate": 0.429757861360532,
+        "free_throw_shrunk_rate": 0.7126888744615202,
+        "midrange_shrunk_rate": 0.38573722276875216,
+        "rim_access_creation_shrunk_rate": 0.5,
+        "rim_finishing_shrunk_rate": 0.6390236879605168,
+        "three_point_shrunk_rate": 0.3596278983398401
+      }
+    },
+    {
+      "actual_team_margin": -33,
+      "bench_minute_share": 0.35269709543568467,
+      "bench_minutes": 85.0,
+      "bench_quality": {
+        "floater_short_mid_shrunk_rate": 0.40338239966219946,
+        "free_throw_shrunk_rate": 0.7423583517769232,
+        "midrange_shrunk_rate": 0.40288152377200526,
+        "rim_access_creation_shrunk_rate": 0.5,
+        "rim_finishing_shrunk_rate": 0.6119167967146837,
+        "three_point_shrunk_rate": 0.3365743834035799
+      },
+      "game_id": "0022300057",
+      "is_home": false,
+      "n_bench_players": 8,
+      "net_rating": -9.4,
+      "rotation_weighted_three_point": 0.3441447033522762,
+      "team": "Charlotte Hornets",
+      "top5_minute_share": 0.6473029045643154,
+      "top5_minutes": 156.0,
+      "top5_only_three_point": 0.34365358086568404,
+      "top5_quality": {
+        "floater_short_mid_shrunk_rate": 0.42284053195143284,
+        "free_throw_shrunk_rate": 0.7790657523365516,
+        "midrange_shrunk_rate": 0.4082777697132974,
+        "rim_access_creation_shrunk_rate": 0.5,
+        "rim_finishing_shrunk_rate": 0.6446570133971684,
+        "three_point_shrunk_rate": 0.34365358086568404
+      }
+    }
+  ],
+  "home_court_contribution_estimate": {
+    "mean_home_margin_residual_over_net_rating (points)": 3.5155803056737094,
+    "n_home_games": 76,
+    "note": "positive => real home teams outperform their net-rating-implied margin by this many points on average (a real home-court signal); the engine models no such effect."
+  },
+  "matchup_strength_compression_curve": [
+    {
+      "bucket": "near_equal (<3)",
+      "mean_abs_strength_diff": 2.2767494192799074,
+      "mean_actual_abs_margin": 4.75,
+      "mean_simulated_abs_margin": 14.11,
+      "n_games": 4
+    },
+    {
+      "bucket": "modest (3-8)",
+      "mean_abs_strength_diff": 6.110714285714286,
+      "mean_actual_abs_margin": 12.25,
+      "mean_simulated_abs_margin": 9.155000000000001,
+      "n_games": 4
+    },
+    {
+      "bucket": "large (8-15)",
+      "mean_abs_strength_diff": 13.287405303030303,
+      "mean_actual_abs_margin": 23.25,
+      "mean_simulated_abs_margin": 3.495,
+      "n_games": 4
+    },
+    {
+      "bucket": "extreme (>=15)",
+      "mean_abs_strength_diff": 16.446995549529674,
+      "mean_actual_abs_margin": 17.75,
+      "mean_simulated_abs_margin": 5.0,
+      "n_games": 4
+    }
+  ],
+  "monte_carlo_noise_check": [
+    {
+      "game_id": "0022300006",
+      "n1000_margin_sd": 17.386885143693796,
+      "n1000_mean_margin": 13.965,
+      "n250_margin_sd": 18.11095756717463,
+      "n250_mean_margin": 13.096
+    },
+    {
+      "game_id": "0022300030",
+      "n1000_margin_sd": 17.774690320790402,
+      "n1000_mean_margin": -3.128,
+      "n250_margin_sd": 17.616045413202137,
+      "n250_mean_margin": -1.288
+    },
+    {
+      "game_id": "0022300032",
+      "n1000_margin_sd": 18.748276827484705,
+      "n1000_mean_margin": -3.046,
+      "n250_margin_sd": 18.870820225946726,
+      "n250_mean_margin": -3.012
+    }
+  ],
+  "offense_output_variance (real_sd vs simulated_sd)": {
+    "ft_rate": {
+      "n_teams": 21,
+      "real_sd": 0.0724761776516231,
+      "simulated_sd": 0.03413675906254261
+    },
+    "three_pt_pct": {
+      "n_teams": 21,
+      "real_sd": 0.05626103508307098,
+      "simulated_sd": 0.021963768770494878
+    },
+    "two_pt_pct": {
+      "n_teams": 21,
+      "real_sd": 0.05352919318476152,
+      "simulated_sd": 0.037491822548513576
+    }
+  },
+  "pace_variance": {
+    "mean_possessions_across_games": 202.7,
+    "n_games": 16,
+    "sd_possessions_across_games": 7.4646853770120645
+  },
+  "player_replacement_counterfactuals": [
+    {
+      "baseline_home_win_prob": 0.4533333333333333,
+      "baseline_mean_margin": -2.42,
+      "counterfactual_home_win_prob": 0.52,
+      "counterfactual_mean_margin": 1.26,
+      "experiment": "replace_best_scorer_on_STRONG_team_with_average",
+      "game_id": "0022301034",
+      "margin_shift": 3.6799999999999997,
+      "n_sims": 150,
+      "replace_side": "AWAY",
+      "replaced_player_id": "201950",
+      "team": "Boston Celtics"
+    },
+    {
+      "baseline_home_win_prob": 0.5066666666666667,
+      "baseline_mean_margin": 2.1,
+      "counterfactual_home_win_prob": 0.7333333333333333,
+      "counterfactual_mean_margin": 10.593333333333334,
+      "experiment": "replace_best_scorer_on_STRONG_team_with_average",
+      "game_id": "0022300507",
+      "margin_shift": 8.493333333333334,
+      "n_sims": 150,
+      "replace_side": "AWAY",
+      "replaced_player_id": "204001",
+      "team": "Boston Celtics"
+    },
+    {
+      "baseline_home_win_prob": 0.23333333333333334,
+      "baseline_mean_margin": -12.7,
+      "counterfactual_home_win_prob": 0.4666666666666667,
+      "counterfactual_mean_margin": -1.4066666666666667,
+      "experiment": "replace_best_scorer_on_STRONG_team_with_average",
+      "game_id": "0022300462",
+      "margin_shift": 11.293333333333333,
+      "n_sims": 150,
+      "replace_side": "AWAY",
+      "replaced_player_id": "204001",
+      "team": "Boston Celtics"
+    },
+    {
+      "baseline_home_win_prob": 0.36,
+      "baseline_mean_margin": -4.506666666666667,
+      "counterfactual_home_win_prob": 0.4066666666666667,
+      "counterfactual_mean_margin": -4.3533333333333335,
+      "experiment": "replace_worst_scorer_on_WEAK_team_with_average",
+      "game_id": "0022300030",
+      "margin_shift": 0.15333333333333332,
+      "n_sims": 150,
+      "replace_side": "AWAY",
+      "replaced_player_id": "1641709",
+      "team": "Detroit Pistons"
+    },
+    {
+      "baseline_home_win_prob": 0.5066666666666667,
+      "baseline_mean_margin": 1.14,
+      "counterfactual_home_win_prob": 0.6266666666666667,
+      "counterfactual_mean_margin": 7.073333333333333,
+      "experiment": "replace_worst_scorer_on_WEAK_team_with_average",
+      "game_id": "0022300997",
+      "margin_shift": 5.933333333333334,
+      "n_sims": 150,
+      "replace_side": "HOME",
+      "replaced_player_id": "1641709",
+      "team": "Detroit Pistons"
+    },
+    {
+      "baseline_home_win_prob": 0.32,
+      "baseline_mean_margin": -9.08,
+      "counterfactual_home_win_prob": 0.4266666666666667,
+      "counterfactual_mean_margin": -4.08,
+      "experiment": "replace_worst_scorer_on_WEAK_team_with_average",
+      "game_id": "0022301088",
+      "margin_shift": 5.0,
+      "n_sims": 150,
+      "replace_side": "HOME",
+      "replaced_player_id": "1641709",
+      "team": "Detroit Pistons"
+    }
+  ],
+  "raw_truth_engine_variance_transfer": {
+    "note": "raw is PLAYER-level population SD; engine-input is TEAM-primary-five-MEAN SD -- team means are expected to be tighter than the raw player population by construction (averaging 5 players reduces variance); the comparison here is about whether real team-quality separation SURVIVES into team-level engine inputs, not a like-for-like SD ratio.",
+    "raw_population_mean": 0.35221236415209206,
+    "raw_population_n": 407,
+    "raw_population_sd": 0.05817894973376431,
+    "team_primary_five_engine_input_mean": 0.35372425464236423,
+    "team_primary_five_engine_input_n": 152,
+    "team_primary_five_engine_input_sd": 0.015842522496374987
+  },
+  "role_amplification_diagnostic": {
+    "high_role_mean_margin": 30.285,
+    "margin_shift_from_role_amplification": 10.015,
+    "neutral_role_mean_margin": 20.27
+  },
+  "rotation_weighted_vs_top5_correlation": {
+    "corr_rotation_weighted_three_point_vs_net_rating": 0.41381186447559626,
+    "corr_top5_only_three_point_vs_net_rating": 0.40849613010861624,
+    "mean_bench_minute_share": 0.338331589533061,
+    "n": 152
+  },
+  "runtime_seconds": 664.2396402359009,
+  "sim_subset": {
+    "buckets": {
+      "extreme": [
+        "0022300030",
+        "0022300325",
+        "0022300622",
+        "0022300820"
+      ],
+      "large": [
+        "0022300032",
+        "0022300057",
+        "0022300139",
+        "0022300140"
+      ],
+      "modest": [
+        "0022300006",
+        "0022300068",
+        "0022300153",
+        "0022300164"
+      ],
+      "near_equal": [
+        "0022300045",
+        "0022300133",
+        "0022300172",
+        "0022300173"
+      ]
+    },
+    "game_ids": [
+      "0022300006",
+      "0022300030",
+      "0022300032",
+      "0022300045",
+      "0022300057",
+      "0022300068",
+      "0022300133",
+      "0022300139",
+      "0022300140",
+      "0022300153",
+      "0022300164",
+      "0022300172",
+      "0022300173",
+      "0022300325",
+      "0022300622",
+      "0022300820"
+    ],
+    "n_games": 16
+  },
+  "strong_vs_weak_quartiles": {
+    "ball_security_error_rate": {
+      "diff (strong-weak)": -0.00012119786431431454,
+      "strong_mean": 0.009337025021351275,
+      "weak_mean": 0.00945822288566559
+    },
+    "defensive_playmaking_per36": {
+      "diff (strong-weak)": 0.11569821545105796,
+      "strong_mean": 1.4289762589401094,
+      "weak_mean": 1.3132780434890514
+    },
+    "defensive_rebounding_shrunk_rate": {
+      "diff (strong-weak)": 0.013136718369869294,
+      "strong_mean": 0.1618936099481099,
+      "weak_mean": 0.1487568915782406
+    },
+    "floater_short_mid_shrunk_rate": {
+      "diff (strong-weak)": 0.021289288539869666,
+      "strong_mean": 0.439382115664352,
+      "weak_mean": 0.4180928271244823
+    },
+    "free_throw_shrunk_rate": {
+      "diff (strong-weak)": 0.016382309972278075,
+      "strong_mean": 0.7985367691589658,
+      "weak_mean": 0.7821544591866877
+    },
+    "mean_net_rating_strong": 7.8445455014878585,
+    "mean_net_rating_weak": -9.238054042565341,
+    "midrange_shrunk_rate": {
+      "diff (strong-weak)": 0.01222593636335112,
+      "strong_mean": 0.41325052605893886,
+      "weak_mean": 0.40102458969558774
+    },
+    "n_strong": 38,
+    "n_weak": 38,
+    "offensive_rebounding_shrunk_rate": {
+      "diff (strong-weak)": 0.003748971947167029,
+      "strong_mean": 0.0671946393722523,
+      "weak_mean": 0.06344566742508527
+    },
+    "passing_accuracy_ast_pct": {
+      "diff (strong-weak)": 0.0,
+      "strong_mean": 0.18,
+      "weak_mean": 0.18
+    },
+    "playmaking_vision_shrunk_rate": {
+      "diff (strong-weak)": 0.011643366806337457,
+      "strong_mean": 0.17898440740154703,
+      "weak_mean": 0.16734104059520957
+    },
+    "poa_containment_shrunk_rate": {
+      "diff (strong-weak)": 0.0003400272663319423,
+      "strong_mean": -0.00919514125286477,
+      "weak_mean": -0.009535168519196712
+    },
+    "rim_access_creation_shrunk_rate": {
+      "diff (strong-weak)": 0.0,
+      "strong_mean": 0.5,
+      "weak_mean": 0.5
+    },
+    "rim_finishing_shrunk_rate": {
+      "diff (strong-weak)": 0.015019938622921725,
+      "strong_mean": 0.6632852053014406,
+      "weak_mean": 0.6482652666785189
+    },
+    "rim_protection_suppression_rate": {
+      "diff (strong-weak)": -0.006987985159969588,
+      "strong_mean": 0.014431472519707004,
+      "weak_mean": 0.021419457679676592
+    },
+    "role_off_finishing": {
+      "diff (strong-weak)": -0.017126315789473656,
+      "strong_mean": 0.5585789473684211,
+      "weak_mean": 0.5757052631578947
+    },
+    "role_off_initiation": {
+      "diff (strong-weak)": 1.2465676458004156,
+      "strong_mean": 7.968415032247099,
+      "weak_mean": 6.721847386446683
+    },
+    "role_off_spacing": {
+      "diff (strong-weak)": -0.015421052631578891,
+      "strong_mean": 0.7217789473684211,
+      "weak_mean": 0.7372
+    },
+    "three_point_shrunk_rate": {
+      "diff (strong-weak)": 0.01663943037482357,
+      "strong_mean": 0.360717922073133,
+      "weak_mean": 0.34407849169830945
+    }
+  },
+  "team_strength_correlations": {
+    "ball_security_error_rate": {
+      "n": 152,
+      "pearson_r_vs_net_rating": 0.0014877376808011395
+    },
+    "defensive_playmaking_per36": {
+      "n": 152,
+      "pearson_r_vs_net_rating": 0.1995055873909191
+    },
+    "defensive_rebounding_shrunk_rate": {
+      "n": 152,
+      "pearson_r_vs_net_rating": 0.43634735496353794
+    },
+    "floater_short_mid_shrunk_rate": {
+      "n": 152,
+      "pearson_r_vs_net_rating": 0.44443478002175896
+    },
+    "free_throw_shrunk_rate": {
+      "n": 152,
+      "pearson_r_vs_net_rating": 0.3155806608830672
+    },
+    "midrange_shrunk_rate": {
+      "n": 152,
+      "pearson_r_vs_net_rating": 0.33200220935821384
+    },
+    "offensive_rebounding_shrunk_rate": {
+      "n": 152,
+      "pearson_r_vs_net_rating": 0.08367316452214935
+    },
+    "passing_accuracy_ast_pct": {
+      "n": 152,
+      "pearson_r_vs_net_rating": null
+    },
+    "playmaking_vision_shrunk_rate": {
+      "n": 152,
+      "pearson_r_vs_net_rating": 0.27504990538826224
+    },
+    "poa_containment_shrunk_rate": {
+      "n": 152,
+      "pearson_r_vs_net_rating": 0.010958074358748847
+    },
+    "rim_access_creation_shrunk_rate": {
+      "n": 152,
+      "pearson_r_vs_net_rating": null
+    },
+    "rim_finishing_shrunk_rate": {
+      "n": 152,
+      "pearson_r_vs_net_rating": 0.2862997001019506
+    },
+    "rim_protection_suppression_rate": {
+      "n": 152,
+      "pearson_r_vs_net_rating": -0.1338438103796079
+    },
+    "role_off_finishing": {
+      "n": 152,
+      "pearson_r_vs_net_rating": -0.18020670347170448
+    },
+    "role_off_initiation": {
+      "n": 152,
+      "pearson_r_vs_net_rating": 0.5129971354530057
+    },
+    "role_off_spacing": {
+      "n": 152,
+      "pearson_r_vs_net_rating": -0.02548454041954487
+    },
+    "three_point_shrunk_rate": {
+      "n": 152,
+      "pearson_r_vs_net_rating": 0.44336791440666795
+    }
+  },
+  "year_over_year_truth_lag": {
+    "n_teams": 29,
+    "pearson_delta_vs_current_nr": 0.707818126735094,
+    "top_movers_by_abs_delta": [
+      {
+        "current_season_net_rating": -8.413007828575257,
+        "delta": -11.730080999306963,
+        "n_games": 5,
+        "prior_season_net_rating": 3.317073170731707,
+        "team": "Golden State Warriors"
+      },
+      {
+        "current_season_net_rating": -5.937960257827454,
+        "delta": -10.584301721242088,
+        "n_games": 8,
+        "prior_season_net_rating": 4.646341463414634,
+        "team": "Memphis Grizzlies"
+      },
+      {
+        "current_season_net_rating": 9.902656884633775,
+        "delta": 9.28070566512158,
+        "n_games": 8,
+        "prior_season_net_rating": 0.6219512195121951,
+        "team": "Oklahoma City Thunder"
+      },
+      {
+        "current_season_net_rating": 2.1440401317759807,
+        "delta": 9.265991351288175,
+        "n_games": 4,
+        "prior_season_net_rating": -7.121951219512195,
+        "team": "Houston Rockets"
+      },
+      {
+        "current_season_net_rating": 5.583383753392697,
+        "delta": 9.095578875343916,
+        "n_games": 4,
+        "prior_season_net_rating": -3.5121951219512195,
+        "team": "Los Angeles Clippers"
+      },
+      {
+        "current_season_net_rating": 8.609657983342194,
+        "delta": 8.731609202854388,
+        "n_games": 3,
+        "prior_season_net_rating": -0.12195121951219512,
+        "team": "Minnesota Timberwolves"
+      },
+      {
+        "current_season_net_rating": -14.75640815933526,
+        "delta": -7.573481330066968,
+        "n_games": 6,
+        "prior_season_net_rating": -7.182926829268292,
+        "team": "Detroit Pistons"
+      },
+      {
+        "current_season_net_rating": -4.941071428571429,
+        "delta": -5.270339721254356,
+        "n_games": 2,
+        "prior_season_net_rating": 0.32926829268292684,
+        "team": "Toronto Raptors"
+      }
+    ]
+  }
+}
