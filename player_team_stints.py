@@ -56,8 +56,21 @@ def _roster_membership_by_name(season: str):
     return load_roster_membership(season)
 
 
+@lru_cache(maxsize=None)
 def team_stints_for_player(player_id: str, as_of_season: str) -> List[TeamStint]:
     """Real, date-bounded stints for this player_id in this season, sorted chronologically.
+
+    FIRST HISTORICAL PREDICTIVE BACKTEST V1: process-local `lru_cache` by (player_id, as_of_season)
+    -- this is a pure function of real, on-disk, per-season cache files (real membership + real
+    game-log dates), previously rebuilt via a full linear scan over EVERY team's EVERY player on
+    every single call. `historical_game_outcome.py`'s real-outcome reconstruction calls
+    `team_as_of_date` (which calls this) for every player in every game of a season -- tens of
+    thousands of calls for one season, the large majority for the SAME (player_id, season) pair
+    repeated across that player's many real games. Pure computational reuse; no change to stint
+    boundaries or fallback logic. Returned lists are read-only everywhere in this project (checked
+    directly) -- safe to share the cached list across callers. Assumes on-disk cache files are
+    static for the life of the process; call `team_stints_for_player.cache_clear()` after mutating
+    them mid-process.
 
     `roster_membership.json` is a real but, in this repo's current cached snapshot, INCOMPLETE
     source -- checked directly: 2023-24's cache carries only 25 of 30 real teams (5 missing
@@ -199,3 +212,10 @@ def team_roster_as_of_date(team_name: str, as_of_date: str, as_of_season: str) -
             roster.append(resolution.player_id)
             seen.add(resolution.player_id)
     return roster
+
+
+def clear_reference_caches() -> None:
+    """Test/debug reset hook -- clears `team_stints_for_player`'s process-local cache (FIRST
+    HISTORICAL PREDICTIVE BACKTEST V1). Call after mutating the on-disk roster-membership or
+    game-log cache mid-process."""
+    team_stints_for_player.cache_clear()

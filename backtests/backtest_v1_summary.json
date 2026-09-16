@@ -1,0 +1,2783 @@
+{
+  "baseline_metrics": [
+    {
+      "baseline": "BASELINE_5050",
+      "brier_score": 0.25,
+      "log_loss": 0.6931471805599456,
+      "margin_mae": 12.108433734939759,
+      "margin_rmse": 15.181234453036824,
+      "n_games": 83,
+      "winner_accuracy": 0.4819277108433735
+    },
+    {
+      "baseline": "BASELINE_PRIOR_SEASON_HOME_RATE",
+      "brier_score": 0.2589126523942289,
+      "log_loss": 0.7111698800741393,
+      "margin_mae": 12.279704182583995,
+      "margin_rmse": 15.486467719795531,
+      "n_games": 83,
+      "winner_accuracy": 0.4819277108433735
+    },
+    {
+      "baseline": "BASELINE_NET_RATING",
+      "brier_score": 0.2737109903189977,
+      "log_loss": 0.7871642811974409,
+      "margin_mae": 11.61021294165605,
+      "margin_rmse": 14.165015174008476,
+      "n_games": 83,
+      "winner_accuracy": 0.6265060240963856
+    }
+  ],
+  "extra_sections": {
+    "confidence_group_breakdown": {
+      "moderate_favorite (60-80%)": {
+        "actual_hit_rate": 0.5,
+        "mean_confidence": 0.6924166666666666,
+        "n_games": 48
+      },
+      "near_toss_up (50-60%)": {
+        "actual_hit_rate": 0.4583333333333333,
+        "mean_confidence": 0.5506666666666667,
+        "n_games": 24
+      },
+      "strong_favorite (80-100%)": {
+        "actual_hit_rate": 0.2727272727272727,
+        "mean_confidence": 0.8774545454545454,
+        "n_games": 11
+      }
+    },
+    "home_away_bias": {
+      "actual_home_win_rate": 0.4819277108433735,
+      "mean_predicted_home_win_prob": 0.4719036144578313,
+      "n_games": 83,
+      "note": "the detailed engine models no explicit home-court effect (documented, unmodified this phase) -- a gap here between mean predicted home-win-prob and actual home-win rate is evidence FOR a missing home-court feature, not something this phase adds."
+    },
+    "margin_variance_bias": {
+      "actual_blowout_rate (>=20pt)": 0.1686746987951807,
+      "actual_close_game_rate (<=5pt)": 0.1927710843373494,
+      "actual_margin_sd_across_games": 15.171550106902314,
+      "avg_within_game_simulated_margin_sd": 17.88500124820632,
+      "mean_actual_margin": -0.5421686746987951,
+      "mean_predicted_margin": -1.1978313253012047,
+      "predicted_blowout_rate (>=20pt)": 0.060240963855421686,
+      "predicted_close_game_rate (<=5pt)": 0.3373493975903614,
+      "predicted_margin_sd_across_games": 10.603461518028908
+    },
+    "period_breakdown": {
+      "late season (mid Feb-Apr)": {
+        "actual_home_win_rate": 0.4827586206896552,
+        "away_score_mae": 9.887310344827585,
+        "brier_score": 0.31591337931034486,
+        "calibration_bins": [
+          {
+            "actual_hit_rate": 0.16666666666666666,
+            "mean_predicted_confidence": 0.5619999999999999,
+            "n_games": 6,
+            "range": "50-60%"
+          },
+          {
+            "actual_hit_rate": 0.6153846153846154,
+            "mean_predicted_confidence": 0.6476923076923077,
+            "n_games": 13,
+            "range": "60-70%"
+          },
+          {
+            "actual_hit_rate": 0.3333333333333333,
+            "mean_predicted_confidence": 0.7593333333333333,
+            "n_games": 6,
+            "range": "70-80%"
+          },
+          {
+            "actual_hit_rate": 0.0,
+            "mean_predicted_confidence": 0.8253333333333334,
+            "n_games": 3,
+            "range": "80-90%"
+          },
+          {
+            "actual_hit_rate": 1.0,
+            "mean_predicted_confidence": 0.9,
+            "n_games": 1,
+            "range": "90-100%"
+          }
+        ],
+        "combined_score_mae": 10.37248275862069,
+        "expected_calibration_error": 0.2732413793103448,
+        "home_score_mae": 10.857655172413793,
+        "log_loss": 0.8486941746298212,
+        "margin_mae": 14.049793103448277,
+        "margin_rmse": 17.725043121391057,
+        "mean_predicted_home_prob": 0.47296551724137936,
+        "mean_signed_margin_error": -0.20427586206896564,
+        "n_games": 29,
+        "winner_accuracy": 0.41379310344827586
+      },
+      "midseason (Dec-mid Feb)": {
+        "actual_home_win_rate": 0.45714285714285713,
+        "away_score_mae": 12.79062857142857,
+        "brier_score": 0.31201280000000003,
+        "calibration_bins": [
+          {
+            "actual_hit_rate": 0.5454545454545454,
+            "mean_predicted_confidence": 0.5578181818181819,
+            "n_games": 11,
+            "range": "50-60%"
+          },
+          {
+            "actual_hit_rate": 0.125,
+            "mean_predicted_confidence": 0.6455,
+            "n_games": 8,
+            "range": "60-70%"
+          },
+          {
+            "actual_hit_rate": 0.46153846153846156,
+            "mean_predicted_confidence": 0.744,
+            "n_games": 13,
+            "range": "70-80%"
+          },
+          {
+            "actual_hit_rate": 0.5,
+            "mean_predicted_confidence": 0.866,
+            "n_games": 2,
+            "range": "80-90%"
+          },
+          {
+            "actual_hit_rate": 1.0,
+            "mean_predicted_confidence": 0.944,
+            "n_games": 1,
+            "range": "90-100%"
+          }
+        ],
+        "combined_score_mae": 12.671542857142859,
+        "expected_calibration_error": 0.2502857142857143,
+        "home_score_mae": 12.552457142857143,
+        "log_loss": 0.833218204803864,
+        "margin_mae": 12.975085714285713,
+        "margin_rmse": 14.875981945980671,
+        "mean_predicted_home_prob": 0.4685714285714285,
+        "mean_signed_margin_error": 1.5661714285714285,
+        "n_games": 35,
+        "winner_accuracy": 0.42857142857142855
+      },
+      "opening (Oct-Nov)": {
+        "actual_home_win_rate": 0.5263157894736842,
+        "away_score_mae": 12.454736842105262,
+        "brier_score": 0.3200058947368421,
+        "calibration_bins": [
+          {
+            "actual_hit_rate": 0.5714285714285714,
+            "mean_predicted_confidence": 0.5297142857142857,
+            "n_games": 7,
+            "range": "50-60%"
+          },
+          {
+            "actual_hit_rate": 0.8333333333333334,
+            "mean_predicted_confidence": 0.664,
+            "n_games": 6,
+            "range": "60-70%"
+          },
+          {
+            "actual_hit_rate": 1.0,
+            "mean_predicted_confidence": 0.72,
+            "n_games": 2,
+            "range": "70-80%"
+          },
+          {
+            "actual_hit_rate": 0.0,
+            "mean_predicted_confidence": 0.862,
+            "n_games": 2,
+            "range": "80-90%"
+          },
+          {
+            "actual_hit_rate": 0.0,
+            "mean_predicted_confidence": 0.938,
+            "n_games": 2,
+            "range": "90-100%"
+          }
+        ],
+        "combined_score_mae": 15.700000000000001,
+        "expected_calibration_error": 0.2877894736842105,
+        "home_score_mae": 18.94526315789474,
+        "log_loss": 0.9556762961353581,
+        "margin_mae": 16.30778947368421,
+        "margin_rmse": 22.136546889940316,
+        "mean_predicted_home_prob": 0.4764210526315789,
+        "mean_signed_margin_error": -5.437473684210526,
+        "n_games": 19,
+        "winner_accuracy": 0.5789473684210527
+      }
+    },
+    "pregame_vs_oracle_delta": {
+      "delta_accuracy (oracle-pregame)": -0.01204819277108432,
+      "delta_brier (oracle-pregame, negative=oracle better)": -0.026210891566264993,
+      "delta_margin_mae (oracle-pregame, negative=oracle better)": 0.12934939759036013,
+      "n_common_games": 83,
+      "oracle_on_common": {
+        "actual_home_win_rate": 0.4819277108433735,
+        "away_score_mae": 11.25378313253012,
+        "brier_score": 0.28899450602409643,
+        "calibration_bins": [
+          {
+            "actual_hit_rate": 0.41935483870967744,
+            "mean_predicted_confidence": 0.5465806451612903,
+            "n_games": 31,
+            "range": "50-60%"
+          },
+          {
+            "actual_hit_rate": 0.3157894736842105,
+            "mean_predicted_confidence": 0.647157894736842,
+            "n_games": 19,
+            "range": "60-70%"
+          },
+          {
+            "actual_hit_rate": 0.35294117647058826,
+            "mean_predicted_confidence": 0.744,
+            "n_games": 17,
+            "range": "70-80%"
+          },
+          {
+            "actual_hit_rate": 0.7272727272727273,
+            "mean_predicted_confidence": 0.8458181818181818,
+            "n_games": 11,
+            "range": "80-90%"
+          },
+          {
+            "actual_hit_rate": 0.8,
+            "mean_predicted_confidence": 0.9352,
+            "n_games": 5,
+            "range": "90-100%"
+          }
+        ],
+        "combined_score_mae": 12.781951807228916,
+        "expected_calibration_error": 0.22732530120481928,
+        "home_score_mae": 14.310120481927711,
+        "log_loss": 0.7782166761954291,
+        "margin_mae": 14.242843373493976,
+        "margin_rmse": 17.556308863643938,
+        "mean_predicted_home_prob": 0.4381204819277108,
+        "mean_signed_margin_error": -2.953012048192771,
+        "n_games": 83,
+        "winner_accuracy": 0.4457831325301205
+      },
+      "pregame_on_common": {
+        "actual_home_win_rate": 0.4819277108433735,
+        "away_score_mae": 11.69932530120482,
+        "brier_score": 0.3152053975903614,
+        "calibration_bins": [
+          {
+            "actual_hit_rate": 0.4583333333333333,
+            "mean_predicted_confidence": 0.5506666666666667,
+            "n_games": 24,
+            "range": "50-60%"
+          },
+          {
+            "actual_hit_rate": 0.5185185185185185,
+            "mean_predicted_confidence": 0.6506666666666667,
+            "n_games": 27,
+            "range": "60-70%"
+          },
+          {
+            "actual_hit_rate": 0.47619047619047616,
+            "mean_predicted_confidence": 0.746095238095238,
+            "n_games": 21,
+            "range": "70-80%"
+          },
+          {
+            "actual_hit_rate": 0.14285714285714285,
+            "mean_predicted_confidence": 0.8474285714285715,
+            "n_games": 7,
+            "range": "80-90%"
+          },
+          {
+            "actual_hit_rate": 0.5,
+            "mean_predicted_confidence": 0.9299999999999999,
+            "n_games": 4,
+            "range": "90-100%"
+          }
+        ],
+        "combined_score_mae": 12.561518072289157,
+        "expected_calibration_error": 0.21812048192771089,
+        "home_score_mae": 13.423710843373495,
+        "log_loss": 0.8666580464936368,
+        "margin_mae": 14.113493975903616,
+        "margin_rmse": 17.755692883780473,
+        "mean_predicted_home_prob": 0.4719036144578313,
+        "mean_signed_margin_error": -0.6556626506024097,
+        "n_games": 83,
+        "winner_accuracy": 0.4578313253012048
+      }
+    },
+    "provenance_vs_error": {
+      "caveat": "descriptive only -- sample size (n_games) is far too small to support a causal claim.",
+      "mean_margin_error": 14.113493975903616,
+      "mean_stale_provenance_fraction": 0.7951807228915663,
+      "n_games": 83,
+      "pearson_corr_staleness_vs_margin_error": -0.0054046991567247
+    },
+    "rotation_overlap_and_minutes_concentration": [
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.6166666666666667,
+        "away_primary_five_overlap_pregame_vs_oracle": 4,
+        "game_id": "0022300005",
+        "home_oracle_five_minutes_fraction_of_240": 0.6833333333333333,
+        "home_primary_five_overlap_pregame_vs_oracle": 4,
+        "pregame_margin_error": 24.984
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.7041666666666667,
+        "away_primary_five_overlap_pregame_vs_oracle": 5,
+        "game_id": "0022300008",
+        "home_oracle_five_minutes_fraction_of_240": 0.725,
+        "home_primary_five_overlap_pregame_vs_oracle": 3,
+        "pregame_margin_error": 25.104
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.5791666666666667,
+        "away_primary_five_overlap_pregame_vs_oracle": 3,
+        "game_id": "0022300014",
+        "home_oracle_five_minutes_fraction_of_240": 0.5916666666666667,
+        "home_primary_five_overlap_pregame_vs_oracle": 3,
+        "pregame_margin_error": 27.528
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.6291666666666667,
+        "away_primary_five_overlap_pregame_vs_oracle": 5,
+        "game_id": "0022300016",
+        "home_oracle_five_minutes_fraction_of_240": 0.7166666666666667,
+        "home_primary_five_overlap_pregame_vs_oracle": 3,
+        "pregame_margin_error": 8.136
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.675,
+        "away_primary_five_overlap_pregame_vs_oracle": 3,
+        "game_id": "0022300019",
+        "home_oracle_five_minutes_fraction_of_240": 0.7333333333333333,
+        "home_primary_five_overlap_pregame_vs_oracle": 4,
+        "pregame_margin_error": 5.88
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.8333333333333334,
+        "away_primary_five_overlap_pregame_vs_oracle": 5,
+        "game_id": "0022300083",
+        "home_oracle_five_minutes_fraction_of_240": 0.7416666666666667,
+        "home_primary_five_overlap_pregame_vs_oracle": 3,
+        "pregame_margin_error": 4.804
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.7083333333333334,
+        "away_primary_five_overlap_pregame_vs_oracle": 4,
+        "game_id": "0022300105",
+        "home_oracle_five_minutes_fraction_of_240": 0.675,
+        "home_primary_five_overlap_pregame_vs_oracle": 4,
+        "pregame_margin_error": 1.532
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.6166666666666667,
+        "away_primary_five_overlap_pregame_vs_oracle": 3,
+        "game_id": "0022300107",
+        "home_oracle_five_minutes_fraction_of_240": 0.6375,
+        "home_primary_five_overlap_pregame_vs_oracle": 5,
+        "pregame_margin_error": 3.2439999999999998
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.5,
+        "away_primary_five_overlap_pregame_vs_oracle": 2,
+        "game_id": "0022300118",
+        "home_oracle_five_minutes_fraction_of_240": 0.55,
+        "home_primary_five_overlap_pregame_vs_oracle": 4,
+        "pregame_margin_error": 49.692
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.7958333333333333,
+        "away_primary_five_overlap_pregame_vs_oracle": 4,
+        "game_id": "0022300127",
+        "home_oracle_five_minutes_fraction_of_240": 0.8375,
+        "home_primary_five_overlap_pregame_vs_oracle": 4,
+        "pregame_margin_error": 2.852
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.6583333333333333,
+        "away_primary_five_overlap_pregame_vs_oracle": 3,
+        "game_id": "0022300130",
+        "home_oracle_five_minutes_fraction_of_240": 0.6625,
+        "home_primary_five_overlap_pregame_vs_oracle": 5,
+        "pregame_margin_error": 33.424
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.6583333333333333,
+        "away_primary_five_overlap_pregame_vs_oracle": 3,
+        "game_id": "0022300131",
+        "home_oracle_five_minutes_fraction_of_240": 0.6583333333333333,
+        "home_primary_five_overlap_pregame_vs_oracle": 3,
+        "pregame_margin_error": 4.616
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.6875,
+        "away_primary_five_overlap_pregame_vs_oracle": 4,
+        "game_id": "0022300134",
+        "home_oracle_five_minutes_fraction_of_240": 0.625,
+        "home_primary_five_overlap_pregame_vs_oracle": 3,
+        "pregame_margin_error": 40.312
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.4708333333333333,
+        "away_primary_five_overlap_pregame_vs_oracle": 3,
+        "game_id": "0022300146",
+        "home_oracle_five_minutes_fraction_of_240": 0.5041666666666667,
+        "home_primary_five_overlap_pregame_vs_oracle": 3,
+        "pregame_margin_error": 31.072
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.6666666666666666,
+        "away_primary_five_overlap_pregame_vs_oracle": 3,
+        "game_id": "0022300179",
+        "home_oracle_five_minutes_fraction_of_240": 0.6875,
+        "home_primary_five_overlap_pregame_vs_oracle": 4,
+        "pregame_margin_error": 0.7439999999999998
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.6,
+        "away_primary_five_overlap_pregame_vs_oracle": 3,
+        "game_id": "0022300196",
+        "home_oracle_five_minutes_fraction_of_240": 0.6875,
+        "home_primary_five_overlap_pregame_vs_oracle": 4,
+        "pregame_margin_error": 26.752
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.7125,
+        "away_primary_five_overlap_pregame_vs_oracle": 4,
+        "game_id": "0022300242",
+        "home_oracle_five_minutes_fraction_of_240": 0.7,
+        "home_primary_five_overlap_pregame_vs_oracle": 4,
+        "pregame_margin_error": 0.22799999999999976
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.5541666666666667,
+        "away_primary_five_overlap_pregame_vs_oracle": 3,
+        "game_id": "0022300261",
+        "home_oracle_five_minutes_fraction_of_240": 0.6375,
+        "home_primary_five_overlap_pregame_vs_oracle": 2,
+        "pregame_margin_error": 14.924
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.7375,
+        "away_primary_five_overlap_pregame_vs_oracle": 5,
+        "game_id": "0022300264",
+        "home_oracle_five_minutes_fraction_of_240": 0.6541666666666667,
+        "home_primary_five_overlap_pregame_vs_oracle": 4,
+        "pregame_margin_error": 4.02
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.7291666666666666,
+        "away_primary_five_overlap_pregame_vs_oracle": 4,
+        "game_id": "0022300290",
+        "home_oracle_five_minutes_fraction_of_240": 0.6833333333333333,
+        "home_primary_five_overlap_pregame_vs_oracle": 4,
+        "pregame_margin_error": 16.323999999999998
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.5583333333333333,
+        "away_primary_five_overlap_pregame_vs_oracle": 4,
+        "game_id": "0022300310",
+        "home_oracle_five_minutes_fraction_of_240": 0.6333333333333333,
+        "home_primary_five_overlap_pregame_vs_oracle": 2,
+        "pregame_margin_error": 19.240000000000002
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.7375,
+        "away_primary_five_overlap_pregame_vs_oracle": 4,
+        "game_id": "0022300313",
+        "home_oracle_five_minutes_fraction_of_240": 0.7333333333333333,
+        "home_primary_five_overlap_pregame_vs_oracle": 5,
+        "pregame_margin_error": 13.296
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.6125,
+        "away_primary_five_overlap_pregame_vs_oracle": 2,
+        "game_id": "0022300329",
+        "home_oracle_five_minutes_fraction_of_240": 0.6625,
+        "home_primary_five_overlap_pregame_vs_oracle": 3,
+        "pregame_margin_error": 7.123999999999999
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.6916666666666667,
+        "away_primary_five_overlap_pregame_vs_oracle": 2,
+        "game_id": "0022300364",
+        "home_oracle_five_minutes_fraction_of_240": 0.625,
+        "home_primary_five_overlap_pregame_vs_oracle": 2,
+        "pregame_margin_error": 19.592
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.6875,
+        "away_primary_five_overlap_pregame_vs_oracle": 5,
+        "game_id": "0022300369",
+        "home_oracle_five_minutes_fraction_of_240": 0.7041666666666667,
+        "home_primary_five_overlap_pregame_vs_oracle": 4,
+        "pregame_margin_error": 4.532
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.6916666666666667,
+        "away_primary_five_overlap_pregame_vs_oracle": 4,
+        "game_id": "0022300371",
+        "home_oracle_five_minutes_fraction_of_240": 0.7291666666666666,
+        "home_primary_five_overlap_pregame_vs_oracle": 5,
+        "pregame_margin_error": 6.9
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.6708333333333333,
+        "away_primary_five_overlap_pregame_vs_oracle": 2,
+        "game_id": "0022300407",
+        "home_oracle_five_minutes_fraction_of_240": 0.6708333333333333,
+        "home_primary_five_overlap_pregame_vs_oracle": 5,
+        "pregame_margin_error": 14.052
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.6875,
+        "away_primary_five_overlap_pregame_vs_oracle": 4,
+        "game_id": "0022300415",
+        "home_oracle_five_minutes_fraction_of_240": 0.6291666666666667,
+        "home_primary_five_overlap_pregame_vs_oracle": 3,
+        "pregame_margin_error": 7.263999999999999
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.6458333333333334,
+        "away_primary_five_overlap_pregame_vs_oracle": 5,
+        "game_id": "0022300466",
+        "home_oracle_five_minutes_fraction_of_240": 0.6,
+        "home_primary_five_overlap_pregame_vs_oracle": 3,
+        "pregame_margin_error": 10.436
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.7541666666666667,
+        "away_primary_five_overlap_pregame_vs_oracle": 2,
+        "game_id": "0022300476",
+        "home_oracle_five_minutes_fraction_of_240": 0.9041666666666667,
+        "home_primary_five_overlap_pregame_vs_oracle": 5,
+        "pregame_margin_error": 0.7759999999999998
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.6625,
+        "away_primary_five_overlap_pregame_vs_oracle": 5,
+        "game_id": "0022300481",
+        "home_oracle_five_minutes_fraction_of_240": 0.6791666666666667,
+        "home_primary_five_overlap_pregame_vs_oracle": 4,
+        "pregame_margin_error": 7.156
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.775,
+        "away_primary_five_overlap_pregame_vs_oracle": 4,
+        "game_id": "0022300506",
+        "home_oracle_five_minutes_fraction_of_240": 0.775,
+        "home_primary_five_overlap_pregame_vs_oracle": 3,
+        "pregame_margin_error": 12.572
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.8583333333333333,
+        "away_primary_five_overlap_pregame_vs_oracle": 2,
+        "game_id": "0022300517",
+        "home_oracle_five_minutes_fraction_of_240": 0.8583333333333333,
+        "home_primary_five_overlap_pregame_vs_oracle": 4,
+        "pregame_margin_error": 15.18
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.6,
+        "away_primary_five_overlap_pregame_vs_oracle": 3,
+        "game_id": "0022300537",
+        "home_oracle_five_minutes_fraction_of_240": 0.6,
+        "home_primary_five_overlap_pregame_vs_oracle": 2,
+        "pregame_margin_error": 28.532
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.6708333333333333,
+        "away_primary_five_overlap_pregame_vs_oracle": 5,
+        "game_id": "0022300569",
+        "home_oracle_five_minutes_fraction_of_240": 0.625,
+        "home_primary_five_overlap_pregame_vs_oracle": 4,
+        "pregame_margin_error": 8.068
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.6541666666666667,
+        "away_primary_five_overlap_pregame_vs_oracle": 4,
+        "game_id": "0022300578",
+        "home_oracle_five_minutes_fraction_of_240": 0.6666666666666666,
+        "home_primary_five_overlap_pregame_vs_oracle": 2,
+        "pregame_margin_error": 10.668
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.6958333333333333,
+        "away_primary_five_overlap_pregame_vs_oracle": 4,
+        "game_id": "0022300590",
+        "home_oracle_five_minutes_fraction_of_240": 0.7458333333333333,
+        "home_primary_five_overlap_pregame_vs_oracle": 2,
+        "pregame_margin_error": 15.196
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.7458333333333333,
+        "away_primary_five_overlap_pregame_vs_oracle": 5,
+        "game_id": "0022300592",
+        "home_oracle_five_minutes_fraction_of_240": 0.65,
+        "home_primary_five_overlap_pregame_vs_oracle": 3,
+        "pregame_margin_error": 0.41600000000000037
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.6375,
+        "away_primary_five_overlap_pregame_vs_oracle": 2,
+        "game_id": "0022300609",
+        "home_oracle_five_minutes_fraction_of_240": 0.6875,
+        "home_primary_five_overlap_pregame_vs_oracle": 3,
+        "pregame_margin_error": 11.079999999999998
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.7125,
+        "away_primary_five_overlap_pregame_vs_oracle": 3,
+        "game_id": "0022300613",
+        "home_oracle_five_minutes_fraction_of_240": 0.6708333333333333,
+        "home_primary_five_overlap_pregame_vs_oracle": 4,
+        "pregame_margin_error": 19.972
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.7166666666666667,
+        "away_primary_five_overlap_pregame_vs_oracle": 5,
+        "game_id": "0022300614",
+        "home_oracle_five_minutes_fraction_of_240": 0.6625,
+        "home_primary_five_overlap_pregame_vs_oracle": 3,
+        "pregame_margin_error": 3.2
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.7916666666666666,
+        "away_primary_five_overlap_pregame_vs_oracle": 4,
+        "game_id": "0022300623",
+        "home_oracle_five_minutes_fraction_of_240": 0.8125,
+        "home_primary_five_overlap_pregame_vs_oracle": 4,
+        "pregame_margin_error": 9.632
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.6708333333333333,
+        "away_primary_five_overlap_pregame_vs_oracle": 2,
+        "game_id": "0022300653",
+        "home_oracle_five_minutes_fraction_of_240": 0.8,
+        "home_primary_five_overlap_pregame_vs_oracle": 3,
+        "pregame_margin_error": 3.5359999999999996
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.7208333333333333,
+        "away_primary_five_overlap_pregame_vs_oracle": 4,
+        "game_id": "0022300677",
+        "home_oracle_five_minutes_fraction_of_240": 0.6833333333333333,
+        "home_primary_five_overlap_pregame_vs_oracle": 3,
+        "pregame_margin_error": 17.42
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.7458333333333333,
+        "away_primary_five_overlap_pregame_vs_oracle": 3,
+        "game_id": "0022300684",
+        "home_oracle_five_minutes_fraction_of_240": 0.6458333333333334,
+        "home_primary_five_overlap_pregame_vs_oracle": 5,
+        "pregame_margin_error": 11.624
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.6958333333333333,
+        "away_primary_five_overlap_pregame_vs_oracle": 3,
+        "game_id": "0022300686",
+        "home_oracle_five_minutes_fraction_of_240": 0.6375,
+        "home_primary_five_overlap_pregame_vs_oracle": 5,
+        "pregame_margin_error": 4.9079999999999995
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.6333333333333333,
+        "away_primary_five_overlap_pregame_vs_oracle": 3,
+        "game_id": "0022300733",
+        "home_oracle_five_minutes_fraction_of_240": 0.5458333333333333,
+        "home_primary_five_overlap_pregame_vs_oracle": 4,
+        "pregame_margin_error": 13.564
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.7,
+        "away_primary_five_overlap_pregame_vs_oracle": 4,
+        "game_id": "0022300736",
+        "home_oracle_five_minutes_fraction_of_240": 0.7916666666666666,
+        "home_primary_five_overlap_pregame_vs_oracle": 2,
+        "pregame_margin_error": 26.912
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.6916666666666667,
+        "away_primary_five_overlap_pregame_vs_oracle": 4,
+        "game_id": "0022300749",
+        "home_oracle_five_minutes_fraction_of_240": 0.675,
+        "home_primary_five_overlap_pregame_vs_oracle": 3,
+        "pregame_margin_error": 12.556000000000001
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.8625,
+        "away_primary_five_overlap_pregame_vs_oracle": 4,
+        "game_id": "0022300752",
+        "home_oracle_five_minutes_fraction_of_240": 0.7041666666666667,
+        "home_primary_five_overlap_pregame_vs_oracle": 4,
+        "pregame_margin_error": 21.252000000000002
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.6083333333333333,
+        "away_primary_five_overlap_pregame_vs_oracle": 4,
+        "game_id": "0022300756",
+        "home_oracle_five_minutes_fraction_of_240": 0.6041666666666666,
+        "home_primary_five_overlap_pregame_vs_oracle": 4,
+        "pregame_margin_error": 29.732
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.6833333333333333,
+        "away_primary_five_overlap_pregame_vs_oracle": 4,
+        "game_id": "0022300758",
+        "home_oracle_five_minutes_fraction_of_240": 0.6708333333333333,
+        "home_primary_five_overlap_pregame_vs_oracle": 2,
+        "pregame_margin_error": 13.224
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.5583333333333333,
+        "away_primary_five_overlap_pregame_vs_oracle": 3,
+        "game_id": "0022300776",
+        "home_oracle_five_minutes_fraction_of_240": 0.65,
+        "home_primary_five_overlap_pregame_vs_oracle": 4,
+        "pregame_margin_error": 18.88
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.5791666666666667,
+        "away_primary_five_overlap_pregame_vs_oracle": 4,
+        "game_id": "0022300791",
+        "home_oracle_five_minutes_fraction_of_240": 0.5875,
+        "home_primary_five_overlap_pregame_vs_oracle": 4,
+        "pregame_margin_error": 4.564
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.6666666666666666,
+        "away_primary_five_overlap_pregame_vs_oracle": 5,
+        "game_id": "0022300797",
+        "home_oracle_five_minutes_fraction_of_240": 0.7375,
+        "home_primary_five_overlap_pregame_vs_oracle": 4,
+        "pregame_margin_error": 3.8520000000000003
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.5791666666666667,
+        "away_primary_five_overlap_pregame_vs_oracle": 4,
+        "game_id": "0022300798",
+        "home_oracle_five_minutes_fraction_of_240": 0.6833333333333333,
+        "home_primary_five_overlap_pregame_vs_oracle": 4,
+        "pregame_margin_error": 33.388
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.6541666666666667,
+        "away_primary_five_overlap_pregame_vs_oracle": 3,
+        "game_id": "0022300810",
+        "home_oracle_five_minutes_fraction_of_240": 0.6458333333333334,
+        "home_primary_five_overlap_pregame_vs_oracle": 3,
+        "pregame_margin_error": 12.224
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.6375,
+        "away_primary_five_overlap_pregame_vs_oracle": 4,
+        "game_id": "0022300819",
+        "home_oracle_five_minutes_fraction_of_240": 0.65,
+        "home_primary_five_overlap_pregame_vs_oracle": 4,
+        "pregame_margin_error": 12.512
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.7208333333333333,
+        "away_primary_five_overlap_pregame_vs_oracle": 5,
+        "game_id": "0022300824",
+        "home_oracle_five_minutes_fraction_of_240": 0.6291666666666667,
+        "home_primary_five_overlap_pregame_vs_oracle": 3,
+        "pregame_margin_error": 10.688
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.7083333333333334,
+        "away_primary_five_overlap_pregame_vs_oracle": 5,
+        "game_id": "0022300827",
+        "home_oracle_five_minutes_fraction_of_240": 0.75,
+        "home_primary_five_overlap_pregame_vs_oracle": 4,
+        "pregame_margin_error": 21.676000000000002
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.6666666666666666,
+        "away_primary_five_overlap_pregame_vs_oracle": 3,
+        "game_id": "0022300828",
+        "home_oracle_five_minutes_fraction_of_240": 0.7291666666666666,
+        "home_primary_five_overlap_pregame_vs_oracle": 4,
+        "pregame_margin_error": 2.208
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.7375,
+        "away_primary_five_overlap_pregame_vs_oracle": 4,
+        "game_id": "0022300867",
+        "home_oracle_five_minutes_fraction_of_240": 0.6916666666666667,
+        "home_primary_five_overlap_pregame_vs_oracle": 4,
+        "pregame_margin_error": 25.224
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.675,
+        "away_primary_five_overlap_pregame_vs_oracle": 4,
+        "game_id": "0022300882",
+        "home_oracle_five_minutes_fraction_of_240": 0.65,
+        "home_primary_five_overlap_pregame_vs_oracle": 3,
+        "pregame_margin_error": 4.508
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.7416666666666667,
+        "away_primary_five_overlap_pregame_vs_oracle": 5,
+        "game_id": "0022300886",
+        "home_oracle_five_minutes_fraction_of_240": 0.675,
+        "home_primary_five_overlap_pregame_vs_oracle": 2,
+        "pregame_margin_error": 15.424
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.7791666666666667,
+        "away_primary_five_overlap_pregame_vs_oracle": 5,
+        "game_id": "0022300906",
+        "home_oracle_five_minutes_fraction_of_240": 0.725,
+        "home_primary_five_overlap_pregame_vs_oracle": 5,
+        "pregame_margin_error": 10.904
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.7125,
+        "away_primary_five_overlap_pregame_vs_oracle": 4,
+        "game_id": "0022300907",
+        "home_oracle_five_minutes_fraction_of_240": 0.625,
+        "home_primary_five_overlap_pregame_vs_oracle": 4,
+        "pregame_margin_error": 9.876000000000001
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.7916666666666666,
+        "away_primary_five_overlap_pregame_vs_oracle": 4,
+        "game_id": "0022300917",
+        "home_oracle_five_minutes_fraction_of_240": 0.6833333333333333,
+        "home_primary_five_overlap_pregame_vs_oracle": 4,
+        "pregame_margin_error": 3.7560000000000002
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.7583333333333333,
+        "away_primary_five_overlap_pregame_vs_oracle": 3,
+        "game_id": "0022300932",
+        "home_oracle_five_minutes_fraction_of_240": 0.7125,
+        "home_primary_five_overlap_pregame_vs_oracle": 4,
+        "pregame_margin_error": 21.024
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.6416666666666667,
+        "away_primary_five_overlap_pregame_vs_oracle": 4,
+        "game_id": "0022300992",
+        "home_oracle_five_minutes_fraction_of_240": 0.6333333333333333,
+        "home_primary_five_overlap_pregame_vs_oracle": 1,
+        "pregame_margin_error": 25.896
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.6958333333333333,
+        "away_primary_five_overlap_pregame_vs_oracle": 3,
+        "game_id": "0022301006",
+        "home_oracle_five_minutes_fraction_of_240": 0.6625,
+        "home_primary_five_overlap_pregame_vs_oracle": 2,
+        "pregame_margin_error": 1.0280000000000005
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.6958333333333333,
+        "away_primary_five_overlap_pregame_vs_oracle": 4,
+        "game_id": "0022301027",
+        "home_oracle_five_minutes_fraction_of_240": 0.6291666666666667,
+        "home_primary_five_overlap_pregame_vs_oracle": 1,
+        "pregame_margin_error": 26.372
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.6958333333333333,
+        "away_primary_five_overlap_pregame_vs_oracle": 4,
+        "game_id": "0022301039",
+        "home_oracle_five_minutes_fraction_of_240": 0.6625,
+        "home_primary_five_overlap_pregame_vs_oracle": 3,
+        "pregame_margin_error": 3.748
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.6875,
+        "away_primary_five_overlap_pregame_vs_oracle": 4,
+        "game_id": "0022301052",
+        "home_oracle_five_minutes_fraction_of_240": 0.725,
+        "home_primary_five_overlap_pregame_vs_oracle": 3,
+        "pregame_margin_error": 0.11599999999999999
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.5916666666666667,
+        "away_primary_five_overlap_pregame_vs_oracle": 3,
+        "game_id": "0022301089",
+        "home_oracle_five_minutes_fraction_of_240": 0.49583333333333335,
+        "home_primary_five_overlap_pregame_vs_oracle": 4,
+        "pregame_margin_error": 33.828
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.725,
+        "away_primary_five_overlap_pregame_vs_oracle": 5,
+        "game_id": "0022301103",
+        "home_oracle_five_minutes_fraction_of_240": 0.6625,
+        "home_primary_five_overlap_pregame_vs_oracle": 4,
+        "pregame_margin_error": 10.404
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.6583333333333333,
+        "away_primary_five_overlap_pregame_vs_oracle": 1,
+        "game_id": "0022301107",
+        "home_oracle_five_minutes_fraction_of_240": 0.7125,
+        "home_primary_five_overlap_pregame_vs_oracle": 3,
+        "pregame_margin_error": 3.5279999999999996
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.7291666666666666,
+        "away_primary_five_overlap_pregame_vs_oracle": 3,
+        "game_id": "0022301122",
+        "home_oracle_five_minutes_fraction_of_240": 0.6541666666666667,
+        "home_primary_five_overlap_pregame_vs_oracle": 3,
+        "pregame_margin_error": 10.888
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.575,
+        "away_primary_five_overlap_pregame_vs_oracle": 4,
+        "game_id": "0022301146",
+        "home_oracle_five_minutes_fraction_of_240": 0.6791666666666667,
+        "home_primary_five_overlap_pregame_vs_oracle": 3,
+        "pregame_margin_error": 33.647999999999996
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.625,
+        "away_primary_five_overlap_pregame_vs_oracle": 3,
+        "game_id": "0022301154",
+        "home_oracle_five_minutes_fraction_of_240": 0.6916666666666667,
+        "home_primary_five_overlap_pregame_vs_oracle": 1,
+        "pregame_margin_error": 21.06
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.5541666666666667,
+        "away_primary_five_overlap_pregame_vs_oracle": 1,
+        "game_id": "0022301163",
+        "home_oracle_five_minutes_fraction_of_240": 0.5166666666666667,
+        "home_primary_five_overlap_pregame_vs_oracle": 3,
+        "pregame_margin_error": 32.704
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.7375,
+        "away_primary_five_overlap_pregame_vs_oracle": 2,
+        "game_id": "0022301175",
+        "home_oracle_five_minutes_fraction_of_240": 0.75,
+        "home_primary_five_overlap_pregame_vs_oracle": 4,
+        "pregame_margin_error": 8.636
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.7166666666666667,
+        "away_primary_five_overlap_pregame_vs_oracle": 5,
+        "game_id": "0022301195",
+        "home_oracle_five_minutes_fraction_of_240": 0.6791666666666667,
+        "home_primary_five_overlap_pregame_vs_oracle": 4,
+        "pregame_margin_error": 3.76
+      },
+      {
+        "away_oracle_five_minutes_fraction_of_240": 0.7041666666666667,
+        "away_primary_five_overlap_pregame_vs_oracle": 4,
+        "game_id": "0022301224",
+        "home_oracle_five_minutes_fraction_of_240": 0.6541666666666667,
+        "home_primary_five_overlap_pregame_vs_oracle": 3,
+        "pregame_margin_error": 19.311999999999998
+      }
+    ],
+    "score_and_pace_bias": {
+      "avg_actual_away_score": 116.03614457831326,
+      "avg_actual_home_score": 115.49397590361446,
+      "avg_actual_total": 231.53012048192772,
+      "avg_simulated_away_score": 114.51224096385542,
+      "avg_simulated_home_score": 113.31440963855422,
+      "avg_simulated_total": 227.82665060240964,
+      "signed_away_score_bias": -1.5239036144578364,
+      "signed_home_score_bias": -2.179566265060231,
+      "signed_total_bias": -3.7034698795180816
+    },
+    "team_level_bias": [
+      {
+        "actual_win_rate": 0.5,
+        "games": 4,
+        "mean_predicted_win_prob": 0.614,
+        "mean_signed_margin_error": 5.708,
+        "mean_signed_score_error": -7.195,
+        "predicted_win_prob_bias": 0.11399999999999999,
+        "team": "Atlanta Hawks"
+      },
+      {
+        "actual_win_rate": 0.5714285714285714,
+        "games": 7,
+        "mean_predicted_win_prob": 0.6548571428571428,
+        "mean_signed_margin_error": -3.378285714285714,
+        "mean_signed_score_error": -9.858285714285714,
+        "predicted_win_prob_bias": 0.08342857142857141,
+        "team": "Boston Celtics"
+      },
+      {
+        "actual_win_rate": 0.2,
+        "games": 5,
+        "mean_predicted_win_prob": 0.6296,
+        "mean_signed_margin_error": 12.6792,
+        "mean_signed_score_error": -0.07359999999999615,
+        "predicted_win_prob_bias": 0.42960000000000004,
+        "team": "Brooklyn Nets"
+      },
+      {
+        "actual_win_rate": 0.0,
+        "games": 1,
+        "mean_predicted_win_prob": 0.448,
+        "mean_signed_margin_error": 12.572,
+        "mean_signed_score_error": 9.212000000000003,
+        "predicted_win_prob_bias": 0.448,
+        "team": "Charlotte Hornets"
+      },
+      {
+        "actual_win_rate": 0.2857142857142857,
+        "games": 7,
+        "mean_predicted_win_prob": 0.5005714285714286,
+        "mean_signed_margin_error": 4.884571428571428,
+        "mean_signed_score_error": 2.973714285714288,
+        "predicted_win_prob_bias": 0.21485714285714286,
+        "team": "Chicago Bulls"
+      },
+      {
+        "actual_win_rate": 0.75,
+        "games": 4,
+        "mean_predicted_win_prob": 0.291,
+        "mean_signed_margin_error": -16.13,
+        "mean_signed_score_error": -11.186,
+        "predicted_win_prob_bias": -0.459,
+        "team": "Cleveland Cavaliers"
+      },
+      {
+        "actual_win_rate": 0.6666666666666666,
+        "games": 3,
+        "mean_predicted_win_prob": 0.248,
+        "mean_signed_margin_error": -13.975999999999999,
+        "mean_signed_score_error": -13.984000000000004,
+        "predicted_win_prob_bias": -0.41866666666666663,
+        "team": "Dallas Mavericks"
+      },
+      {
+        "actual_win_rate": 0.7142857142857143,
+        "games": 7,
+        "mean_predicted_win_prob": 0.6102857142857142,
+        "mean_signed_margin_error": -0.8120000000000006,
+        "mean_signed_score_error": 11.974285714285715,
+        "predicted_win_prob_bias": -0.10400000000000009,
+        "team": "Denver Nuggets"
+      },
+      {
+        "actual_win_rate": 0.0,
+        "games": 8,
+        "mean_predicted_win_prob": 0.4495,
+        "mean_signed_margin_error": 13.5535,
+        "mean_signed_score_error": 14.349499999999999,
+        "predicted_win_prob_bias": 0.4495,
+        "team": "Detroit Pistons"
+      },
+      {
+        "actual_win_rate": 0.25,
+        "games": 4,
+        "mean_predicted_win_prob": 0.513,
+        "mean_signed_margin_error": 7.996000000000001,
+        "mean_signed_score_error": 0.40399999999999636,
+        "predicted_win_prob_bias": 0.263,
+        "team": "Golden State Warriors"
+      },
+      {
+        "actual_win_rate": 0.42857142857142855,
+        "games": 7,
+        "mean_predicted_win_prob": 0.5245714285714286,
+        "mean_signed_margin_error": 1.2125714285714284,
+        "mean_signed_score_error": -7.749142857142857,
+        "predicted_win_prob_bias": 0.09600000000000003,
+        "team": "Houston Rockets"
+      },
+      {
+        "actual_win_rate": 0.6,
+        "games": 10,
+        "mean_predicted_win_prob": 0.5088,
+        "mean_signed_margin_error": -4.5724,
+        "mean_signed_score_error": -5.142399999999998,
+        "predicted_win_prob_bias": -0.09119999999999995,
+        "team": "Indiana Pacers"
+      },
+      {
+        "actual_win_rate": 0.5555555555555556,
+        "games": 9,
+        "mean_predicted_win_prob": 0.52,
+        "mean_signed_margin_error": 0.2591111111111111,
+        "mean_signed_score_error": -5.738666666666666,
+        "predicted_win_prob_bias": -0.03555555555555556,
+        "team": "Los Angeles Clippers"
+      },
+      {
+        "actual_win_rate": 0.875,
+        "games": 8,
+        "mean_predicted_win_prob": 0.5455,
+        "mean_signed_margin_error": -3.5575,
+        "mean_signed_score_error": -6.559499999999998,
+        "predicted_win_prob_bias": -0.3295,
+        "team": "Los Angeles Lakers"
+      },
+      {
+        "actual_win_rate": 0.8,
+        "games": 5,
+        "mean_predicted_win_prob": 0.6952,
+        "mean_signed_margin_error": 4.3808,
+        "mean_signed_score_error": 5.597600000000003,
+        "predicted_win_prob_bias": -0.1048,
+        "team": "Memphis Grizzlies"
+      },
+      {
+        "actual_win_rate": 0.6666666666666666,
+        "games": 3,
+        "mean_predicted_win_prob": 0.288,
+        "mean_signed_margin_error": -13.564,
+        "mean_signed_score_error": -10.773333333333332,
+        "predicted_win_prob_bias": -0.37866666666666665,
+        "team": "Miami Heat"
+      },
+      {
+        "actual_win_rate": 0.4,
+        "games": 5,
+        "mean_predicted_win_prob": 0.5768,
+        "mean_signed_margin_error": 5.536,
+        "mean_signed_score_error": -1.7271999999999992,
+        "predicted_win_prob_bias": 0.17679999999999996,
+        "team": "Milwaukee Bucks"
+      },
+      {
+        "actual_win_rate": 0.5,
+        "games": 4,
+        "mean_predicted_win_prob": 0.758,
+        "mean_signed_margin_error": 5.893000000000001,
+        "mean_signed_score_error": 2.0869999999999997,
+        "predicted_win_prob_bias": 0.258,
+        "team": "Minnesota Timberwolves"
+      },
+      {
+        "actual_win_rate": 0.6,
+        "games": 5,
+        "mean_predicted_win_prob": 0.3224,
+        "mean_signed_margin_error": -11.399999999999999,
+        "mean_signed_score_error": -0.8168000000000006,
+        "predicted_win_prob_bias": -0.27759999999999996,
+        "team": "New Orleans Pelicans"
+      },
+      {
+        "actual_win_rate": 0.6666666666666666,
+        "games": 3,
+        "mean_predicted_win_prob": 0.5866666666666666,
+        "mean_signed_margin_error": 6.827999999999999,
+        "mean_signed_score_error": 11.493333333333334,
+        "predicted_win_prob_bias": -0.08000000000000007,
+        "team": "New York Knicks"
+      },
+      {
+        "actual_win_rate": 0.5,
+        "games": 4,
+        "mean_predicted_win_prob": 0.494,
+        "mean_signed_margin_error": -10.599,
+        "mean_signed_score_error": -18.324,
+        "predicted_win_prob_bias": -0.006000000000000005,
+        "team": "Oklahoma City Thunder"
+      },
+      {
+        "actual_win_rate": 0.625,
+        "games": 8,
+        "mean_predicted_win_prob": 0.186,
+        "mean_signed_margin_error": -17.0535,
+        "mean_signed_score_error": -13.29,
+        "predicted_win_prob_bias": -0.439,
+        "team": "Orlando Magic"
+      },
+      {
+        "actual_win_rate": 0.5,
+        "games": 6,
+        "mean_predicted_win_prob": 0.5619999999999999,
+        "mean_signed_margin_error": -8.42,
+        "mean_signed_score_error": 2.8446666666666665,
+        "predicted_win_prob_bias": 0.061999999999999944,
+        "team": "Philadelphia 76ers"
+      },
+      {
+        "actual_win_rate": 0.3333333333333333,
+        "games": 3,
+        "mean_predicted_win_prob": 0.43733333333333335,
+        "mean_signed_margin_error": -3.018666666666667,
+        "mean_signed_score_error": -14.780000000000001,
+        "predicted_win_prob_bias": 0.10400000000000004,
+        "team": "Phoenix Suns"
+      },
+      {
+        "actual_win_rate": 0.6666666666666666,
+        "games": 6,
+        "mean_predicted_win_prob": 0.40066666666666667,
+        "mean_signed_margin_error": -2.6959999999999997,
+        "mean_signed_score_error": 3.1013333333333364,
+        "predicted_win_prob_bias": -0.26599999999999996,
+        "team": "Portland Trail Blazers"
+      },
+      {
+        "actual_win_rate": 0.8333333333333334,
+        "games": 6,
+        "mean_predicted_win_prob": 0.4066666666666667,
+        "mean_signed_margin_error": -10.218666666666666,
+        "mean_signed_score_error": -8.070666666666668,
+        "predicted_win_prob_bias": -0.4266666666666667,
+        "team": "Sacramento Kings"
+      },
+      {
+        "actual_win_rate": 0.6,
+        "games": 5,
+        "mean_predicted_win_prob": 0.4568,
+        "mean_signed_margin_error": 10.1216,
+        "mean_signed_score_error": -2.645599999999999,
+        "predicted_win_prob_bias": -0.1432,
+        "team": "San Antonio Spurs"
+      },
+      {
+        "actual_win_rate": 0.25,
+        "games": 8,
+        "mean_predicted_win_prob": 0.38649999999999995,
+        "mean_signed_margin_error": 3.1985,
+        "mean_signed_score_error": -0.2370000000000001,
+        "predicted_win_prob_bias": 0.13649999999999995,
+        "team": "Toronto Raptors"
+      },
+      {
+        "actual_win_rate": 0.2857142857142857,
+        "games": 7,
+        "mean_predicted_win_prob": 0.721142857142857,
+        "mean_signed_margin_error": 16.374857142857145,
+        "mean_signed_score_error": 9.689714285714288,
+        "predicted_win_prob_bias": 0.4354285714285713,
+        "team": "Utah Jazz"
+      },
+      {
+        "actual_win_rate": 0.0,
+        "games": 4,
+        "mean_predicted_win_prob": 0.546,
+        "mean_signed_margin_error": 13.715,
+        "mean_signed_score_error": 3.8049999999999997,
+        "predicted_win_prob_bias": 0.546,
+        "team": "Washington Wizards"
+      }
+    ],
+    "upset_analysis": {
+      "mean_favorite_confidence_in_upsets": 0.6824,
+      "n_games": 83,
+      "n_upsets": 45,
+      "upset_rate": 0.5421686746987951,
+      "upsets": [
+        {
+          "actual_winner": "Oklahoma City Thunder",
+          "away_team": "Golden State Warriors",
+          "game_id": "0022300005",
+          "home_team": "Oklahoma City Thunder",
+          "predicted_favorite_confidence": 0.6679999999999999,
+          "predicted_home_win_prob": 0.332
+        },
+        {
+          "actual_winner": "Dallas Mavericks",
+          "away_team": "Los Angeles Clippers",
+          "game_id": "0022300014",
+          "home_team": "Dallas Mavericks",
+          "predicted_favorite_confidence": 0.844,
+          "predicted_home_win_prob": 0.156
+        },
+        {
+          "actual_winner": "Sacramento Kings",
+          "away_team": "Oklahoma City Thunder",
+          "game_id": "0022300016",
+          "home_team": "Sacramento Kings",
+          "predicted_favorite_confidence": 0.54,
+          "predicted_home_win_prob": 0.46
+        },
+        {
+          "actual_winner": "Indiana Pacers",
+          "away_team": "Indiana Pacers",
+          "game_id": "0022300019",
+          "home_team": "Philadelphia 76ers",
+          "predicted_favorite_confidence": 0.504,
+          "predicted_home_win_prob": 0.504
+        },
+        {
+          "actual_winner": "San Antonio Spurs",
+          "away_team": "Houston Rockets",
+          "game_id": "0022300083",
+          "home_team": "San Antonio Spurs",
+          "predicted_favorite_confidence": 0.508,
+          "predicted_home_win_prob": 0.492
+        },
+        {
+          "actual_winner": "Orlando Magic",
+          "away_team": "Orlando Magic",
+          "game_id": "0022300130",
+          "home_team": "Utah Jazz",
+          "predicted_favorite_confidence": 0.96,
+          "predicted_home_win_prob": 0.96
+        },
+        {
+          "actual_winner": "Orlando Magic",
+          "away_team": "Los Angeles Lakers",
+          "game_id": "0022300134",
+          "home_team": "Orlando Magic",
+          "predicted_favorite_confidence": 0.88,
+          "predicted_home_win_prob": 0.12
+        },
+        {
+          "actual_winner": "Orlando Magic",
+          "away_team": "Orlando Magic",
+          "game_id": "0022300196",
+          "home_team": "Chicago Bulls",
+          "predicted_favorite_confidence": 0.916,
+          "predicted_home_win_prob": 0.916
+        },
+        {
+          "actual_winner": "Sacramento Kings",
+          "away_team": "Denver Nuggets",
+          "game_id": "0022300290",
+          "home_team": "Sacramento Kings",
+          "predicted_favorite_confidence": 0.716,
+          "predicted_home_win_prob": 0.284
+        },
+        {
+          "actual_winner": "Toronto Raptors",
+          "away_team": "Atlanta Hawks",
+          "game_id": "0022300313",
+          "home_team": "Toronto Raptors",
+          "predicted_favorite_confidence": 0.692,
+          "predicted_home_win_prob": 0.308
+        },
+        {
+          "actual_winner": "Cleveland Cavaliers",
+          "away_team": "Utah Jazz",
+          "game_id": "0022300364",
+          "home_team": "Cleveland Cavaliers",
+          "predicted_favorite_confidence": 0.756,
+          "predicted_home_win_prob": 0.244
+        },
+        {
+          "actual_winner": "Orlando Magic",
+          "away_team": "Orlando Magic",
+          "game_id": "0022300407",
+          "home_team": "Washington Wizards",
+          "predicted_favorite_confidence": 0.652,
+          "predicted_home_win_prob": 0.652
+        },
+        {
+          "actual_winner": "Boston Celtics",
+          "away_team": "Minnesota Timberwolves",
+          "game_id": "0022300517",
+          "home_team": "Boston Celtics",
+          "predicted_favorite_confidence": 0.6759999999999999,
+          "predicted_home_win_prob": 0.324
+        },
+        {
+          "actual_winner": "Los Angeles Clippers",
+          "away_team": "Los Angeles Clippers",
+          "game_id": "0022300537",
+          "home_team": "Memphis Grizzlies",
+          "predicted_favorite_confidence": 0.888,
+          "predicted_home_win_prob": 0.888
+        },
+        {
+          "actual_winner": "Portland Trail Blazers",
+          "away_team": "Brooklyn Nets",
+          "game_id": "0022300578",
+          "home_team": "Portland Trail Blazers",
+          "predicted_favorite_confidence": 0.7,
+          "predicted_home_win_prob": 0.3
+        },
+        {
+          "actual_winner": "Portland Trail Blazers",
+          "away_team": "Indiana Pacers",
+          "game_id": "0022300590",
+          "home_team": "Portland Trail Blazers",
+          "predicted_favorite_confidence": 0.764,
+          "predicted_home_win_prob": 0.236
+        },
+        {
+          "actual_winner": "Sacramento Kings",
+          "away_team": "Atlanta Hawks",
+          "game_id": "0022300613",
+          "home_team": "Sacramento Kings",
+          "predicted_favorite_confidence": 0.5840000000000001,
+          "predicted_home_win_prob": 0.416
+        },
+        {
+          "actual_winner": "Portland Trail Blazers",
+          "away_team": "Portland Trail Blazers",
+          "game_id": "0022300623",
+          "home_team": "Houston Rockets",
+          "predicted_favorite_confidence": 0.552,
+          "predicted_home_win_prob": 0.552
+        },
+        {
+          "actual_winner": "Phoenix Suns",
+          "away_team": "Phoenix Suns",
+          "game_id": "0022300677",
+          "home_team": "Brooklyn Nets",
+          "predicted_favorite_confidence": 0.56,
+          "predicted_home_win_prob": 0.56
+        },
+        {
+          "actual_winner": "Los Angeles Lakers",
+          "away_team": "Los Angeles Lakers",
+          "game_id": "0022300684",
+          "home_team": "Boston Celtics",
+          "predicted_favorite_confidence": 0.584,
+          "predicted_home_win_prob": 0.584
+        },
+        {
+          "actual_winner": "Golden State Warriors",
+          "away_team": "Golden State Warriors",
+          "game_id": "0022300733",
+          "home_team": "Indiana Pacers",
+          "predicted_favorite_confidence": 0.572,
+          "predicted_home_win_prob": 0.572
+        },
+        {
+          "actual_winner": "Dallas Mavericks",
+          "away_team": "Dallas Mavericks",
+          "game_id": "0022300736",
+          "home_team": "New York Knicks",
+          "predicted_favorite_confidence": 0.74,
+          "predicted_home_win_prob": 0.74
+        },
+        {
+          "actual_winner": "Los Angeles Clippers",
+          "away_team": "Detroit Pistons",
+          "game_id": "0022300749",
+          "home_team": "Los Angeles Clippers",
+          "predicted_favorite_confidence": 0.628,
+          "predicted_home_win_prob": 0.372
+        },
+        {
+          "actual_winner": "Orlando Magic",
+          "away_team": "Chicago Bulls",
+          "game_id": "0022300752",
+          "home_team": "Orlando Magic",
+          "predicted_favorite_confidence": 0.796,
+          "predicted_home_win_prob": 0.204
+        },
+        {
+          "actual_winner": "Cleveland Cavaliers",
+          "away_team": "Cleveland Cavaliers",
+          "game_id": "0022300756",
+          "home_team": "Toronto Raptors",
+          "predicted_favorite_confidence": 0.632,
+          "predicted_home_win_prob": 0.632
+        },
+        {
+          "actual_winner": "New Orleans Pelicans",
+          "away_team": "New Orleans Pelicans",
+          "game_id": "0022300758",
+          "home_team": "Portland Trail Blazers",
+          "predicted_favorite_confidence": 0.608,
+          "predicted_home_win_prob": 0.608
+        },
+        {
+          "actual_winner": "Los Angeles Lakers",
+          "away_team": "Detroit Pistons",
+          "game_id": "0022300776",
+          "home_team": "Los Angeles Lakers",
+          "predicted_favorite_confidence": 0.6,
+          "predicted_home_win_prob": 0.4
+        },
+        {
+          "actual_winner": "New Orleans Pelicans",
+          "away_team": "Houston Rockets",
+          "game_id": "0022300798",
+          "home_team": "New Orleans Pelicans",
+          "predicted_favorite_confidence": 0.744,
+          "predicted_home_win_prob": 0.256
+        },
+        {
+          "actual_winner": "Miami Heat",
+          "away_team": "Miami Heat",
+          "game_id": "0022300810",
+          "home_team": "New Orleans Pelicans",
+          "predicted_favorite_confidence": 0.54,
+          "predicted_home_win_prob": 0.54
+        },
+        {
+          "actual_winner": "Sacramento Kings",
+          "away_team": "Sacramento Kings",
+          "game_id": "0022300827",
+          "home_team": "Los Angeles Clippers",
+          "predicted_favorite_confidence": 0.612,
+          "predicted_home_win_prob": 0.612
+        },
+        {
+          "actual_winner": "Miami Heat",
+          "away_team": "Utah Jazz",
+          "game_id": "0022300867",
+          "home_team": "Miami Heat",
+          "predicted_favorite_confidence": 0.868,
+          "predicted_home_win_prob": 0.132
+        },
+        {
+          "actual_winner": "Cleveland Cavaliers",
+          "away_team": "Boston Celtics",
+          "game_id": "0022300886",
+          "home_team": "Cleveland Cavaliers",
+          "predicted_favorite_confidence": 0.808,
+          "predicted_home_win_prob": 0.192
+        },
+        {
+          "actual_winner": "Denver Nuggets",
+          "away_team": "Boston Celtics",
+          "game_id": "0022300906",
+          "home_team": "Denver Nuggets",
+          "predicted_favorite_confidence": 0.62,
+          "predicted_home_win_prob": 0.38
+        },
+        {
+          "actual_winner": "Chicago Bulls",
+          "away_team": "Chicago Bulls",
+          "game_id": "0022300907",
+          "home_team": "Golden State Warriors",
+          "predicted_favorite_confidence": 0.652,
+          "predicted_home_win_prob": 0.652
+        },
+        {
+          "actual_winner": "Los Angeles Lakers",
+          "away_team": "Minnesota Timberwolves",
+          "game_id": "0022300932",
+          "home_team": "Los Angeles Lakers",
+          "predicted_favorite_confidence": 0.716,
+          "predicted_home_win_prob": 0.284
+        },
+        {
+          "actual_winner": "Houston Rockets",
+          "away_team": "Houston Rockets",
+          "game_id": "0022300992",
+          "home_team": "Washington Wizards",
+          "predicted_favorite_confidence": 0.584,
+          "predicted_home_win_prob": 0.584
+        },
+        {
+          "actual_winner": "New Orleans Pelicans",
+          "away_team": "New Orleans Pelicans",
+          "game_id": "0022301027",
+          "home_team": "Detroit Pistons",
+          "predicted_favorite_confidence": 0.8,
+          "predicted_home_win_prob": 0.8
+        },
+        {
+          "actual_winner": "San Antonio Spurs",
+          "away_team": "Phoenix Suns",
+          "game_id": "0022301039",
+          "home_team": "San Antonio Spurs",
+          "predicted_favorite_confidence": 0.548,
+          "predicted_home_win_prob": 0.452
+        },
+        {
+          "actual_winner": "Indiana Pacers",
+          "away_team": "Brooklyn Nets",
+          "game_id": "0022301089",
+          "home_team": "Indiana Pacers",
+          "predicted_favorite_confidence": 0.744,
+          "predicted_home_win_prob": 0.256
+        },
+        {
+          "actual_winner": "Los Angeles Lakers",
+          "away_team": "Los Angeles Lakers",
+          "game_id": "0022301103",
+          "home_team": "Washington Wizards",
+          "predicted_favorite_confidence": 0.592,
+          "predicted_home_win_prob": 0.592
+        },
+        {
+          "actual_winner": "Toronto Raptors",
+          "away_team": "Toronto Raptors",
+          "game_id": "0022301122",
+          "home_team": "Milwaukee Bucks",
+          "predicted_favorite_confidence": 0.648,
+          "predicted_home_win_prob": 0.648
+        },
+        {
+          "actual_winner": "Indiana Pacers",
+          "away_team": "Indiana Pacers",
+          "game_id": "0022301146",
+          "home_team": "Toronto Raptors",
+          "predicted_favorite_confidence": 0.796,
+          "predicted_home_win_prob": 0.796
+        },
+        {
+          "actual_winner": "Denver Nuggets",
+          "away_team": "Denver Nuggets",
+          "game_id": "0022301154",
+          "home_team": "Utah Jazz",
+          "predicted_favorite_confidence": 0.584,
+          "predicted_home_win_prob": 0.584
+        },
+        {
+          "actual_winner": "New York Knicks",
+          "away_team": "Brooklyn Nets",
+          "game_id": "0022301175",
+          "home_team": "New York Knicks",
+          "predicted_favorite_confidence": 0.608,
+          "predicted_home_win_prob": 0.392
+        },
+        {
+          "actual_winner": "Houston Rockets",
+          "away_team": "Houston Rockets",
+          "game_id": "0022301224",
+          "home_team": "Denver Nuggets",
+          "predicted_favorite_confidence": 0.724,
+          "predicted_home_win_prob": 0.724
+        }
+      ]
+    },
+    "worst_and_best_games": {
+      "best_by_margin_error": [
+        {
+          "actual_away_score": 108,
+          "actual_home_score": 107,
+          "actual_margin": -1,
+          "away_team": "Los Angeles Clippers",
+          "date": "2024-03-27",
+          "game_id": "0022301052",
+          "home_team": "Philadelphia 76ers",
+          "log_loss_contribution": 0.6462635946610948,
+          "margin_error": 0.11599999999999999,
+          "predicted_home_win_prob": 0.476,
+          "predicted_mean_margin": -0.884,
+          "snapshot_provenance": {
+            "defense": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "playmaking": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "rebounding": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "role": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "scoring": {
+              "MIXED": 10
+            }
+          }
+        },
+        {
+          "actual_away_score": 121,
+          "actual_home_score": 115,
+          "actual_margin": -6,
+          "away_team": "Los Angeles Lakers",
+          "date": "2023-11-25",
+          "game_id": "0022300242",
+          "home_team": "Cleveland Cavaliers",
+          "log_loss_contribution": 0.4462871026284195,
+          "margin_error": 0.22799999999999976,
+          "predicted_home_win_prob": 0.36,
+          "predicted_mean_margin": -5.772,
+          "snapshot_provenance": {
+            "defense": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "playmaking": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "rebounding": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "role": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "scoring": {
+              "MIXED": 10
+            }
+          }
+        },
+        {
+          "actual_away_score": 141,
+          "actual_home_score": 130,
+          "actual_margin": -11,
+          "away_team": "Milwaukee Bucks",
+          "date": "2024-01-20",
+          "game_id": "0022300592",
+          "home_team": "Detroit Pistons",
+          "log_loss_contribution": 0.34531118528841737,
+          "margin_error": 0.41600000000000037,
+          "predicted_home_win_prob": 0.292,
+          "predicted_mean_margin": -10.584,
+          "snapshot_provenance": {
+            "defense": {
+              "MIXED": 1,
+              "PRIOR_SEASON_ONLY": 9
+            },
+            "playmaking": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "rebounding": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "role": {
+              "MISSING": 1,
+              "PRIOR_SEASON_ONLY": 9
+            },
+            "scoring": {
+              "MIXED": 10
+            }
+          }
+        },
+        {
+          "actual_away_score": 105,
+          "actual_home_score": 101,
+          "actual_margin": -4,
+          "away_team": "Memphis Grizzlies",
+          "date": "2023-11-12",
+          "game_id": "0022300179",
+          "home_team": "Los Angeles Clippers",
+          "log_loss_contribution": 0.5656338602609856,
+          "margin_error": 0.7439999999999998,
+          "predicted_home_win_prob": 0.432,
+          "predicted_mean_margin": -4.744,
+          "snapshot_provenance": {
+            "defense": {
+              "MIXED": 1,
+              "PRIOR_SEASON_ONLY": 9
+            },
+            "playmaking": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "rebounding": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "role": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "scoring": {
+              "MIXED": 9,
+              "PRIOR_SEASON_ONLY": 1
+            }
+          }
+        },
+        {
+          "actual_away_score": 135,
+          "actual_home_score": 138,
+          "actual_margin": 3,
+          "away_team": "Orlando Magic",
+          "date": "2024-01-03",
+          "game_id": "0022300476",
+          "home_team": "Sacramento Kings",
+          "log_loss_contribution": 0.5310283310835102,
+          "margin_error": 0.7759999999999998,
+          "predicted_home_win_prob": 0.588,
+          "predicted_mean_margin": 3.776,
+          "snapshot_provenance": {
+            "defense": {
+              "MIXED": 1,
+              "PRIOR_SEASON_ONLY": 9
+            },
+            "playmaking": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "rebounding": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "role": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "scoring": {
+              "MIXED": 10
+            }
+          }
+        },
+        {
+          "actual_away_score": 117,
+          "actual_home_score": 127,
+          "actual_margin": 10,
+          "away_team": "Chicago Bulls",
+          "date": "2024-03-21",
+          "game_id": "0022301006",
+          "home_team": "Houston Rockets",
+          "log_loss_contribution": 0.3856624808119846,
+          "margin_error": 1.0280000000000005,
+          "predicted_home_win_prob": 0.68,
+          "predicted_mean_margin": 8.972,
+          "snapshot_provenance": {
+            "defense": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "playmaking": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "rebounding": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "role": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "scoring": {
+              "MIXED": 10
+            }
+          }
+        },
+        {
+          "actual_away_score": 99,
+          "actual_home_score": 91,
+          "actual_margin": -8,
+          "away_team": "Portland Trail Blazers",
+          "date": "2023-10-30",
+          "game_id": "0022300105",
+          "home_team": "Toronto Raptors",
+          "log_loss_contribution": 0.3396773675701613,
+          "margin_error": 1.532,
+          "predicted_home_win_prob": 0.288,
+          "predicted_mean_margin": -9.532,
+          "snapshot_provenance": {
+            "defense": {
+              "MISSING": 1,
+              "PRIOR_SEASON_ONLY": 9
+            },
+            "playmaking": {
+              "MISSING": 1,
+              "PRIOR_SEASON_ONLY": 9
+            },
+            "rebounding": {
+              "MISSING": 1,
+              "PRIOR_SEASON_ONLY": 9
+            },
+            "role": {
+              "MISSING": 1,
+              "PRIOR_SEASON_ONLY": 9
+            },
+            "scoring": {
+              "MIXED": 10
+            }
+          }
+        },
+        {
+          "actual_away_score": 111,
+          "actual_home_score": 113,
+          "actual_margin": 2,
+          "away_team": "Detroit Pistons",
+          "date": "2024-02-26",
+          "game_id": "0022300828",
+          "home_team": "New York Knicks",
+          "log_loss_contribution": 0.4652151125139384,
+          "margin_error": 2.208,
+          "predicted_home_win_prob": 0.628,
+          "predicted_mean_margin": 4.208,
+          "snapshot_provenance": {
+            "defense": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "playmaking": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "rebounding": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "role": {
+              "MISSING": 1,
+              "PRIOR_SEASON_ONLY": 9
+            },
+            "scoring": {
+              "MIXED": 10
+            }
+          }
+        },
+        {
+          "actual_away_score": 125,
+          "actual_home_score": 130,
+          "actual_margin": 5,
+          "away_team": "Los Angeles Clippers",
+          "date": "2023-11-01",
+          "game_id": "0022300127",
+          "home_team": "Los Angeles Lakers",
+          "log_loss_contribution": 0.579818495252942,
+          "margin_error": 2.852,
+          "predicted_home_win_prob": 0.56,
+          "predicted_mean_margin": 2.148,
+          "snapshot_provenance": {
+            "defense": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "playmaking": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "rebounding": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "role": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "scoring": {
+              "MIXED": 9,
+              "PRIOR_SEASON_ONLY": 1
+            }
+          }
+        },
+        {
+          "actual_away_score": 114,
+          "actual_home_score": 109,
+          "actual_margin": -5,
+          "away_team": "Denver Nuggets",
+          "date": "2024-01-23",
+          "game_id": "0022300614",
+          "home_team": "Indiana Pacers",
+          "log_loss_contribution": 0.5516476182862456,
+          "margin_error": 3.2,
+          "predicted_home_win_prob": 0.424,
+          "predicted_mean_margin": -1.8,
+          "snapshot_provenance": {
+            "defense": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "playmaking": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "rebounding": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "role": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "scoring": {
+              "MIXED": 10
+            }
+          }
+        }
+      ],
+      "worst_by_log_loss": [
+        {
+          "actual_away_score": 115,
+          "actual_home_score": 113,
+          "actual_margin": -2,
+          "away_team": "Orlando Magic",
+          "date": "2023-11-02",
+          "game_id": "0022300130",
+          "home_team": "Utah Jazz",
+          "log_loss_contribution": 3.2188758248681997,
+          "margin_error": 33.424,
+          "predicted_home_win_prob": 0.96,
+          "predicted_mean_margin": 31.424,
+          "snapshot_provenance": {
+            "defense": {
+              "MIXED": 1,
+              "PRIOR_SEASON_ONLY": 9
+            },
+            "playmaking": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "rebounding": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "role": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "scoring": {
+              "MIXED": 10
+            }
+          }
+        },
+        {
+          "actual_away_score": 96,
+          "actual_home_score": 94,
+          "actual_margin": -2,
+          "away_team": "Orlando Magic",
+          "date": "2023-11-15",
+          "game_id": "0022300196",
+          "home_team": "Chicago Bulls",
+          "log_loss_contribution": 2.476938480138824,
+          "margin_error": 26.752,
+          "predicted_home_win_prob": 0.916,
+          "predicted_mean_margin": 24.752,
+          "snapshot_provenance": {
+            "defense": {
+              "MIXED": 1,
+              "PRIOR_SEASON_ONLY": 9
+            },
+            "playmaking": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "rebounding": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "role": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "scoring": {
+              "MIXED": 10
+            }
+          }
+        },
+        {
+          "actual_away_score": 128,
+          "actual_home_score": 119,
+          "actual_margin": -9,
+          "away_team": "Los Angeles Clippers",
+          "date": "2024-01-12",
+          "game_id": "0022300537",
+          "home_team": "Memphis Grizzlies",
+          "log_loss_contribution": 2.1892564076870427,
+          "margin_error": 28.532,
+          "predicted_home_win_prob": 0.888,
+          "predicted_mean_margin": 19.532,
+          "snapshot_provenance": {
+            "defense": {
+              "MIXED": 1,
+              "PRIOR_SEASON_ONLY": 9
+            },
+            "playmaking": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "rebounding": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "role": {
+              "MISSING": 1,
+              "PRIOR_SEASON_ONLY": 9
+            },
+            "scoring": {
+              "MIXED": 10
+            }
+          }
+        },
+        {
+          "actual_away_score": 101,
+          "actual_home_score": 120,
+          "actual_margin": 19,
+          "away_team": "Los Angeles Lakers",
+          "date": "2023-11-04",
+          "game_id": "0022300134",
+          "home_team": "Orlando Magic",
+          "log_loss_contribution": 2.120263536200091,
+          "margin_error": 40.312,
+          "predicted_home_win_prob": 0.12,
+          "predicted_mean_margin": -21.312,
+          "snapshot_provenance": {
+            "defense": {
+              "MIXED": 1,
+              "PRIOR_SEASON_ONLY": 9
+            },
+            "playmaking": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "rebounding": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "role": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "scoring": {
+              "MIXED": 10
+            }
+          }
+        },
+        {
+          "actual_away_score": 120,
+          "actual_home_score": 126,
+          "actual_margin": 6,
+          "away_team": "Utah Jazz",
+          "date": "2024-03-02",
+          "game_id": "0022300867",
+          "home_team": "Miami Heat",
+          "log_loss_contribution": 2.0249533563957662,
+          "margin_error": 25.224,
+          "predicted_home_win_prob": 0.132,
+          "predicted_mean_margin": -19.224,
+          "snapshot_provenance": {
+            "defense": {
+              "MISSING": 1,
+              "PRIOR_SEASON_ONLY": 9
+            },
+            "playmaking": {
+              "MISSING": 1,
+              "PRIOR_SEASON_ONLY": 9
+            },
+            "rebounding": {
+              "MISSING": 1,
+              "PRIOR_SEASON_ONLY": 9
+            },
+            "role": {
+              "MISSING": 1,
+              "PRIOR_SEASON_ONLY": 9
+            },
+            "scoring": {
+              "MIXED": 10
+            }
+          }
+        },
+        {
+          "actual_away_score": 126,
+          "actual_home_score": 136,
+          "actual_margin": 10,
+          "away_team": "Los Angeles Clippers",
+          "date": "2023-11-10",
+          "game_id": "0022300014",
+          "home_team": "Dallas Mavericks",
+          "log_loss_contribution": 1.8578992717326,
+          "margin_error": 27.528,
+          "predicted_home_win_prob": 0.156,
+          "predicted_mean_margin": -17.528,
+          "snapshot_provenance": {
+            "defense": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "playmaking": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "rebounding": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "role": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "scoring": {
+              "MIXED": 10
+            }
+          }
+        },
+        {
+          "actual_away_score": 104,
+          "actual_home_score": 105,
+          "actual_margin": 1,
+          "away_team": "Boston Celtics",
+          "date": "2024-03-05",
+          "game_id": "0022300886",
+          "home_team": "Cleveland Cavaliers",
+          "log_loss_contribution": 1.6502599069543555,
+          "margin_error": 15.424,
+          "predicted_home_win_prob": 0.192,
+          "predicted_mean_margin": -14.424,
+          "snapshot_provenance": {
+            "defense": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "playmaking": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "rebounding": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "role": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "scoring": {
+              "MIXED": 10
+            }
+          }
+        },
+        {
+          "actual_away_score": 114,
+          "actual_home_score": 101,
+          "actual_margin": -13,
+          "away_team": "New Orleans Pelicans",
+          "date": "2024-03-24",
+          "game_id": "0022301027",
+          "home_team": "Detroit Pistons",
+          "log_loss_contribution": 1.6094379124341005,
+          "margin_error": 26.372,
+          "predicted_home_win_prob": 0.8,
+          "predicted_mean_margin": 13.372,
+          "snapshot_provenance": {
+            "defense": {
+              "MISSING": 1,
+              "PRIOR_SEASON_ONLY": 9
+            },
+            "playmaking": {
+              "MISSING": 1,
+              "PRIOR_SEASON_ONLY": 9
+            },
+            "rebounding": {
+              "MISSING": 1,
+              "PRIOR_SEASON_ONLY": 9
+            },
+            "role": {
+              "MISSING": 2,
+              "PRIOR_SEASON_ONLY": 8
+            },
+            "scoring": {
+              "MIXED": 10
+            }
+          }
+        },
+        {
+          "actual_away_score": 140,
+          "actual_home_score": 123,
+          "actual_margin": -17,
+          "away_team": "Indiana Pacers",
+          "date": "2024-04-09",
+          "game_id": "0022301146",
+          "home_team": "Toronto Raptors",
+          "log_loss_contribution": 1.589635285137921,
+          "margin_error": 33.647999999999996,
+          "predicted_home_win_prob": 0.796,
+          "predicted_mean_margin": 16.648,
+          "snapshot_provenance": {
+            "defense": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "playmaking": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "rebounding": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "role": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "scoring": {
+              "MIXED": 10
+            }
+          }
+        },
+        {
+          "actual_away_score": 108,
+          "actual_home_score": 114,
+          "actual_margin": 6,
+          "away_team": "Chicago Bulls",
+          "date": "2024-02-10",
+          "game_id": "0022300752",
+          "home_team": "Orlando Magic",
+          "log_loss_contribution": 1.5896352851379207,
+          "margin_error": 21.252000000000002,
+          "predicted_home_win_prob": 0.204,
+          "predicted_mean_margin": -15.252,
+          "snapshot_provenance": {
+            "defense": {
+              "MIXED": 1,
+              "PRIOR_SEASON_ONLY": 9
+            },
+            "playmaking": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "rebounding": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "role": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "scoring": {
+              "MIXED": 10
+            }
+          }
+        }
+      ],
+      "worst_by_margin_error": [
+        {
+          "actual_away_score": 104,
+          "actual_home_score": 155,
+          "actual_margin": 51,
+          "away_team": "Indiana Pacers",
+          "date": "2023-11-01",
+          "game_id": "0022300118",
+          "home_team": "Boston Celtics",
+          "log_loss_contribution": 0.6462635946610948,
+          "margin_error": 49.692,
+          "predicted_home_win_prob": 0.524,
+          "predicted_mean_margin": 1.308,
+          "snapshot_provenance": {
+            "defense": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "playmaking": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "rebounding": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "role": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "scoring": {
+              "MIXED": 10
+            }
+          }
+        },
+        {
+          "actual_away_score": 101,
+          "actual_home_score": 120,
+          "actual_margin": 19,
+          "away_team": "Los Angeles Lakers",
+          "date": "2023-11-04",
+          "game_id": "0022300134",
+          "home_team": "Orlando Magic",
+          "log_loss_contribution": 2.120263536200091,
+          "margin_error": 40.312,
+          "predicted_home_win_prob": 0.12,
+          "predicted_mean_margin": -21.312,
+          "snapshot_provenance": {
+            "defense": {
+              "MIXED": 1,
+              "PRIOR_SEASON_ONLY": 9
+            },
+            "playmaking": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "rebounding": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "role": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "scoring": {
+              "MIXED": 10
+            }
+          }
+        },
+        {
+          "actual_away_score": 111,
+          "actual_home_score": 133,
+          "actual_margin": 22,
+          "away_team": "Brooklyn Nets",
+          "date": "2024-04-01",
+          "game_id": "0022301089",
+          "home_team": "Indiana Pacers",
+          "log_loss_contribution": 1.3625778345025745,
+          "margin_error": 33.828,
+          "predicted_home_win_prob": 0.256,
+          "predicted_mean_margin": -11.828,
+          "snapshot_provenance": {
+            "defense": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "playmaking": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "rebounding": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "role": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "scoring": {
+              "MIXED": 10
+            }
+          }
+        },
+        {
+          "actual_away_score": 140,
+          "actual_home_score": 123,
+          "actual_margin": -17,
+          "away_team": "Indiana Pacers",
+          "date": "2024-04-09",
+          "game_id": "0022301146",
+          "home_team": "Toronto Raptors",
+          "log_loss_contribution": 1.589635285137921,
+          "margin_error": 33.647999999999996,
+          "predicted_home_win_prob": 0.796,
+          "predicted_mean_margin": 16.648,
+          "snapshot_provenance": {
+            "defense": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "playmaking": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "rebounding": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "role": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "scoring": {
+              "MIXED": 10
+            }
+          }
+        },
+        {
+          "actual_away_score": 115,
+          "actual_home_score": 113,
+          "actual_margin": -2,
+          "away_team": "Orlando Magic",
+          "date": "2023-11-02",
+          "game_id": "0022300130",
+          "home_team": "Utah Jazz",
+          "log_loss_contribution": 3.2188758248681997,
+          "margin_error": 33.424,
+          "predicted_home_win_prob": 0.96,
+          "predicted_mean_margin": 31.424,
+          "snapshot_provenance": {
+            "defense": {
+              "MIXED": 1,
+              "PRIOR_SEASON_ONLY": 9
+            },
+            "playmaking": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "rebounding": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "role": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "scoring": {
+              "MIXED": 10
+            }
+          }
+        },
+        {
+          "actual_away_score": 105,
+          "actual_home_score": 127,
+          "actual_margin": 22,
+          "away_team": "Houston Rockets",
+          "date": "2024-02-22",
+          "game_id": "0022300798",
+          "home_team": "New Orleans Pelicans",
+          "log_loss_contribution": 1.3625778345025745,
+          "margin_error": 33.388,
+          "predicted_home_win_prob": 0.256,
+          "predicted_mean_margin": -11.388,
+          "snapshot_provenance": {
+            "defense": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "playmaking": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "rebounding": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "role": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "scoring": {
+              "MIXED": 10
+            }
+          }
+        },
+        {
+          "actual_away_score": 89,
+          "actual_home_score": 127,
+          "actual_margin": 38,
+          "away_team": "San Antonio Spurs",
+          "date": "2024-04-10",
+          "game_id": "0022301163",
+          "home_team": "Oklahoma City Thunder",
+          "log_loss_contribution": 0.4462871026284195,
+          "margin_error": 32.704,
+          "predicted_home_win_prob": 0.64,
+          "predicted_mean_margin": 5.296,
+          "snapshot_provenance": {
+            "defense": {
+              "MISSING": 2,
+              "MIXED": 1,
+              "PRIOR_SEASON_ONLY": 7
+            },
+            "playmaking": {
+              "MISSING": 2,
+              "PRIOR_SEASON_ONLY": 8
+            },
+            "rebounding": {
+              "MISSING": 2,
+              "PRIOR_SEASON_ONLY": 8
+            },
+            "role": {
+              "MISSING": 3,
+              "PRIOR_SEASON_ONLY": 7
+            },
+            "scoring": {
+              "MIXED": 10
+            }
+          }
+        },
+        {
+          "actual_away_score": 111,
+          "actual_home_score": 152,
+          "actual_margin": 41,
+          "away_team": "San Antonio Spurs",
+          "date": "2023-11-06",
+          "game_id": "0022300146",
+          "home_team": "Indiana Pacers",
+          "log_loss_contribution": 0.3624056186477175,
+          "margin_error": 31.072,
+          "predicted_home_win_prob": 0.696,
+          "predicted_mean_margin": 9.928,
+          "snapshot_provenance": {
+            "defense": {
+              "MISSING": 1,
+              "MIXED": 1,
+              "PRIOR_SEASON_ONLY": 8
+            },
+            "playmaking": {
+              "MISSING": 1,
+              "PRIOR_SEASON_ONLY": 9
+            },
+            "rebounding": {
+              "MISSING": 1,
+              "PRIOR_SEASON_ONLY": 9
+            },
+            "role": {
+              "MISSING": 2,
+              "PRIOR_SEASON_ONLY": 8
+            },
+            "scoring": {
+              "MIXED": 10
+            }
+          }
+        },
+        {
+          "actual_away_score": 119,
+          "actual_home_score": 95,
+          "actual_margin": -24,
+          "away_team": "Cleveland Cavaliers",
+          "date": "2024-02-10",
+          "game_id": "0022300756",
+          "home_team": "Toronto Raptors",
+          "log_loss_contribution": 0.9996723408132061,
+          "margin_error": 29.732,
+          "predicted_home_win_prob": 0.632,
+          "predicted_mean_margin": 5.732,
+          "snapshot_provenance": {
+            "defense": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "playmaking": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "rebounding": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "role": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "scoring": {
+              "MIXED": 10
+            }
+          }
+        },
+        {
+          "actual_away_score": 128,
+          "actual_home_score": 119,
+          "actual_margin": -9,
+          "away_team": "Los Angeles Clippers",
+          "date": "2024-01-12",
+          "game_id": "0022300537",
+          "home_team": "Memphis Grizzlies",
+          "log_loss_contribution": 2.1892564076870427,
+          "margin_error": 28.532,
+          "predicted_home_win_prob": 0.888,
+          "predicted_mean_margin": 19.532,
+          "snapshot_provenance": {
+            "defense": {
+              "MIXED": 1,
+              "PRIOR_SEASON_ONLY": 9
+            },
+            "playmaking": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "rebounding": {
+              "PRIOR_SEASON_ONLY": 10
+            },
+            "role": {
+              "MISSING": 1,
+              "PRIOR_SEASON_ONLY": 9
+            },
+            "scoring": {
+              "MIXED": 10
+            }
+          }
+        }
+      ]
+    }
+  },
+  "game_ids": [
+    "0022300005",
+    "0022300008",
+    "0022300014",
+    "0022300016",
+    "0022300019",
+    "0022300083",
+    "0022300105",
+    "0022300107",
+    "0022300118",
+    "0022300127",
+    "0022300130",
+    "0022300131",
+    "0022300134",
+    "0022300146",
+    "0022300179",
+    "0022300196",
+    "0022300242",
+    "0022300261",
+    "0022300264",
+    "0022300290",
+    "0022300310",
+    "0022300313",
+    "0022300329",
+    "0022300364",
+    "0022300369",
+    "0022300371",
+    "0022300407",
+    "0022300415",
+    "0022300466",
+    "0022300476",
+    "0022300481",
+    "0022300506",
+    "0022300517",
+    "0022300537",
+    "0022300569",
+    "0022300578",
+    "0022300590",
+    "0022300592",
+    "0022300609",
+    "0022300613",
+    "0022300614",
+    "0022300623",
+    "0022300653",
+    "0022300677",
+    "0022300684",
+    "0022300686",
+    "0022300733",
+    "0022300736",
+    "0022300749",
+    "0022300752",
+    "0022300756",
+    "0022300758",
+    "0022300776",
+    "0022300791",
+    "0022300797",
+    "0022300798",
+    "0022300810",
+    "0022300819",
+    "0022300824",
+    "0022300827",
+    "0022300828",
+    "0022300867",
+    "0022300882",
+    "0022300886",
+    "0022300906",
+    "0022300907",
+    "0022300917",
+    "0022300932",
+    "0022300992",
+    "0022301006",
+    "0022301027",
+    "0022301039",
+    "0022301052",
+    "0022301089",
+    "0022301103",
+    "0022301107",
+    "0022301122",
+    "0022301146",
+    "0022301154",
+    "0022301163",
+    "0022301175",
+    "0022301195",
+    "0022301224"
+  ],
+  "holdout_selection_rule": "sha256(game_id) % 16 == 0, season 2023-24",
+  "metrics": {
+    "actual_home_win_rate": 0.4819277108433735,
+    "away_score_mae": 11.69932530120482,
+    "brier_score": 0.3152053975903614,
+    "calibration_bins": [
+      {
+        "actual_hit_rate": 0.4583333333333333,
+        "mean_predicted_confidence": 0.5506666666666667,
+        "n_games": 24,
+        "range": "50-60%"
+      },
+      {
+        "actual_hit_rate": 0.5185185185185185,
+        "mean_predicted_confidence": 0.6506666666666667,
+        "n_games": 27,
+        "range": "60-70%"
+      },
+      {
+        "actual_hit_rate": 0.47619047619047616,
+        "mean_predicted_confidence": 0.746095238095238,
+        "n_games": 21,
+        "range": "70-80%"
+      },
+      {
+        "actual_hit_rate": 0.14285714285714285,
+        "mean_predicted_confidence": 0.8474285714285715,
+        "n_games": 7,
+        "range": "80-90%"
+      },
+      {
+        "actual_hit_rate": 0.5,
+        "mean_predicted_confidence": 0.9299999999999999,
+        "n_games": 4,
+        "range": "90-100%"
+      }
+    ],
+    "combined_score_mae": 12.561518072289157,
+    "expected_calibration_error": 0.21812048192771089,
+    "home_score_mae": 13.423710843373495,
+    "log_loss": 0.8666580464936368,
+    "margin_mae": 14.113493975903616,
+    "margin_rmse": 17.755692883780473,
+    "mean_predicted_home_prob": 0.4719036144578313,
+    "mean_signed_margin_error": -0.6556626506024097,
+    "n_games": 83,
+    "winner_accuracy": 0.4578313253012048
+  },
+  "model_commit": "0d6cba3283bc73acade1ae0afe5c64d19dc23da1",
+  "model_version": "backtest-v1",
+  "n_attempted": 83,
+  "n_sims_per_game": 250,
+  "n_skipped": 0,
+  "n_succeeded": 83,
+  "oracle_metrics": {
+    "actual_home_win_rate": 0.4819277108433735,
+    "away_score_mae": 11.25378313253012,
+    "brier_score": 0.28899450602409643,
+    "calibration_bins": [
+      {
+        "actual_hit_rate": 0.41935483870967744,
+        "mean_predicted_confidence": 0.5465806451612903,
+        "n_games": 31,
+        "range": "50-60%"
+      },
+      {
+        "actual_hit_rate": 0.3157894736842105,
+        "mean_predicted_confidence": 0.647157894736842,
+        "n_games": 19,
+        "range": "60-70%"
+      },
+      {
+        "actual_hit_rate": 0.35294117647058826,
+        "mean_predicted_confidence": 0.744,
+        "n_games": 17,
+        "range": "70-80%"
+      },
+      {
+        "actual_hit_rate": 0.7272727272727273,
+        "mean_predicted_confidence": 0.8458181818181818,
+        "n_games": 11,
+        "range": "80-90%"
+      },
+      {
+        "actual_hit_rate": 0.8,
+        "mean_predicted_confidence": 0.9352,
+        "n_games": 5,
+        "range": "90-100%"
+      }
+    ],
+    "combined_score_mae": 12.781951807228916,
+    "expected_calibration_error": 0.22732530120481928,
+    "home_score_mae": 14.310120481927711,
+    "log_loss": 0.7782166761954291,
+    "margin_mae": 14.242843373493976,
+    "margin_rmse": 17.556308863643938,
+    "mean_predicted_home_prob": 0.4381204819277108,
+    "mean_signed_margin_error": -2.953012048192771,
+    "n_games": 83,
+    "winner_accuracy": 0.4457831325301205
+  },
+  "oracle_n_succeeded": 83,
+  "oracle_skips": [],
+  "oracle_timing": {
+    "avg_seconds_per_successful_game": 372.4756700389357,
+    "simulation_seconds_total": 30910.961061239243,
+    "snapshot_seconds_total": 4.492625951766968,
+    "total_seconds": 30915.48061323166
+  },
+  "seed_policy": "sha256(f'{MODEL_VERSION}|{mode}|{game_id}|{sim_index}')[:16 hex] as int",
+  "snapshot_mode": "PREGAME_EXPECTED",
+  "timing": {
+    "avg_seconds_per_successful_game": 27.499260080866065,
+    "simulation_seconds_total": 1950.9568994045258,
+    "snapshot_seconds_total": 316.96106028556824,
+    "total_seconds": 2282.4385867118835
+  }
+}
