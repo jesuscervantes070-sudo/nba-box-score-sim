@@ -279,6 +279,32 @@ _ESTIMATE_FN = {
 }
 
 
+def _estimate_rim_protection_as_of_date(player_id: str, as_of_date: str, as_of_season: str,
+                                         all_seasons: List[str]) -> DefensiveTruthEstimate:
+    """CURRENT-SEASON DEFENSE + ROLE REFRESH V1: rim_protection's own date-safe path -- real
+    current-season-through-cutoff evidence (see `rim_protection_estimation.
+    estimate_rim_protection_as_of_date`'s own docstring for the full leakage/shrinkage-history
+    argument), never the full in-progress season. `poa_containment` has NO such path (see module
+    docstring's updated temporal-status audit) -- `leagueseasonmatchups`, the only real source for
+    it, was directly confirmed this phase (`inspect.signature`) to expose no date-range parameter
+    at all, so it remains PRIOR_SEASON_ONLY, an investigated-and-confirmed limitation, not an
+    oversight."""
+    source = "rim_protection_estimation.estimate_rim_protection_as_of_date"
+    month_cutoff = psst.month_cutoff_for_date(as_of_date)
+    resolution, report = pid.estimate_rim_protection_as_of_date_by_id(
+        player_id, as_of_date, as_of_season, all_seasons, month_cutoff)
+    if report is None or report.shrunk_rate is None:
+        return _missing("rim_protection", player_id, as_of_season, source,
+                         (report.coverage_note if report else "identity not resolved"))
+    confidence = _CONFIDENCE_STRING_TO_FLOAT.get(report.confidence)
+    provenance = psst.CURRENT_SEASON_PREGAME if report.used_current_season_evidence else psst.PRIOR_SEASON_ONLY
+    return DefensiveTruthEstimate(
+        name="rim_protection", player_id=player_id, as_of_season=as_of_season, value=report.shrunk_rate,
+        confidence=confidence, sample_size=report.rim_fga_defended, source=source,
+        param_source=report.param_source, coverage_note=report.coverage_note, provenance=provenance,
+    )
+
+
 def build_defensive_truth_profile(player_id: str, as_of_season: str, all_seasons: List[str]) -> DefensiveTruthProfile:
     """Season-level entry point. Each attribute goes through its own id-adapter (added to
     player_identity.py this phase) over its own pre-existing (or, for defensive_playmaking, newly
@@ -293,16 +319,32 @@ def build_defensive_truth_profile(player_id: str, as_of_season: str, all_seasons
 
 def build_defensive_truth_profile_as_of_date(player_id: str, as_of_date: str, as_of_season: str,
                                               all_seasons: List[str]) -> DefensiveTruthProfile:
-    """Pregame-safe entry point. All four targets are PRIOR_SEASON_ONLY this phase (see module
-    docstring's temporal-status audit) -- built from the last FULLY COMPLETED season only, frozen
-    for the whole current season, exactly like the playmaking/rebounding truth phases' own
-    Option-B fallback. Safe (never leaks the in-progress season), honestly labeled."""
+    """Pregame-safe entry point. `rim_protection` tries a real CURRENT_SEASON_PREGAME path first
+    (CURRENT-SEASON DEFENSE + ROLE REFRESH V1 -- see `_estimate_rim_protection_as_of_date`),
+    falling back to PRIOR_SEASON_ONLY when no real current-season-through-cutoff evidence exists
+    yet (opening month, rookie, etc.). `poa_containment`/`defensive_playmaking`/`foul_discipline`
+    remain PRIOR_SEASON_ONLY -- built from the last FULLY COMPLETED season only, frozen for the
+    whole current season (poa_containment's own source has no real date-range parameter at all,
+    confirmed this phase; defensive_playmaking/foul_discipline were out of this phase's scope)."""
     resolution = pid.resolve_id_to_name(player_id)
     reference_season = psst._season_before(as_of_season)
     reference_all_seasons = [s for s in all_seasons if s <= reference_season]
 
     estimates: Dict[str, DefensiveTruthEstimate] = {}
+
+    # rim_protection: real current-season-pregame path first.
+    rim_estimate = _estimate_rim_protection_as_of_date(player_id, as_of_date, as_of_season, all_seasons)
+    if rim_estimate.provenance == psst.MISSING and reference_all_seasons:
+        # no current-season evidence at all (e.g. before the season's own real month-1 cutoff) --
+        # fall back to the ordinary PRIOR_SEASON_ONLY path, exactly like every other attribute.
+        base = _ESTIMATE_FN["rim_protection"](player_id, reference_season, reference_all_seasons)
+        provenance = psst.MISSING if base.value is None else psst.PRIOR_SEASON_ONLY
+        rim_estimate = replace(base, as_of_season=as_of_season, provenance=provenance)
+    estimates["rim_protection"] = rim_estimate
+
     for attribute in DEFENSIVE_ATTRIBUTES:
+        if attribute == "rim_protection":
+            continue
         if not reference_all_seasons:
             estimates[attribute] = _missing(
                 attribute, player_id, as_of_season,

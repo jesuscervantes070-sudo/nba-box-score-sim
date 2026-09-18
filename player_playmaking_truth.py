@@ -54,6 +54,21 @@ anything:
     not to redesign `pass_resolution.py`). Classified SCALE_INCOMPATIBLE below, flagged for a
     dedicated future decision (either a new field, or a documented rescale/recalibration of
     `PASSING_ACCURACY_WEIGHT` against this construct's own real range).
+
+============================ AST_PCT DEAD-FIELD RESOLUTION (CURRENT-SEASON DEFENSE + ROLE REFRESH V1) ============================
+`passing_accuracy_ast_pct` remained permanently frozen at its synthetic default (0.18) for EVERY
+real player -- the mismatch above (this module's OWN `passing_accuracy` construct) is real, but
+was never the only possible source. `pass_resolution.py`'s own field name and its own documented
+"~0.10-0.30 real AST_PCT range" describe standard, real box-score ASSIST PERCENTAGE (share of
+teammates' made shots this player assisted while on court) -- NOT this module's bad-pass-avoidance
+rate. That REAL construct already exists, already cached, unused for this purpose:
+`loader.load_player_advanced_stats(season)`'s own `ast_pct` field (verified directly, 2023-24,
+min 12 mpg: n=397, range 0.024-0.444, median 0.128, mean 0.150 -- an exact match for the field's
+own documented range and center). Resolved here (Option A: a real adapter, not a new field, not a
+retirement) via a SEPARATE, ADDITIVE estimate (`_AST_PCT_BOX_KEY`) sourced from this real, already-
+cached field -- the existing `passing_accuracy` construct/estimate above is completely untouched,
+still real, still never overlaid, still documented as its own SCALE_INCOMPATIBLE case. PRIOR_SEASON_ONLY
+(same Classification-B season-aggregate source every other target here already uses).
 """
 from dataclasses import dataclass, field, replace
 from typing import Dict, List, Optional, Tuple
@@ -70,6 +85,13 @@ _TARGET_TO_PROFILE_FIELD: Dict[str, Optional[str]] = {
     "playmaking_vision": "playmaking_vision_shrunk_rate",
     "ball_security": "ball_security_error_rate",
 }
+
+# CURRENT-SEASON DEFENSE + ROLE REFRESH V1 -- a SEPARATE, ADDITIVE 4th estimate, NOT part of
+# PLAYMAKING_ATTRIBUTES/estimate_playmaking_attribute's own pipeline (this module's OWN
+# "passing_accuracy" construct above stays exactly as documented: real, SCALE_INCOMPATIBLE, never
+# overlaid). See module docstring's "AST_PCT DEAD-FIELD RESOLUTION" section for the real,
+# discovered source that resolves the engine field's own permanent zero-variance instead.
+_AST_PCT_BOX_KEY = "ast_pct_box"
 # Fields whose engine convention is HIGHER = WORSE (a raw error rate) -- the overlay inverts this
 # module's own ability-scale value (higher = better, matching every other truth estimate in this
 # project) when writing to them. Never touches the estimate's own stored `value`.
@@ -187,12 +209,46 @@ def _estimate(player_id: str, as_of_season: str, attribute: str, all_seasons: Li
     )
 
 
+def _estimate_ast_pct_box(player_id: str, as_of_season: str) -> PlaymakingTruthEstimate:
+    """Real, already-cached box-score AST_PCT (`loader.load_player_advanced_stats`) -- see module
+    docstring's AST_PCT DEAD-FIELD RESOLUTION section. Resolved by real player NAME (the advanced-
+    stats cache is name-keyed, same convention `rim_protection_analysis.py`/etc. already use)."""
+    import player_identity as _pid
+    source = "loader.load_player_advanced_stats (ast_pct)"
+    resolution = _pid.resolve_id_to_name(player_id)
+    if resolution.state != "RESOLVED":
+        return PlaymakingTruthEstimate(
+            name=_AST_PCT_BOX_KEY, player_id=player_id, as_of_season=as_of_season, value=None,
+            confidence=None, sample_size=None, source=source, param_source=None,
+            coverage_note="identity not resolved", provenance=psst.MISSING,
+        )
+    from loader import load_player_advanced_stats
+    row = load_player_advanced_stats(as_of_season).get(resolution.canonical_name)
+    value = row.get("ast_pct") if row else None
+    mpg, gp = (row.get("mpg"), row.get("gp")) if row else (None, None)
+    minutes = (mpg * gp) if (mpg is not None and gp is not None) else None
+    if value is None:
+        return PlaymakingTruthEstimate(
+            name=_AST_PCT_BOX_KEY, player_id=player_id, as_of_season=as_of_season, value=None,
+            confidence=None, sample_size=None, source=source, param_source=None,
+            coverage_note="no real box-score evidence for this player-season", provenance=psst.MISSING,
+        )
+    confidence = round(min(1.0, minutes / 1000.0), 3) if minutes else None
+    return PlaymakingTruthEstimate(
+        name=_AST_PCT_BOX_KEY, player_id=player_id, as_of_season=as_of_season, value=value,
+        confidence=confidence, sample_size=minutes, source=source,
+        param_source="none (exposure-based confidence, no shrinkage -- a real box-score rate, not a tracking estimator)",
+        provenance=psst.MULTI_SEASON_THROUGH_CUTOFF,
+    )
+
+
 def build_playmaking_truth_profile(player_id: str, as_of_season: str, all_seasons: List[str]) -> PlaymakingTruthProfile:
     """Season-level entry point -- direct id-keyed evidence (no name-resolution adapter needed;
     see playmaking_estimation.py's own module docstring), mirroring
     `player_scoring_truth.build_scoring_truth_profile`'s exact contract."""
     resolution = pid.resolve_id_to_name(player_id)
     estimates = {attr: _estimate(player_id, as_of_season, attr, all_seasons) for attr in PLAYMAKING_ATTRIBUTES}
+    estimates[_AST_PCT_BOX_KEY] = _estimate_ast_pct_box(player_id, as_of_season)
     return PlaymakingTruthProfile(
         player_id=player_id, canonical_name=resolution.canonical_name, as_of_season=as_of_season,
         identity_state=resolution.state, estimates=estimates,
@@ -225,6 +281,19 @@ def build_playmaking_truth_profile_as_of_date(player_id: str, as_of_date: str, a
         provenance = psst.MISSING if base.value is None else psst.PRIOR_SEASON_ONLY
         estimates[attribute] = replace(base, as_of_season=as_of_season, provenance=provenance)
 
+    if not reference_all_seasons:
+        estimates[_AST_PCT_BOX_KEY] = PlaymakingTruthEstimate(
+            name=_AST_PCT_BOX_KEY, player_id=player_id, as_of_season=as_of_season,
+            value=None, confidence=None, sample_size=None,
+            source="player_playmaking_truth (no completed prior season)", param_source=None,
+            coverage_note="no fully-completed prior season exists yet (rookie / first tracked season)",
+            provenance=psst.MISSING,
+        )
+    else:
+        ast_base = _estimate_ast_pct_box(player_id, reference_season)
+        ast_provenance = psst.MISSING if ast_base.value is None else psst.PRIOR_SEASON_ONLY
+        estimates[_AST_PCT_BOX_KEY] = replace(ast_base, as_of_season=as_of_season, provenance=ast_provenance)
+
     return PlaymakingTruthProfile(
         player_id=player_id, canonical_name=resolution.canonical_name, as_of_season=as_of_season,
         identity_state=resolution.state, estimates=estimates, as_of_date=as_of_date,
@@ -233,10 +302,12 @@ def build_playmaking_truth_profile_as_of_date(player_id: str, as_of_date: str, a
 
 def apply_playmaking_truth_to_simulation_profile(profile: PlayerSimulationProfile,
                                                   truth: PlaymakingTruthProfile) -> PlayerSimulationProfile:
-    """Overlays ONLY `playmaking_vision_shrunk_rate` and `ball_security_error_rate` -- NEVER
-    `passing_accuracy_ast_pct` (see module docstring's overlay scale audit: a real, discovered
-    scale mismatch, deliberately not forced). A missing estimate leaves the corresponding field
-    completely untouched (same "replace() only what's real" contract as
+    """Overlays `playmaking_vision_shrunk_rate`, `ball_security_error_rate`, and (CURRENT-SEASON
+    DEFENSE + ROLE REFRESH V1) `passing_accuracy_ast_pct` -- the last from the SEPARATE, real,
+    already-cached box-score AST_PCT source (`_AST_PCT_BOX_KEY`), NOT from this module's own
+    `passing_accuracy` construct (still never overlaid -- see module docstring's overlay scale
+    audit: a real, discovered scale mismatch, deliberately not forced). A missing estimate leaves
+    the corresponding field completely untouched (same "replace() only what's real" contract as
     `player_scoring_truth.apply_scoring_truth_to_simulation_profile`)."""
     overrides = {}
     for attribute, field_name in _TARGET_TO_PROFILE_FIELD.items():
@@ -246,4 +317,7 @@ def apply_playmaking_truth_to_simulation_profile(profile: PlayerSimulationProfil
         if value is None:
             continue
         overrides[field_name] = (1.0 - value) if attribute in _INVERTED_ON_OVERLAY else value
+    ast_pct_value = truth.value(_AST_PCT_BOX_KEY)
+    if ast_pct_value is not None:
+        overrides["passing_accuracy_ast_pct"] = ast_pct_value
     return replace(profile, **overrides) if overrides else profile

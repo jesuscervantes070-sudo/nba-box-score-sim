@@ -94,6 +94,101 @@ def fetch_rim_protection_data(season: str, retries: int = 4, timeout: int = 60):
     raise RuntimeError(f"leaguedashptdefend(Less Than 6Ft, Totals, {season}) failed after {retries} attempts: {last_err}")
 
 
+def _rim_protection_through_date_cache_path(season: str, date_to: str) -> Path:
+    """`date_to` is a real, ISO 'YYYY-MM-DD' cutoff -- always the 1st of a real calendar month
+    this project uses as its date-safe pregame cutoff granularity (see
+    `player_defensive_truth._month_cutoff_for_date`), never an arbitrary date -- keeps the real
+    number of distinct cached files per season small (at most ~7, one per real month boundary)."""
+    return _season_cache_dir(season) / f"player_rim_protection_through_{date_to}.json"
+
+
+def fetch_rim_protection_data_through_date(season: str, date_to: str, retries: int = 4, timeout: int = 60):
+    """CURRENT-SEASON DEFENSE + ROLE REFRESH V1: the SAME real `leaguedashptdefend` endpoint,
+    with its own real, directly-verified `date_to_nullable` parameter (confirmed this phase via
+    direct API introspection -- `inspect.signature(LeagueDashPtDefend.__init__)` lists
+    `date_from_nullable`/`date_to_nullable`/`month_nullable` as real, first-party parameters; a
+    live call with `date_to_nullable` set was verified to return a real, smaller row set than the
+    season-total call). Leaving `date_from_nullable` empty gives real season-to-date CUMULATIVE
+    totals through `date_to` (verified directly: a `date_to`-only call set to the real season's
+    final date returned FGA_LT_06/FGM_LT_06 EXACTLY matching the season-total call with no date
+    filter at all, for a sampled player -- confirming genuine cumulative behavior, not some other
+    aggregation) --
+    exactly the real, low-call-count "genuine league prefix through D" this phase's own
+    instructions call for, not a full-season value silently relabeled with a date.
+    `date_to` (ISO 'YYYY-MM-DD') is converted to the real API's own 'MM/DD/YYYY' format here."""
+    from nba_api.stats.endpoints import leaguedashptdefend
+    y, m, d = date_to.split("-")
+    api_date = f"{m}/{d}/{y}"
+    last_err = None
+    for attempt in range(retries):
+        try:
+            return leaguedashptdefend.LeagueDashPtDefend(
+                season=season, defense_category="Less Than 6Ft", per_mode_simple="Totals",
+                date_to_nullable=api_date, timeout=timeout,
+            ).get_data_frames()[0]
+        except Exception as e:
+            last_err = e
+            time.sleep(2 * (attempt + 1))
+    raise RuntimeError(f"leaguedashptdefend(Less Than 6Ft, Totals, {season}, through {date_to}) failed after {retries} attempts: {last_err}")
+
+
+def build_and_cache_rim_protection_through_date(season: str, date_to: str, force: bool = False) -> Optional[dict]:
+    """Cache-first, one real call per DISTINCT (season, date_to) pair ever actually requested by a
+    real historical snapshot build (lazy -- never a speculative full-season sweep of every
+    possible cutoff). Same real schema as `build_and_cache_rim_protection`, plus the real cutoff
+    date and season-to-date semantics recorded explicitly in the payload."""
+    cache_path = _rim_protection_through_date_cache_path(season, date_to)
+    if cache_path.exists() and not force:
+        with open(cache_path) as f:
+            return json.load(f)
+    if season < RIM_PROTECTION_FIRST_SEASON:
+        return None
+
+    df = fetch_rim_protection_data_through_date(season, date_to)
+    if df is None or len(df) == 0:
+        # Real, honest "no games yet before this cutoff" case (e.g. an early-October cutoff
+        # before the season has tipped off) -- cached as an explicit empty result so a repeated
+        # build for the same real cutoff does not re-issue the same real API call.
+        payload = {"season": season, "date_to": date_to, "source": "leaguedashptdefend(Less Than 6Ft, Totals, date_to)",
+                   "schema_version": RIM_PROTECTION_CACHE_VERSION,
+                   "provenance": "nba_api.stats.endpoints.leaguedashptdefend", "players": {}}
+        _atomic_write(cache_path, payload)
+        return payload
+
+    players = {}
+    for _, row in df.iterrows():
+        pid = str(int(row["CLOSE_DEF_PERSON_ID"]))
+        fga = float(row["FGA_LT_06"])
+        fgm = float(row["FGM_LT_06"])
+        ns_pct = row.get("NS_LT_06_PCT")
+        lt06_pct = row.get("LT_06_PCT")
+        plusminus = row.get("PLUSMINUS")
+        players[pid] = {
+            "player_name": row["PLAYER_NAME"], "gp": int(row["GP"]),
+            "rim_fga_defended": fga, "rim_fgm_allowed": fgm,
+            "rim_fg_pct_allowed": float(lt06_pct) if lt06_pct is not None else None,
+            "rim_expected_fg_pct": float(ns_pct) if ns_pct is not None else None,
+            "rim_suppression_plusminus": -float(plusminus) if plusminus is not None else None,
+            "rim_freq_of_own_defended_shots": float(row["FREQ"]) if row.get("FREQ") is not None else None,
+        }
+
+    payload = {"season": season, "date_to": date_to, "source": "leaguedashptdefend(Less Than 6Ft, Totals, date_to)",
+               "schema_version": RIM_PROTECTION_CACHE_VERSION,
+               "provenance": "nba_api.stats.endpoints.leaguedashptdefend", "players": players}
+    _atomic_write(cache_path, payload)
+    print(f"Cached real season-to-date rim-protection data for {len(players)} players ({season} through {date_to}) -> {cache_path}")
+    return payload
+
+
+def load_rim_protection_through_date(season: str, date_to: str) -> Dict[str, dict]:
+    cache_path = _rim_protection_through_date_cache_path(season, date_to)
+    if not cache_path.exists():
+        payload = build_and_cache_rim_protection_through_date(season, date_to)
+        return payload["players"] if payload else {}
+    with open(cache_path) as f:
+        return json.load(f)["players"]
+
+
 def _atomic_write(path: Path, payload: dict) -> None:
     payload["last_updated"] = datetime.now(timezone.utc).isoformat()
     tmp_path = path.with_suffix(path.suffix + ".tmp")

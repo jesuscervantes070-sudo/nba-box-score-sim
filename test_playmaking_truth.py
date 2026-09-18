@@ -108,21 +108,34 @@ class TestMissingStaysMissing(unittest.TestCase):
 
 
 class TestTargetOnlyOverlay(unittest.TestCase):
-    """F. Target-only overlay -- passing_accuracy is NEVER overlaid (real scale mismatch), only
-    playmaking_vision/ball_security are, and only when real evidence exists."""
+    """F. Target-only overlay -- this module's OWN `passing_accuracy` construct is NEVER overlaid
+    (real scale mismatch, unchanged this phase); `passing_accuracy_ast_pct` IS now overlaid, but
+    from a SEPARATE, real, already-cached box-score AST_PCT source (CURRENT-SEASON DEFENSE + ROLE
+    REFRESH V1 -- see player_playmaking_truth.py's own "AST_PCT DEAD-FIELD RESOLUTION" section),
+    never from this module's `passing_accuracy` estimate itself."""
 
-    def test_f_passing_accuracy_never_touches_the_engine_field(self):
+    def test_f_passing_accuracy_construct_never_drives_the_engine_field(self):
+        # the module's own `passing_accuracy` target stays SCALE_INCOMPATIBLE and unused for the
+        # overlay -- confirmed directly via the field-mapping table, not by expecting the engine
+        # field to stay at its synthetic default (a SEPARATE real source now legitimately moves it).
+        self.assertIsNone(ppt._TARGET_TO_PROFILE_FIELD["passing_accuracy"])
+
+    def test_f_ast_pct_overlay_uses_the_real_box_score_source_not_the_passing_accuracy_construct(self):
         profile = ppt.build_playmaking_truth_profile(CHRIS_PAUL, "2023-24", _SEASONS)
         baseline = PlayerSimulationProfile.synthetic(CHRIS_PAUL, "HOME")
         result = ppt.apply_playmaking_truth_to_simulation_profile(baseline, profile)
-        self.assertEqual(result.passing_accuracy_ast_pct, baseline.passing_accuracy_ast_pct)
+        # the overlaid value must equal the SEPARATE ast_pct_box estimate, not this module's own
+        # passing_accuracy (bad-pass-avoidance, ~0.96-0.99 range) value.
+        ast_pct_box_value = profile.value(ppt._AST_PCT_BOX_KEY)
+        self.assertEqual(result.passing_accuracy_ast_pct, ast_pct_box_value)
+        self.assertNotEqual(result.passing_accuracy_ast_pct, profile.value("passing_accuracy"))
 
-    def test_f_overlay_touches_only_the_two_target_fields(self):
+    def test_f_overlay_touches_only_the_three_target_fields(self):
         from dataclasses import fields
         profile = ppt.build_playmaking_truth_profile(CHRIS_PAUL, "2023-24", _SEASONS)
         baseline = PlayerSimulationProfile.synthetic(CHRIS_PAUL, "HOME")
         result = ppt.apply_playmaking_truth_to_simulation_profile(baseline, profile)
-        touched = {"playmaking_vision_shrunk_rate", "ball_security_error_rate"}
+        touched = {"playmaking_vision_shrunk_rate", "ball_security_error_rate", "passing_accuracy_ast_pct"}
         for f in fields(PlayerSimulationProfile):
             if f.name in touched:
                 continue

@@ -80,7 +80,7 @@ from typing import Dict, List, Optional, Tuple
 import player_scoring_truth_temporal as psst  # reused for the SAME provenance vocabulary, not redefined
 import role_off_analysis as roa
 import role_off_ingestion as roi
-from player_team_stints import team_as_of_date, current_team, was_traded
+from player_team_stints import team_as_of_date, current_team, was_traded, team_stints_for_player
 from possession_orchestrator import PlayerSimulationProfile
 from role_off_profile import MEASURED_TRACKING
 
@@ -248,6 +248,56 @@ def _estimate(player_id: str, as_of_season: str, attribute: str, team_name: Opti
     )
 
 
+_ROLE_SCORING_FIELD = {"role_off_finishing": "PCT_AST_FGM", "role_off_spacing": "PCT_AST_3PM"}
+_CURRENT_SEASON_MIN_MINUTES = roa.MIN_MINUTES  # SAME real exposure floor role_off_analysis's own
+# role_off_finishing/role_off_spacing extractors already use -- not a new, separately-tuned floor.
+
+
+def _estimate_current_season_scoring_role(player_id: str, as_of_date: str, as_of_season: str,
+                                           attribute: str, team_name: Optional[str]) -> Optional[RoleTruthEstimate]:
+    """CURRENT-SEASON DEFENSE + ROLE REFRESH V1: `role_off_finishing`/`role_off_spacing` ONLY (NOT
+    `role_off_initiation` -- out of this phase's scope). Returns None (never a fabricated value)
+    if no real current-season-through-cutoff evidence exists yet or exposure is below the real
+    floor -- the caller falls back to the existing PRIOR_SEASON_ONLY path in that case. Uses a
+    real `leaguedashplayerstats(Scoring, date_to=month_cutoff)` cumulative pull (see
+    `role_off_ingestion.build_and_cache_role_scoring_through_date`'s own docstring for the real
+    date-safety argument) -- PCT_AST_FGM/PCT_AST_3PM are the EXACT SAME real fields/semantics the
+    existing PRIOR_SEASON_ONLY path already uses, just filtered to real evidence strictly before
+    `as_of_date` instead of the full completed prior season. No new shrinkage math is introduced
+    (role fields use exposure-based confidence, not Bayesian shrinkage, per this module's own
+    existing convention) -- the real current-season MIN is used directly as `sample_size`."""
+    stints_so_far = [s for s in team_stints_for_player(player_id, as_of_season) if s.first_date <= as_of_date]
+    if len(stints_so_far) > 1:
+        # A real, deliberate safety choice (per this phase's own trade-handling instruction): a
+        # single league-wide cumulative-through-cutoff pull cannot distinguish which TEAM a
+        # player's minutes/PCT_AST_* accrued under -- for a player with more than one real stint
+        # ALREADY VISIBLE as of `as_of_date` (a trade that has genuinely already happened pregame),
+        # using it would silently BLEND old-team and new-team role into one number. Falling back to
+        # the existing PRIOR_SEASON_ONLY path is the safe choice. Deliberately checks stints
+        # up to `as_of_date` ONLY (not `player_team_stints.was_traded`'s whole-season check) --
+        # a real, discovered leakage risk: the whole-season check would flip this player's
+        # provenance based on a trade that has NOT happened yet from `as_of_date`'s own pregame
+        # perspective, which a target/future-game poison test would (correctly) catch as leakage.
+        return None
+    field = _ROLE_SCORING_FIELD[attribute]
+    month_cutoff = psst.month_cutoff_for_date(as_of_date)
+    rows = roi.load_role_scoring_through_date(as_of_season, month_cutoff)
+    row = rows.get(player_id)
+    if row is None:
+        return None
+    minutes = row.get("MIN")
+    value = row.get(field)
+    if minutes is None or value is None or minutes < _CURRENT_SEASON_MIN_MINUTES:
+        return None
+    return RoleTruthEstimate(
+        name=attribute, player_id=player_id, as_of_season=as_of_season, value=value,
+        confidence=_confidence_from_minutes(int(minutes)), sample_size=int(minutes),
+        source=f"role_off_ingestion.load_role_scoring_through_date (real, through {month_cutoff})",
+        param_source="none (exposure-based confidence, no shrinkage)", team_name=team_name,
+        coverage_note=f"real current-season evidence through {month_cutoff}", provenance=psst.CURRENT_SEASON_PREGAME,
+    )
+
+
 def build_role_truth_profile(player_id: str, as_of_season: str) -> RoleTruthProfile:
     """Season-level entry point -- id-keyed directly (role_off_estimation.build_role_profile
     already takes a player_id). Reports the current (last-stint) team for context; a mid-season
@@ -284,6 +334,11 @@ def build_role_truth_profile_as_of_date(player_id: str, as_of_date: str, as_of_s
 
     estimates: Dict[str, RoleTruthEstimate] = {}
     for attribute in ROLE_ATTRIBUTES:
+        current = (_estimate_current_season_scoring_role(player_id, as_of_date, as_of_season, attribute, team_name)
+                   if attribute in _ROLE_SCORING_FIELD else None)
+        if current is not None:
+            estimates[attribute] = current
+            continue
         base = _estimate(player_id, reference_season, attribute, team_name,
                           "pregame: value from last completed season", psst.PRIOR_SEASON_ONLY)
         if base.value is None:

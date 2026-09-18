@@ -371,7 +371,28 @@ class PlayerSimulationProfile:
            this task requires, not a context-compensating hack baked into the skill itself.
            `free_throw_shrunk_rate` (0.78) was NOT changed -- FT resolution has no context terms at
            all, and TRAIN/HELDOUT FT% (79.3%/76.7%) already both landed inside this task's own
-           target band (.77-.80) unmodified.
+
+        `free_throw_shrunk_rate` (0.78) was NOT changed -- FT resolution has no context terms at
+        all, and TRAIN/HELDOUT FT% (79.3%/76.7%) already both landed inside this task's own
+        target band (.77-.80) unmodified.
+
+        CURRENT-SEASON DEFENSE + ROLE REFRESH V1 -- a REAL, DISCOVERED discrepancy, same class as
+        (1) above, found while auditing `rim_access_creation_shrunk_rate`'s zero-variance status
+        (see `player_creation_truth.py`, new this phase, which wires a real, already-built
+        estimator to this field for the first time): `drive_resolution.py`'s own
+        `RIM_ACCESS_POPULATION_MEAN` is 0.622 (checked directly), not 0.5 -- every synthetic
+        "average" driver has been carrying a real, systematic -0.976 SD penalty on rim-access
+        leverage ((0.5-0.622)/0.125). Unlike (1) above, this was NOT corrected in this same
+        phase -- changing this default measurably shifted several PRE-EXISTING possession-
+        mechanics baseline tests' expected numeric ranges (four real, unrelated test files
+        covering block occurrence, shot-conversion diagnosis, and turnover accounting/diagnosis --
+        deliberately not spelled out as importable module names here, since this docstring lives
+        inside a module one of those same tests asserts never references it by name), which this
+        phase's own scope explicitly forbids touching ("Do NOT broadly reopen scoring, rebounding,
+        playmaking, possession mechanics, or calibration"). Documented here, left UNCHANGED,
+        flagged for a dedicated future calibration-safety phase that can update those baseline
+        tests' expected ranges in the same pass as the fix -- not silently fixed with collateral,
+        out-of-scope test breakage.
         """
         defaults = dict(
             three_point_shrunk_rate=0.37, midrange_shrunk_rate=0.44,

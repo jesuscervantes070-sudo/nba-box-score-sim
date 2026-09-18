@@ -317,3 +317,39 @@ def clear_reference_caches() -> None:
     those files are static for the life of the process. Call this after mutating any of them
     mid-process (e.g. a leakage-poison test)."""
     build_player_rim_rows.cache_clear()
+    build_player_rim_rows_through_date.cache_clear()
+
+
+@functools.lru_cache(maxsize=None)
+def build_player_rim_rows_through_date(season: str, date_to: str) -> List[PlayerRimRow]:
+    """CURRENT-SEASON DEFENSE + ROLE REFRESH V1: the date-safe, real season-to-date parallel to
+    `build_player_rim_rows` -- built from `rim_protection_ingestion.load_rim_protection_through_date`
+    (a real `leaguedashptdefend` cumulative-through-`date_to` pull, never the full-season cache).
+
+    Deliberately does NOT join the season-level advanced-stat/team/foul auxiliary fields
+    (`minutes`, `reb_pct`, `usg_pct`, `blk_per36`, `team_name`, `shooting_foul_committed`) that
+    `build_player_rim_rows` attaches -- those come from `loader.load_player_advanced_stats`/
+    `load_teams`/`foul_ingestion.load_foul_cache`, which for an IN-PROGRESS current season are
+    real SEASON-END aggregates once cached (this project builds those caches post-hoc), not
+    date-safe as-of-`date_to` values. Since `suppression_rate`/`weight_value("rim_fga_defended")`
+    -- the only two functions this row type feeds into the actual shrinkage/estimate pipeline --
+    never read those auxiliary fields, leaving them `None` here is a real, deliberate leakage
+    guard, not an oversight; they stay real and populated on `build_player_rim_rows`'s own
+    season-level rows (diagnostic/analysis use only, never used by `rim_protection_estimation.py`'s
+    core value computation) and PRIOR completed-season rows already used by the shrinkage history.
+    """
+    rim_data = rpi.load_rim_protection_through_date(season, date_to)
+    if not rim_data:
+        return []
+    rows = []
+    for player_id, rrow in rim_data.items():
+        rows.append(PlayerRimRow(
+            player_id=player_id, player_name=rrow["player_name"], season=season, team_name=None,
+            rim_fga_defended=rrow["rim_fga_defended"], rim_fgm_allowed=rrow["rim_fgm_allowed"],
+            rim_fg_pct_allowed=rrow.get("rim_fg_pct_allowed"), rim_expected_fg_pct=rrow.get("rim_expected_fg_pct"),
+            rim_suppression_plusminus=rrow.get("rim_suppression_plusminus"),
+            rim_freq_of_own_defended_shots=rrow.get("rim_freq_of_own_defended_shots"),
+            blk_per36=None, minutes=None, reb_pct=None, usg_pct=None,
+            shooting_foul_committed=None, gp=rrow.get("gp"),
+        ))
+    return rows

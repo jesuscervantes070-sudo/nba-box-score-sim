@@ -213,6 +213,31 @@ def estimate_rim_protection_by_id(player_id: str, as_of_season: str, all_seasons
     return resolution, rpe.estimate_rim_protection(resolution.canonical_name, as_of_season, all_seasons)
 
 
+def estimate_rim_protection_as_of_date_by_id(player_id: str, as_of_date: str, as_of_season: str,
+                                              all_seasons: List[str], month_cutoff: str):
+    """Adapter over the UNMODIFIED rim_protection_estimation.estimate_rim_protection_as_of_date
+    (CURRENT-SEASON DEFENSE + ROLE REFRESH V1). Returns
+    (IdentityResolution, RimProtectionReport_or_None); real math/calibration untouched."""
+    import rim_protection_estimation as rpe
+    resolution = resolve_id_to_name(player_id)
+    if resolution.state != RESOLVED:
+        return resolution, None
+    return resolution, rpe.estimate_rim_protection_as_of_date(
+        resolution.canonical_name, as_of_date, as_of_season, all_seasons, month_cutoff)
+
+
+def estimate_rim_access_creation_by_id(player_id: str, as_of_season: str, all_seasons: List[str]):
+    """Adapter over the UNMODIFIED shot_creation_estimation.estimate_rim_access_creation
+    (Phase 9, real, already-calibrated -- never wired to any real player overlay until this phase,
+    see player_creation_truth.py). Returns (IdentityResolution, CreationComponentReport_or_None);
+    real math/calibration inside estimate_rim_access_creation is untouched."""
+    import shot_creation_estimation as sce
+    resolution = resolve_id_to_name(player_id)
+    if resolution.state != RESOLVED:
+        return resolution, None
+    return resolution, sce.estimate_rim_access_creation(resolution.canonical_name, as_of_season, all_seasons)
+
+
 def estimate_poa_containment_by_id(player_id: str, as_of_season: str, all_seasons: List[str]):
     """Adapter over the UNMODIFIED poa_containment_estimation.estimate_poa_containment (Phase 10).
     Returns (IdentityResolution, PoaContainmentReport_or_None); real math/calibration inside

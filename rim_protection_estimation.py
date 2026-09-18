@@ -45,6 +45,10 @@ class RimProtectionReport:
     param_source: str = "provisional"
     blk_per36: Optional[float] = None  # auxiliary, for the report's own overlap-with-blocks display
     coverage_note: str = ""
+    used_current_season_evidence: bool = False  # True only for estimate_rim_protection_as_of_date
+    # reports that actually found a real current-season-through-cutoff row for this player --
+    # False (the default) for every ordinary season-level `estimate_rim_protection` report, and
+    # for as_of_date reports that fell back to prior-season-only history.
 
 
 def _resolve_params():
@@ -139,3 +143,99 @@ def result_to_attribute_estimate(report: RimProtectionReport) -> AttributeEstima
     confidence = {"high": 0.8, "medium": 0.5, "low": 0.2}.get(report.confidence, 0.2)
     sample_size = int(round(report.rim_fga_defended)) if report.rim_fga_defended else None
     return AttributeEstimate(value=report.rating_0_99, confidence=confidence, sample_size=sample_size)
+
+
+def estimate_rim_protection_as_of_date(player_name: str, as_of_date: str, as_of_season: str,
+                                        all_seasons: List[str], month_cutoff: str,
+                                        min_exposure: float = 30.0) -> RimProtectionReport:
+    """CURRENT-SEASON DEFENSE + ROLE REFRESH V1: the date-safe pregame parallel to
+    `estimate_rim_protection`. Shrinkage history = every real PRIOR COMPLETED season (season <
+    as_of_season, exactly as the existing PRIOR_SEASON_ONLY path already uses) PLUS one additional,
+    real, CURRENT-SEASON entry built from `rpa.build_player_rim_rows_through_date(as_of_season,
+    month_cutoff)` -- a genuine season-to-date cumulative pull through `month_cutoff` (a real
+    calendar-month boundary strictly before `as_of_date`, never the full current season). The
+    current-season entry is labeled with `as_of_season` itself in the shrinkage history, so the
+    EXISTING, UNCHANGED `rim_protection_calibration._shrunk_rate` recency-decay math (age =
+    as_of_year - season_year) naturally gives it age=0 (maximum recency weight) -- no new
+    shrinkage math, no new formula, the SAME calibrated lambda/M this project already uses.
+
+    League-average reference is computed from the SAME current-season-through-`month_cutoff` rows
+    when any exist (a genuine "league prefix through D", per this phase's own instruction) --
+    falling back to the prior-season-only reference population when the current season has no
+    real evidence yet before `month_cutoff` (e.g. a cutoff before the season's own tip-off, or an
+    empty cumulative pull). Never blends in full-season (leaking) current-season rows.
+    """
+    report = RimProtectionReport(player_name=player_name, season=as_of_season)
+    if as_of_season < rpi.RIM_PROTECTION_FIRST_SEASON:
+        report.coverage_note = f"Before the real rim-tracking floor ({rpi.RIM_PROTECTION_FIRST_SEASON})."
+        return report
+
+    lam, M, param_source = _resolve_params()
+    report.param_source = param_source
+    report.mode = MODE_MODERN_TRACKING
+
+    prior_seasons = [s for s in all_seasons if s < as_of_season and s >= rpi.RIM_PROTECTION_FIRST_SEASON]
+    rows_by_season = {s: rpa.build_player_rim_rows(s) for s in prior_seasons}
+    current_rows = rpa.build_player_rim_rows_through_date(as_of_season, month_cutoff)
+    rows_by_season[as_of_season] = current_rows
+
+    player_row = next((r for r in current_rows if r.player_name == player_name), None)
+    used_current_season_row = player_row is not None
+    if player_row is None:
+        # no real current-season-through-cutoff evidence for this player -- fall back to the most
+        # recent PRIOR completed season's own row as the "current" observation point for raw_rate
+        # reporting (history/shrinkage below still only uses REAL rows, never a fabricated one).
+        for s in sorted(prior_seasons, reverse=True):
+            player_row = next((r for r in rows_by_season[s] if r.player_name == player_name), None)
+            if player_row is not None:
+                break
+    if player_row is None:
+        report.coverage_note = "No real rim-protection tracking evidence for this player through any available season."
+        return report
+
+    report.rim_fga_defended = player_row.rim_fga_defended
+    report.rim_fgm_allowed = player_row.rim_fgm_allowed
+    report.rim_expected_fg_pct = player_row.rim_expected_fg_pct
+
+    raw_rate = rpa.suppression_rate(player_row, min_exposure)
+    if raw_rate is None:
+        report.confidence = "low"
+        report.coverage_note = (f"Real rim-defense opportunity ({player_row.rim_fga_defended:.0f} attempts) is "
+                                 f"below the {min_exposure:.0f}-attempt floor -- insufficient sample, not evidence "
+                                 f"of poor rim protection.")
+        return report
+    report.raw_rate = raw_rate
+
+    history: List[tuple] = []
+    for s in sorted(rows_by_season.keys()):
+        rows = rows_by_season[s]
+        row = next((r for r in rows if r.player_name == player_name), None)
+        if row is None:
+            continue
+        rate = rpa.suppression_rate(row, min_exposure)
+        if rate is None:
+            continue
+        history.append((s, rate, row.rim_fga_defended))
+
+    # league average: prefer the real current-season-through-cutoff population (a genuine "league
+    # prefix through D"); fall back to the most recent prior completed season's population only
+    # when the current season has no real evidence yet.
+    reference_rows = current_rows if current_rows else (rows_by_season.get(max(prior_seasons)) if prior_seasons else [])
+    all_rates = [r for r in (rpa.suppression_rate(row, min_exposure) for row in reference_rows) if r is not None]
+    league_avg = sum(all_rates) / len(all_rates) if all_rates else None
+
+    if league_avg is None:
+        report.shrunk_rate = raw_rate
+    else:
+        shrunk = rpc._shrunk_rate(history, int(as_of_season[:4]), lam, M, league_avg)
+        report.shrunk_rate = shrunk if shrunk is not None else raw_rate
+
+    report.rating_0_99 = _percentile(report.shrunk_rate, all_rates)
+    total_weight = sum(w for _, _, w in history)
+    report.confidence = "high" if (param_source == "calibrated" and total_weight >= 5 * M) else "medium"
+    report.used_current_season_evidence = used_current_season_row
+    report.coverage_note = (
+        f"{len(history)} season(s) of real rim-tracking evidence, {total_weight:.0f} total real rim attempts "
+        f"defended. {'Includes a real current-season-through-' + month_cutoff + ' observation.' if used_current_season_row else 'No real current-season evidence yet before ' + month_cutoff + ' -- prior-season history only.'}"
+    )
+    return report

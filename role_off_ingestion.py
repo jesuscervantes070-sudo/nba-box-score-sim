@@ -121,6 +121,72 @@ def fetch_scoring_stats(season: str, date_from: Optional[str] = None, date_to: O
     raise RuntimeError(f"leaguedashplayerstats(Scoring, {season}, {date_from}-{date_to}) failed after {retries} attempts: {last_err}")
 
 
+def _role_scoring_through_date_cache_path(season: str, date_to: str) -> Path:
+    return _season_cache_dir(season) / f"player_role_scoring_through_{date_to}.json"
+
+
+def build_and_cache_role_scoring_through_date(season: str, date_to: str, force: bool = False) -> Optional[dict]:
+    """CURRENT-SEASON DEFENSE + ROLE REFRESH V1: a real, cumulative-through-`date_to` pull for the
+    two V1 role-refresh targets' real source fields, `date_to` set to a real calendar-month
+    boundary (see `player_scoring_truth_temporal.month_cutoff_for_date`). Verified directly this
+    phase: `date_to_nullable` accepts plain ISO 'YYYY-MM-DD' strings identically to 'MM/DD/YYYY'.
+
+    REAL, DISCOVERED QUIRK (found and fixed while building this cache, not silently papered over):
+    `leaguedashplayerstats(measure_type_detailed_defense="Scoring")`'s own `MIN` column is a
+    PER-GAME AVERAGE even at `per_mode_detailed="Totals"` (verified directly: a full-season,
+    no-date-filter call returned `MIN=34.1, GP=76` for a real 76-game starter -- 34.1 is that
+    player's real per-game average, not a real ~2,590-minute season total). Using it as an
+    exposure/sample-size floor would silently make EVERY player fail a real minutes-based gate.
+    The EXISTING full-season `build_and_cache_role_off` above never has this bug -- its own `MIN`
+    field comes from `leaguedashptstats(Possessions)` (a DIFFERENT endpoint), confirmed here to be
+    genuinely cumulative (`GP=18, MIN=583` through a real December cutoff vs `GP=76, MIN=2593` for
+    the same player's full season -- both consistent with real per-game averages). This cache
+    fetches BOTH real endpoints through the SAME `date_to` and uses Possessions' MIN as the real
+    exposure floor, exactly matching the existing season-level convention's own semantics -- not a
+    new, separately-invented floor."""
+    cache_path = _role_scoring_through_date_cache_path(season, date_to)
+    if cache_path.exists() and not force:
+        with open(cache_path) as f:
+            return json.load(f)
+    if season < ROLE_TRACKING_FIRST_SEASON:
+        return None
+
+    scoring_df = fetch_scoring_stats(season, date_to=date_to)
+    poss_df = fetch_pt_stats(season, "Possessions", date_to=date_to)
+    if scoring_df is None or len(scoring_df) == 0 or poss_df is None or len(poss_df) == 0:
+        payload = {"season": season, "date_to": date_to, "schema_version": ROLE_CACHE_VERSION,
+                   "source": "leaguedashplayerstats(Scoring, date_to)+leaguedashptstats(Possessions, date_to)",
+                   "players": {}}
+        _atomic_write(cache_path, payload)
+        return payload
+
+    min_by_id = {str(int(row["PLAYER_ID"])): _clean(row.get("MIN")) for _, row in poss_df.iterrows()}
+
+    players = {}
+    for _, row in scoring_df.iterrows():
+        pid = str(int(row["PLAYER_ID"]))
+        players[pid] = {
+            "player_name": row["PLAYER_NAME"], "MIN": min_by_id.get(pid),  # real cumulative total, from Possessions
+            "PCT_AST_FGM": _clean(row.get("PCT_AST_FGM")), "PCT_AST_3PM": _clean(row.get("PCT_AST_3PM")),
+        }
+
+    payload = {"season": season, "date_to": date_to, "schema_version": ROLE_CACHE_VERSION,
+               "source": "leaguedashplayerstats(Scoring, date_to)+leaguedashptstats(Possessions, date_to)",
+               "players": players}
+    _atomic_write(cache_path, payload)
+    print(f"Cached real season-to-date role-scoring evidence for {len(players)} players ({season} through {date_to}) -> {cache_path}")
+    return payload
+
+
+def load_role_scoring_through_date(season: str, date_to: str) -> Dict[str, dict]:
+    cache_path = _role_scoring_through_date_cache_path(season, date_to)
+    if not cache_path.exists():
+        payload = build_and_cache_role_scoring_through_date(season, date_to)
+        return payload["players"] if payload else {}
+    with open(cache_path) as f:
+        return json.load(f)["players"]
+
+
 def build_and_cache_role_off(season: str, force: bool = False) -> Optional[dict]:
     """Full-season role evidence, keyed by real player_id. This is the
     general estimator's input -- NOT the natural-experiment windows

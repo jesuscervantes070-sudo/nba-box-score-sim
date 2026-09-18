@@ -1,0 +1,20 @@
+{
+  "rim_protection": {
+    "n_new": 152,
+    "n_old": 152,
+    "new_refreshed_r": 0.09765816522598586,
+    "old_prior_season_only_r": -0.19212525050046908
+  },
+  "role_off_finishing": {
+    "n_new": 152,
+    "n_old": 152,
+    "new_refreshed_r": -0.12333772031485009,
+    "old_prior_season_only_r": -0.37092084202727593
+  },
+  "role_off_spacing": {
+    "n_new": 152,
+    "n_old": 152,
+    "new_refreshed_r": -0.09419911479627077,
+    "old_prior_season_only_r": -0.3841758609456047
+  }
+}

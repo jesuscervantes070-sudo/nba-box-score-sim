@@ -113,6 +113,23 @@ def _season_before(season: str) -> str:
     return f"{prev_start}-{str(prev_start + 1)[-2:]}"
 
 
+def month_cutoff_for_date(as_of_date: str) -> str:
+    """CURRENT-SEASON DEFENSE + ROLE REFRESH V1: the real, deterministic pregame cutoff
+    granularity shared by the current-season rim-protection and role-finishing/spacing paths --
+    the 1st of the calendar month STRICTLY BEFORE `as_of_date` (if `as_of_date` is itself the 1st
+    of a month, backs up one further month), so a real `date_to_nullable=month_cutoff` API pull
+    always covers evidence strictly earlier than `as_of_date`, with a full day-or-more safety
+    margin by construction -- never a same-day or same-month boundary. Bounds the real number of
+    distinct (season, cutoff) API pulls ever needed to at most ~7/season (one per real calendar
+    month in an Oct-Apr regular season), matching this phase's own low-call-count mandate."""
+    y, m, d = int(as_of_date[:4]), int(as_of_date[5:7]), int(as_of_date[8:10])
+    if d == 1:
+        m -= 1
+        if m == 0:
+            m, y = 12, y - 1
+    return f"{y:04d}-{m:02d}-01"
+
+
 @lru_cache(maxsize=None)
 def _prefix_ledger_for(player_id: str, season: str) -> Optional[Tuple[Tuple[str, str], Tuple[Tuple[int, ...], ...]]]:
     """(sorted (date, game_id) keys, cumulative prefix sums) for one player/season, or None if this

@@ -59,6 +59,7 @@ import player_playmaking_truth as ppt
 import player_rebounding_truth as prt_reb
 import player_defensive_truth as pdt
 import player_role_truth as prt_role
+import player_creation_truth as pct
 import player_rotation_truth as prt_rot
 import rebound_engine_adapter as rebound_adapter
 import defensive_engine_adapter as defense_adapter
@@ -108,6 +109,9 @@ _build_defensive_truth_cached = functools.lru_cache(maxsize=4096)(
 _build_role_truth_cached = functools.lru_cache(maxsize=4096)(
     lambda player_id, as_of_date, as_of_season:
     prt_role.build_role_truth_profile_as_of_date(player_id, as_of_date, as_of_season))
+_build_creation_truth_cached = functools.lru_cache(maxsize=4096)(
+    lambda player_id, as_of_date, as_of_season, all_seasons:
+    pct.build_creation_truth_profile_as_of_date(player_id, as_of_date, as_of_season, list(all_seasons)))
 
 
 def clear_estimator_caches() -> None:
@@ -140,6 +144,7 @@ def clear_estimator_caches() -> None:
     _build_rebounding_truth_cached.cache_clear()
     _build_defensive_truth_cached.cache_clear()
     _build_role_truth_cached.cache_clear()
+    _build_creation_truth_cached.cache_clear()
     ti.clear_reference_caches()
     rpa.clear_reference_caches()
     fa.clear_reference_caches()
@@ -257,12 +262,16 @@ def _build_player_entry(player_id: str, team_name: str, side: str, as_of_date: s
     role_truth = _build_role_truth_cached(player_id, as_of_date, as_of_season)
     profile = prt_role.apply_role_truth_to_simulation_profile(profile, role_truth)
 
+    creation_truth = _build_creation_truth_cached(player_id, as_of_date, as_of_season, all_seasons_key)
+    profile = pct.apply_creation_truth_to_simulation_profile(profile, creation_truth)
+
     provenance = {
         "scoring": _summarize_provenance(scoring_truth),
         "playmaking": _summarize_provenance(playmaking_truth),
         "rebounding": _summarize_provenance(rebounding_truth),
         "defense": _summarize_provenance(defensive_truth),
         "role": _summarize_provenance(role_truth),
+        "creation": _summarize_provenance(creation_truth),
     }
 
     return PlayerSnapshotEntry(
