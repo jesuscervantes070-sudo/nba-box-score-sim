@@ -1,185 +1,58 @@
 """
-The actual game-simulation engine: takes real per-game averages and
+The season-simulation engine: takes real per-player per-game averages and
 generates a single, realistic simulated game.
 
-Three random-draw tools do all the work here:
+Three random-draw tools:
 
-  - Negative Binomial (_negative_binomial_count): generates a random
-    whole-number COUNT centered on a real average -- mostly close to that
-    average, but with a deliberately fat tail so genuinely historic
-    good/bad nights are rare but possible, not just background noise.
-    (A plain Poisson draw was tried first and rejected -- its spread is
-    mathematically locked to always equal its mean, which made truly
-    wild nights nearly impossible. Negative Binomial adds an independent
-    "dispersion" knob that controls tail fatness without changing the
-    average at all.)
+  - Negative Binomial (_negative_binomial_count): a random count centered
+    on a real average, with a fat tail so outlier nights are rare but
+    possible. Plain Poisson was rejected -- its spread is locked to its
+    mean, making wild nights nearly impossible. Negative Binomial's
+    dispersion parameter controls tail fatness independent of the mean.
 
-  - Binomial (_binomial_draw): the classic "flip N weighted coins, count
-    how many land heads" tool. Used for turning attempts into makes,
-    weighted by the player's real shooting %, and for splitting a total
-    into one of its real subsets (3PA out of FGA, OREB out of REB) using
-    the player's real ratio as the split's odds -- this makes it
-    STRUCTURALLY IMPOSSIBLE for the subset to exceed the total, rather
-    than a rule we'd have to remember to enforce separately.
+  - Binomial (_binomial_draw): converts attempts to makes using the
+    player's real shooting %, and splits a total into a real subset
+    (3PA of FGA, OREB of REB) using the player's real ratio as odds --
+    the subset structurally cannot exceed the total.
 
-  - Dirichlet-Multinomial (_dirichlet_multinomial_split): splits a FIXED
-    team-wide total across every player on the roster, using each
-    player's real share as the split's expected proportion, but letting
-    that split wobble realistically from game to game (controlled by
-    USAGE_CONCENTRATION). This is the tool that fixes team-level
-    realism -- see the long explanation below for why it was needed.
+  - Dirichlet-Multinomial (_dirichlet_multinomial_split): splits a fixed
+    team-wide total across the roster by each player's real expected
+    share, letting that share wobble game to game (USAGE_CONCENTRATION).
 
-DISPERSION below was tuned by actually testing it, not guessed: with
-DISPERSION=30, a 22.8 FGA/game player (Luka-level shot volume) hits a
-40+ shot night about 0.9% of the time (roughly once every season and a
-half) and a sub-10-shot night about 1.4% of the time -- rare, but real,
-the way actual "legendary" or "quiet" nights are, rather than either an
-everyday occurrence or a statistical impossibility.
+Team totals: a full roster's real per-game minutes sum to well over the
+240 a game actually has to give out (5 players x 48 minutes), so minutes
+are the one truly fixed team resource -- split from a real 240-minute
+pool (_simulate_team_minutes). Every other stat is generated from a
+player's real per-minute rate times their simulated minutes, not their
+flat average, so a shortened night (foul trouble, rest) scales the whole
+line down together. Shot attempts use the same Dirichlet-Multinomial
+split as minutes (TEAM_ATTEMPTS_DISPERSION for the team total,
+USAGE_CONCENTRATION for how the split wobbles) rather than summing
+independent per-player draws, which would make team variance add up
+across ~15 players into unrealistically wide team totals.
 
-Fouling out needed an EXTRA fix beyond just dispersion, discovered by
-testing: raising dispersion approaches a plain Poisson draw, but even
-pure Poisson already gives a 4.7-real-PF/game player (the most
-foul-prone real player in the league right now) a ~33% chance of
-hitting 6 fouls in a single game -- a third of games is clearly wrong.
-That's because real coaches actively manage foul trouble (sitting a
-player down before it gets that bad), which a simple per-stat random
-draw has no way to know about on its own. FOUL_OUT_LEAK_PROBABILITY
-below patches that in directly: even when the random draw DOES reach
-the foul-out zone, it only actually results in a foul-out some small
-fraction of the time.
+Defense: a shot's make-probability blends the shooter's real % with the
+defending team's real opponent-FG%-allowed. Steals remove an attempt
+before it happens (TOV/STL credited); blocks overturn an already-made
+2pt shot into a miss (BLK credited); both are scaled by the defense's
+own real STL/BLK rate relative to league average.
 
-TEAM-LEVEL realism needed a THIRD, much bigger fix, found by testing a
-full simulated game rather than one player at a time. Two compounding
-problems showed up:
+A team's real FG%/FGA are already net of its own average steal/block
+rate, so applying a defense's full rate on top double-counts that
+league-average effect. _finish_shooting and _resolve_team_offense gross
+real_2pt_pct/expected_fga back up by the league-average rate before the
+opposing defense's real rate is applied, so an exactly-average defense
+nets back to the player's real numbers and an above/below-average
+defense still correctly pushes below/above them; STL/BLK box totals
+still use the full rate.
 
-  1. Summing ~15-17 independently-random players makes their variances
-     ADD UP, so even though each player was individually well-tuned
-     (proven with Luka), team totals came out far more spread out than
-     real teams ever are (simulated team scores were reaching 229-230 --
-     the modern NBA single-game record is ~173).
-
-  2. The deeper cause: a full NBA roster's real per-game minutes ADD UP
-     to over 330 (checked directly against real 2025-26 data), but a
-     real game only ever has 240 total player-minutes to hand out (5
-     players x 48 minutes). The sim was generating independent stats for
-     every rostered player as if they ALL played major, uncorrelated
-     minutes every single night -- stacking far more independent noise
-     into every team total than a real ~9-10 man rotation ever produces.
-
-The fix: minutes became the one TRULY fixed team resource, split across
-the roster from a real 240-minute pool (_simulate_team_minutes), and
-every other stat (attempts, rebounds, assists, steals, blocks,
-turnovers, fouls) is now generated from each player's real PER-MINUTE
-rate times their ACTUAL simulated minutes for that game -- not their
-flat full-game average. A player who only plays half their normal
-minutes now produces roughly half as much of everything, which also
-means fouling out finally reduces a player's whole stat line, not just
-their minutes (previously minutes and every other stat were simulated
-completely independently of each other, which was itself inconsistent).
-
-Team-total shot attempts (which directly drive score) use the
-Dirichlet-Multinomial split for the same reason minutes does: a
-realistic, tunable TEAM total (TEAM_ATTEMPTS_DISPERSION), divided
-across players by their minutes-scaled expected share, with a SEPARATE
-tunable knob (USAGE_CONCENTRATION) for how much that division itself
-wobbles game to game -- two independent knobs instead of one, which is
-what a plain "give everyone their own independent random draw" approach
-could never provide, no matter how it was tuned (there's a hard
-mathematical floor -- a Negative Binomial's variance can never go below
-its own mean -- that a single shared knob can't get under).
-
-DEFENSE needed a FOURTH fix, found only after simulating a full season
-and comparing it to the real 2025-26 standings: every real strong team
-(Oklahoma City: 64 real wins) came back far too weak (39 simulated),
-and every real weak team (Washington: 17 real wins) came back far too
-strong (37 simulated) -- a systematic squeeze toward .500, not random
-noise. The cause: a team's simulated score depended ENTIRELY on their
-OWN real offensive stats, with zero regard for who they were playing --
-OKC's real defense (allowing the league's lowest opponent FG%) had no
-mechanism to actually suppress an opponent's shooting in the sim.
-
-Two things were fixed together, both tying stats that were previously
-decorative to what they actually do in real basketball:
-  - Every shot's make-probability now blends the shooter's own real %
-    with the DEFENDING team's real opponent-FG%-allowed (checked
-    directly: OKC allows a real 0.438 opponent FG% against a 0.471
-    league average -- genuinely the toughest defense in the league).
-  - Steals and blocks, which previously never affected anything, now
-    have real consequences: a steal removes a shot attempt before it
-    happens (crediting a TOV to the shooter's team and a STL to the
-    defense), and a block overturns an already-made 2-point shot into
-    a miss (crediting a BLK to the defense). Both are scaled by the
-    DEFENDING team's own real STL/BLK generation relative to league
-    average, computed once via LeagueAverages/compute_league_averages
-    -- so a defense's real steal/block numbers now determine how often
-    these events actually happen, instead of being generated fully
-    independently of the opponent they're supposedly happening to.
-
-DEFENSE needed a FIFTH fix on top of that, found the same way -- by
-simulating full seasons and comparing to real 2025-26 standings, not by
-guessing. Blending in the LITERAL real ratio (the fix above) was a real
-improvement but still left a big gap: a full season of simulated
-standings only correlated 0.55 with the real ones (vs. a real
-correlation-with-itself of 1.0), and that gap did NOT shrink by
-averaging more simulated seasons together -- proving it wasn't random
-noise evening out, but a genuine, systematic under-count of how much a
-real defense's quality should matter.
-
-The cause: real NBA defensive quality is narrow in absolute terms (OKC's
-best-in-the-league real defense is only ~10% below league-average
-opponent shooting) but shows up almost every single night for that
-team. This sim ALSO adds real, deliberate per-game randomness on top of
-every shot (the same DISPERSION-driven variance that makes a "wild
-outlier" night possible for any player or team) -- and that necessary
-noise was swamping the real, correct-but-modest defensive signal before
-it could accumulate into a full season's standings the way it does in
-real basketball.
-
-DEFENSE_AMPLIFICATION fixes this WITHOUT touching any of that per-game
-randomness (a good team can still have a bad night, same as before) --
-it just scales up how far a real defense's factor is allowed to push
-away from 1.0 (league average), strong enough for that real signal to
-actually survive 82 games of noise. Tested by sweeping the multiplier
-from 1x-8x against real 2025-26 standings: 4x was the sweep's sweet
-spot -- correlation rose from 0.55 to 0.87 and mean win-total error
-dropped from ~9.9 to ~6.3 games; going higher (6x, 8x) started pushing
-simulated records WIDER than real ones actually spread (e.g. an 8x
-factor produced a simulated 4-74 win range against a real ~17-64 one),
-which made the error creep back up even as raw correlation kept
-climbing. Worth being upfront about the tradeoff: the applied factor is
-no longer the literal real ratio checked against real data above --
-it's that real ratio, deliberately amplified to compensate for what
-this sim's own necessary per-game randomness otherwise dilutes over a
-season.
-
-DEFENSE needed a SIXTH fix, found by checking a DIFFERENT number this
-time -- not win/loss standings, but real-vs-simulated PLAYER shooting
-%. That check found simulated FG% running ~3 percentage points below
-real, across 425 real players averaged over 10 simulated seasons (real
-per-game attempts also ran ~1.1 low). Isolating each mechanism (turning
-steals/blocks off one at a time) traced it almost entirely to
-blocks -- and to a lesser but real degree, steals -- not to the
-DEFENSE_AMPLIFICATION fix above (which, tested the same way, added
-only ~0.2 of those ~3 points; the rest was already there beforehand).
-
-The actual cause: a real player's real FG% and real FGA are already
-NET of however many of their real shots got blocked, or never became
-attempts because they got stolen, on AVERAGE. block_rate_for and
-steal_rate_for return the FULL real rate for a given defense (needed
-so even a below-average defense still generates a realistic, non-zero
-STL/BLK box score) -- but _finish_shooting was applying that FULL rate
-directly on top of a % and volume that already had the LEAGUE-AVERAGE
-version of that same effect baked in, silently blocking/stealing the
-same shots twice over.
-
-The fix: gross real_2pt_pct (in _finish_shooting) and expected_fga (in
-_resolve_team_offense) back UP by the league-average per-make block
-rate / per-attempt steal rate BEFORE the defender's full rate gets
-applied -- so an exactly-average defense nets back out to a player's
-real numbers instead of double-subtracting, while an above/below-
-average defense still correctly pushes below/above them. The STL/BLK
-counting stats credited to the defense still use the FULL rate,
-unchanged, so every team's own box score still looks realistic.
+DEFENSE_AMPLIFICATION exists because real defensive quality is narrow in
+absolute terms but persistent across 82 games, and this sim's own
+per-game randomness swamps that modest signal before it can accumulate
+into standings the way it does in real basketball -- it amplifies a
+defense's pull away from league average without touching night-to-night
+variance. Tuned against real standings; see ACCURACY.md for the current
+correlation/MAE figures rather than duplicating them here.
 """
 from dataclasses import dataclass, field
 from typing import Dict, List, Tuple
@@ -192,18 +65,11 @@ from models import Player, Team
 # in a simulated game pulls from the same underlying random stream.
 _rng = np.random.default_rng()
 
-# Tunable "fatness" of the random tails -- smaller number = wilder, more
-# frequent outlier games; larger number = tighter around the real
-# average, closer to a plain Poisson draw. See the module docstring
-# above for how this specific value was chosen.
-#
-# WHERE THIS IS ACTUALLY USED, because it is easy to assume otherwise:
-# only _simulate_fouls and the standalone simulate_player_game read it.
-# It does NOT control how streaky a player's SCORING is in a real
-# simulated game -- shot volume comes from _dirichlet_multinomial_split
-# with USAGE_CONCENTRATION / _scoring_concentrations instead. This was
-# misattributed for a long time and sent a round of player-consistency
-# work at the wrong constant before being traced back here.
+# Negative-binomial tail fatness for fouls and the standalone
+# simulate_player_game path -- smaller = wilder outlier games, larger =
+# closer to a plain Poisson draw. Player scoring volatility is a
+# separate mechanism: see USAGE_CONCENTRATION / _scoring_concentrations
+# below, not this constant.
 DISPERSION = 30
 
 # A real NBA player is disqualified the moment they reach 6 personal

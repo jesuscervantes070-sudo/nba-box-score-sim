@@ -36,7 +36,6 @@ from loader import load_teams, load_player_advanced_stats
 from player_ability_profile import AttributeEstimate
 from player_ability_estimation import (
     SeasonEvidence, _seasons_through_cutoff, _weighted_shrunk_estimate, _percentile_rating,
-    RATING_MIN, RATING_MAX,
 )
 from shot_zone_ingestion import load_shot_zones, SHOT_ZONE_FIRST_SEASON
 

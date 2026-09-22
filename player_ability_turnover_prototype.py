@@ -18,8 +18,8 @@ game) -- NOT gated behind a modern camera-tracking floor the way rim/
 perimeter defense or player-tracking touches/drives are. The real
 constraint is volume (one call per game), not era coverage.
 
-CONCEPTUAL SEPARATION (per the task's own definition of "ball
-security" = preservation of the ball while handling/dribbling):
+CONCEPTUAL SEPARATION (ball security = preservation of the ball while
+handling/dribbling):
   HANDLING ERRORS (numerator for a future real ball-security metric):
     Lost Ball, Traveling, Double Dribble/Carry -- real live-ball
     fumbles/violations while the player himself has the ball.

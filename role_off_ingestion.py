@@ -56,7 +56,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from data_source import CACHE_DIR, _season_cache_dir, _fetch_normalized_game_log, fetch_player_transactions
+from data_source import _season_cache_dir, _fetch_normalized_game_log
 
 ROLE_CACHE_VERSION = 1
 ROLE_TRACKING_FIRST_SEASON = "2013-14"  # same real tracking floor already established by Phases 8/9/10

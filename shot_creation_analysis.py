@@ -119,9 +119,8 @@ def _spearman(xs: List[float], ys: List[float]) -> Optional[float]:
 
 
 def combined_diagnostic_pass(rows_by_season: Dict[str, List[PlayerCreationRow]], check_season: str) -> dict:
-    """ONE combined pass: stability (T->T+1), role bias, scoring-volume
-    overlap, contamination, component correlation -- per the task's own
-    "run one combined diagnostic pass" efficiency instruction."""
+    """One combined pass: stability (T->T+1), role bias, scoring-volume
+    overlap, contamination, component correlation."""
     seasons = sorted(rows_by_season.keys())
     rows = rows_by_season[check_season]
 

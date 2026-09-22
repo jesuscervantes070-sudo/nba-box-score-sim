@@ -72,7 +72,7 @@ import player_shot_event_ingestion as psei
 import shot_zone_estimation as sze
 import player_ability_estimation as pae
 import shot_zone_ingestion as szi
-from game_metadata import GameMetadata, get_game_metadata
+from game_metadata import get_game_metadata
 from player_team_stints import team_roster_as_of_date
 from possession_orchestrator import PlayerSimulationProfile
 
@@ -286,19 +286,17 @@ def _build_team_snapshot(team_name: str, side: str, game_id: str, game_date: str
     if mode == MODE_PREGAME_EXPECTED:
         rotation = prt_rot.build_pregame_rotation(team_name, game_date, as_of_season, all_seasons)
         roster = tuple(team_roster_as_of_date(team_name, game_date, as_of_season))
-        exclude_game_id = game_id  # belt-and-suspenders even though as_of_date already excludes it
     elif mode == MODE_ORACLE_PARTICIPANTS:
         rotation = prt_rot.build_oracle_rotation(game_id, team_name, as_of_season)
         roster = tuple(p.player_id for p in rotation.players)
-        exclude_game_id = None  # oracle mode's PARTICIPATION intentionally uses this game; truth still excludes it below
     else:
         raise ValueError(f"Unknown mode {mode!r} -- must be one of {_VALID_MODES}")
 
     primary = set(rotation_adapter.primary_five(rotation))
     entries = []
     for p in rotation.players:
-        # truth is ALWAYS built pregame-safe (excluding the target game itself), even in oracle
-        # participation mode -- see module docstring.
+        # Truth is always built pregame-safe (excluding the target game itself), even in oracle
+        # participation mode -- only WHO PLAYED and HOW MANY MINUTES come from real data there.
         entries.append(_build_player_entry(
             p.player_id, team_name, side, game_date, as_of_season, all_seasons,
             expected_minutes=p.expected_minutes, availability_status=p.availability.status,

@@ -31,7 +31,7 @@ truth for id<->name resolution in this module. Real, confirmed finding:
 different real people, not a data error) -- name is measurably NOT a
 safe canonical key, confirmed directly rather than assumed.
 """
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from functools import lru_cache
 from typing import Dict, List, Optional, Tuple
 

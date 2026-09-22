@@ -1590,7 +1590,7 @@ class PossessionTerminalReason:
     FINAL_FT_MADE = "FINAL_FT_MADE"                    # points scored via FT(s) alone (missed shooting foul, or bonus non-shooting foul) -- ball to opponent
     DEFENSIVE_REBOUND = "DEFENSIVE_REBOUND"
     TURNOVER = "TURNOVER"                              # bad pass / interception / defense wins a loose ball
-    OFFENSIVE_FOUL_TURNOVER = "OFFENSIVE_FOUL_TURNOVER"  # a charge -- distinct per the task's own suggested vocabulary
+    OFFENSIVE_FOUL_TURNOVER = "OFFENSIVE_FOUL_TURNOVER"  # a charge, distinct from a live-ball turnover
     SHOT_CLOCK_VIOLATION = "SHOT_CLOCK_VIOLATION"
     PERIOD_END = "PERIOD_END"
 

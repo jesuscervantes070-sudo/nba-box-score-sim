@@ -385,7 +385,7 @@ MIDRANGE_PREFERENCE_WEIGHT = 1.0
 # below in the module history). Applied ONLY to the MIDRANGE candidate's own score, and ONLY in a
 # context where MIDRANGE is already a live candidate (PULL_UP's {perimeter-zone, MIDRANGE} or
 # {TOP_OF_KEY, MIDRANGE} menu, or CATCH_AND_SHOOT's identical menu) -- never a standalone "global
-# probability of a midrange shot" term, per the task's own explicit constraint. A player with a
+# probability of a midrange shot" term. A player with a
 # real, elevated midrange_preference now measurably shifts THIS competition toward midrange more
 # than a league-average player would, without ever fabricating a midrange opportunity from a state
 # where none of the existing structural gates (`_shot_zone_options`) would have offered one at all.

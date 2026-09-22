@@ -91,10 +91,9 @@ DRIVE_CHECKPOINTS: Tuple[str, ...] = ("drive_begins", "poa_interaction", "levera
 
 
 class DriveOutcome:
-    """Plain string constants, not an Enum -- kept deliberately loose
-    (a string, not a locked type) since the task explicitly allows
-    flexible naming and a future phase may add outcomes (e.g. a real,
-    separately-calibrated LOST_BALL) without a breaking type change.
+    """Plain string constants, not an Enum -- kept deliberately loose so a
+    future outcome (e.g. a separately-calibrated LOST_BALL) can be added
+    without a breaking type change.
     Each outcome describes a POSSESSION-GEOMETRY/LEVERAGE change, never
     a scoring outcome."""
     CLEAN_PENETRATION = "CLEAN_PENETRATION"

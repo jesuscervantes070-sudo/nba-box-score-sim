@@ -102,7 +102,7 @@ RECENCY_DECAY = 0.6
 # scale -- NOT swept against a real backtest. Provisional.
 SHRINKAGE_PRIOR_STRENGTH: Dict[str, float] = {
     "three_point": 200.0,   # real 3PA -- three-point volume is often thin for non-shooters
-    "free_throw": 125.0,    # real FTA -- FT% stabilizes faster than 3PT%, per the task's own guidance
+    "free_throw": 125.0,    # real FTA -- FT% stabilizes faster than 3PT%
     "passing": 1500.0,      # real total minutes -- ast_pct is already a rate, shrink on playing time
     "ball_security": 1500.0,  # real estimated plays
     "offensive_rebounding": 1500.0,  # real total minutes

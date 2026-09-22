@@ -64,9 +64,8 @@ with a documented static-roster fallback for the ~5/30 teams missing from that c
 snapshot (e.g. Golden State Warriors, 2023-24) -- verified directly, not assumed complete. ROLE
 values themselves are NOT split by stint this phase (the real `player_role_off.json` source is a
 SEASON-AGGREGATE, not stint-specific) -- the season-aggregate role value is reported for whichever
-team the player is on as of a given date, honestly labeled as a season-blended value in
-`coverage_note` when a trade occurred, per this phase's own "if evidence is only season aggregate
-and a player changed teams, document the approximation" instruction.
+team the player is on as of a given date, labeled as a season-blended value in `coverage_note`
+when a trade occurred.
 
 ============================ TEMPORAL STATUS ============================
 `player_role_off.json` is Classification B (season aggregate only) -- the same real tracking-cache
@@ -75,14 +74,13 @@ this phase (same proportionate-scope reasoning as prior phases). All three role 
 **PRIOR_SEASON_ONLY** for pregame use.
 """
 from dataclasses import dataclass, field, replace
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 import player_scoring_truth_temporal as psst  # reused for the SAME provenance vocabulary, not redefined
 import role_off_analysis as roa
 import role_off_ingestion as roi
 from player_team_stints import team_as_of_date, current_team, was_traded, team_stints_for_player
 from possession_orchestrator import PlayerSimulationProfile
-from role_off_profile import MEASURED_TRACKING
 
 SCHEMA_VERSION = "0.1.0-role-truth"
 
@@ -94,10 +92,8 @@ _FIELD_NAME = {
     "role_off_spacing": "role_off_spacing",
 }
 
-# Confidence ramps with real minutes exposure -- NOT the ability-track's Bayesian shrinkage (role
-# doesn't need a shrunk VALUE, per this phase's own instruction: "Role estimates do not necessarily
-# need the same Bayesian shrinkage used for ability. But low exposure must not generate false
-# certainty.") -- a simple, transparent exposure-based confidence ramp instead.
+# Confidence ramps with real minutes exposure rather than the ability track's Bayesian shrinkage --
+# role doesn't need a shrunk VALUE, but low exposure must not generate false certainty.
 _CONFIDENCE_FULL_MINUTES = 1000.0
 
 
@@ -268,8 +264,7 @@ def _estimate_current_season_scoring_role(player_id: str, as_of_date: str, as_of
     existing convention) -- the real current-season MIN is used directly as `sample_size`."""
     stints_so_far = [s for s in team_stints_for_player(player_id, as_of_season) if s.first_date <= as_of_date]
     if len(stints_so_far) > 1:
-        # A real, deliberate safety choice (per this phase's own trade-handling instruction): a
-        # single league-wide cumulative-through-cutoff pull cannot distinguish which TEAM a
+        # A single league-wide cumulative-through-cutoff pull cannot distinguish which TEAM a
         # player's minutes/PCT_AST_* accrued under -- for a player with more than one real stint
         # ALREADY VISIBLE as of `as_of_date` (a trade that has genuinely already happened pregame),
         # using it would silently BLEND old-team and new-team role into one number. Falling back to

@@ -41,7 +41,7 @@ import json
 import math
 import statistics
 import time
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
@@ -49,7 +49,6 @@ import historical_game_snapshot as hgs
 import historical_game_outcome as hgo
 import player_team_stints as pts
 from detailed_game import simulate_detailed_game, DetailedGameSimulationFault
-from game_metadata import get_game_metadata
 
 MODEL_VERSION = "backtest-v1"
 BACKTEST_SEASON = "2023-24"
@@ -806,7 +805,6 @@ def rotation_overlap_and_minutes_concentration(game_ids: List[str], season: str,
     """PREGAME expected primary five vs ORACLE (real target-game) primary five overlap, and real
     oracle-primary-five share of real total game minutes (240) -- how much real rotation exposure
     the engine's fixed-five constraint is structurally ignoring, and its relationship to error."""
-    import player_game_minutes_ingestion as pgmi
     rows = []
     for game_id in game_ids:
         if game_id not in predictions_by_gid:
@@ -908,7 +906,6 @@ def period_breakdown(predictions: List[GamePrediction], outcomes: Dict[str, hgo.
     change within a season -- what changes is how much CURRENT_SEASON_PREGAME evidence has
     accumulated by then)."""
     def period_of(date: str) -> str:
-        month = date[5:7]
         if date < "2023-12-01":
             return "opening (Oct-Nov)"
         if date < "2024-02-15":

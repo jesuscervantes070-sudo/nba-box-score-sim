@@ -3,9 +3,8 @@ Phase 10 -- POA Containment: the diagnostic estimator. PARALLEL to
 player_ability_estimation.py -- NOT wired into its ATTRIBUTE_EXTRACTORS.
 Reuses rim_protection_calibration.py's generic shrinkage math directly.
 
-Wired (if justified -- see report) into the EXISTING `perimeter_defense`
-SKILL_ATTRIBUTES slot, not a new schema entry, per the task's own "use
-existing slot if semantics are compatible" instruction.
+Wired into the existing `perimeter_defense` SKILL_ATTRIBUTES slot rather
+than a new schema entry.
 
 No historical mode -- real matchup data floor is 2017-18 (checked
 directly; 2016-17 exists but is a real, too-sparse partial rollout, not

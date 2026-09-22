@@ -323,6 +323,48 @@ product flow is routed through this kernel. See
 `docs/PHASE23A_AUTONOMOUS_POSSESSION_KERNEL_REPORT.md` and
 `docs/SIMULATION_ENGINE_ARCHITECTURE.md`.
 
+**Phase 23B/23C — Chained Possessions + Minimal Complete Game
+(COMPLETE)**: `detailed_game.py`/`detailed_game_orchestrator.py` chain
+possessions into full games with real overtime and seeded determinism.
+See `docs/PHASE23B_CHAINED_POSSESSIONS_REPORT.md` and
+`docs/PHASE23C_MINIMAL_COMPLETE_GAME_REPORT.md`.
+
+**Historical snapshot + backtest track (COMPLETE)**: composes every
+truth layer above into a real, leak-safe pregame input for one real
+historical game, runs it through the detailed engine, and measures
+predictive accuracy against a frozen holdout. Code and current results
+are the source of truth (no separate phase-report docs were written for
+this arc):
+
+- `historical_game_snapshot.py` — composes scoring/playmaking/
+  rebounding/defense/role/creation truth plus pregame rotation into one
+  `HistoricalGameSnapshot`, in `PREGAME_EXPECTED` (leak-free) or
+  `ORACLE_PARTICIPANTS` (real target-game participants, diagnostic only)
+  mode. `game_metadata.py`/`historical_game_outcome.py` supply real game
+  metadata and reconstructed final scores from cached box data.
+- `historical_predictive_backtest.py` — Monte Carlo evaluation harness:
+  holdout selection, deterministic seeding, Brier/log-loss/accuracy/
+  margin metrics, calibration, and leak-safe baselines (50/50,
+  prior-season home rate, net rating).
+- `margin_compression_diagnostic.py` — traces where real team-strength
+  variance is lost between real inputs and simulated margins.
+- `player_creation_truth.py`, and the current-season date-safe paths in
+  `player_defensive_truth.py`/`player_role_truth.py`, extend truth
+  composition with rim-access-creation, real AST_PCT, and current-season
+  (not just prior-season) rim protection/role evidence.
+- Results: `backtests/backtest_v1_*.json` (frozen 83-game holdout, first
+  pass), `backtests/backtest_v2_*.json` and
+  `backtests/backtest_v1_v2_comparison.json` (re-evaluation after the
+  truth refresh above), `backtests/margin_compression_diagnostic_v1.json`.
+  Current verdict: modest, correctly-signed improvement in margin
+  compression and strength-to-margin correlation; no statistically
+  significant change in Brier/accuracy/margin MAE at 83 games. See those
+  JSON files for exact figures rather than duplicating them here.
+
+This track is entirely separate from `game_engine.py` (the fast
+aggregate engine that powers History Sim / Game Sim) — it feeds the
+*detailed* possession engine above, not the legacy product.
+
 ## G. Verified data sources / coverage (by module)
 
 | Source (real endpoint) | Used by | Real floor / notes |
@@ -439,24 +481,21 @@ estimator against a physical trait without new downstream
 
 ## L. Current roadmap
 
-**COMPLETE THROUGH PHASE 23A**: empirical ability/tendency/physical
+**COMPLETE THROUGH PHASE 23C**: empirical ability/tendency/physical
 foundations; role and stable-identity integration; the detailed
-possession state/event kernel; objective opportunity, perception, and
-selection gates; drive/pass/shot/contact/free-throw/rebound/transition/
-pressure/floor-foul/off-ball-screen resolution; and autonomous execution
-of one complete possession to a typed terminal result.
+possession state/event kernel through a complete, seeded, chained game
+(`detailed_game.py`); and the historical snapshot + predictive backtest
+track (see section F) built on top of it. This remains separate from
+integration into `main.py`, season/playoff/database flows, or
+replacement of the supported fast aggregate engine — preserve the
+authority hierarchy and dual-engine boundary in
+`docs/SIMULATION_ENGINE_ARCHITECTURE.md`.
 
-**NEXT — Phase 23B**: chained possessions plus persistent game state.
-Preserve the authority hierarchy and dual-engine boundary in
-`docs/SIMULATION_ENGINE_ARCHITECTURE.md`. This roadmap entry intentionally
-does not prescribe the design or authorize product routing. At a high
-level, the phase is expected to own possession alternation, persistent
-game clock/score/period state, team-foul and bonus state, possession IDs,
-transition/inbound handoff, and basic event aggregation.
-
-**THEN — Phase 23C**: the minimal complete detailed game. This remains
-separate from integration into `main.py`, season/playoff/database flows,
-or replacement of the supported fast aggregate engine.
+**NEXT**: the historical backtest track's own next step is a targeted
+diagnostic on the "large"/"extreme" real strength-gap matchups, where
+real signal still fails to reach the simulator (see
+`backtests/backtest_v1_v2_comparison.json`). Not yet scheduled to
+product routing.
 
 **Deferred empirical follow-up**: the Phase 12A diagnostic physical-vs-
 skill correlation pass. Phase 14 removed the broad engine-facing

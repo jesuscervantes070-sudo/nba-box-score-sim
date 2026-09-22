@@ -2,13 +2,11 @@
 written backtests/backtest_v1_games.json (untouched, prior phase) and backtest_v2_games.json (this
 phase), pairs games by game_id, and computes every comparison the task calls for. Read-only over
 both raw result files -- never mutates either. No estimator/engine code is touched here."""
-import functools
-import hashlib
 import json
 import math
 import statistics
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List
 
 import historical_predictive_backtest as hpb
 
@@ -270,15 +268,12 @@ def intervention_exposure(game_ids: List[str], season: str = hpb.BACKTEST_SEASON
     a group reading "MIXED" doesn't say WHICH field is current-season) to count real exposure to
     each of the 5 refreshed/resolved targets: CURRENT_SEASON rim_protection, CURRENT_SEASON
     role_off_finishing/spacing, and non-default (real) passing_accuracy_ast_pct/
-    rim_access_creation_shrunk_rate. Rebuilds snapshots (reusing this phase's own warm reference-
-    population caches from the V2 run, in-process) -- descriptive only, no engine call."""
+    rim_access_creation_shrunk_rate. Rebuilds snapshots in-process (reusing warm reference-
+    population caches) -- descriptive only, no engine call."""
     import historical_game_snapshot as hgs
     import player_defensive_truth as pdt
     import player_role_truth as prt_role
-    import player_playmaking_truth as ppt
-    import player_creation_truth as pct
     import player_scoring_truth_temporal as psst
-    from possession_orchestrator import PlayerSimulationProfile
 
     all_seasons = all_seasons or ["2021-22", "2022-23", "2023-24"]
     rows = []

@@ -25,17 +25,15 @@ Team-level turnovers (e.g. "NUGGETS Turnover: Shot Clock") report the
 TEAM's id in `personId` (a 1610612xxx franchise id, not a real player id)
 with `teamId == 0` on that same row -- confirmed directly. Those are
 skipped entirely: they are not attributable to any one player's handling
-at all, per the task's own scope ("TEAM/SYSTEM" bucket exists for the
-season-level record, but a team-level event has no real individual to
-attribute it to).
+at all ("TEAM/SYSTEM" exists for the season-level record, but a
+team-level event has no real individual to attribute it to).
 
 ============================ CATEGORY MAP ============================
 Built from real `subType` values observed directly across a real,
 multi-era sample (1996-97, 2000-01, 2005-06, 2009-10, 2013-14, 2018-19,
 2023-24) -- not guessed. Any `subType` NOT in this map falls through to
 `other_unclassified`, preserved with its own real example description and
-count -- never silently forced into another bucket (per the task's
-explicit "do not silently discard unknown turnover descriptions").
+count -- never silently forced into another bucket.
 """
 import functools
 import json

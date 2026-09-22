@@ -24,9 +24,7 @@ only), 2010-2020 has BOTH fully populated, 2023+ has ZERO `HEIGHT_W_SHOES`
 again (the NBA stopped recording shoes-on height in recent combines).
 **`HEIGHT_WO_SHOES` (barefoot) is the only field with continuous real
 coverage across the entire 2000-2025 range** -- adopted as the primary
-real height field, per the task's own "prefer official combine barefoot
-height" guidance, now empirically confirmed necessary (not just
-preferred) for coverage continuity. NO fixed shoe-adjustment constant is
+real height field for coverage continuity. NO fixed shoe-adjustment constant is
 applied anywhere in this module -- `HEIGHT_W_SHOES` is preserved as raw
 auxiliary evidence only where it exists, never synthesized.
 

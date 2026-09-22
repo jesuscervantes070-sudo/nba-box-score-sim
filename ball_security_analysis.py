@@ -282,9 +282,7 @@ def _touches_per_min(row: PlayerSeasonRow, adv_row: dict) -> Optional[float]:
 
 def fit_touches_proxy(train_rows: List[PlayerSeasonRow], season_advanced: Dict[str, Dict[str, dict]]) -> Optional[ProxyModel]:
     """OLS fit of touches-per-minute ~ usg_pct + ast_pct on TRAIN rows
-    only. Plain 2-variable least squares (closed-form normal equations)
-    -- no ML library, per the task's explicit "no complex black-box ML."
-    """
+    only. Plain 2-variable least squares, closed-form normal equations."""
     X, y = [], []
     for r in train_rows:
         adv_row = season_advanced.get(r.season, {}).get(r.player_name, {})
@@ -296,8 +294,7 @@ def fit_touches_proxy(train_rows: List[PlayerSeasonRow], season_advanced: Dict[s
     if len(X) < 10:
         return None
 
-    # Normal equations: (X^T X) beta = X^T y, solved by hand (3x3) --
-    # small and interpretable, exactly per the task's own constraint.
+    # Normal equations: (X^T X) beta = X^T y, solved by hand (3x3).
     n = len(X)
     xtx = [[0.0] * 3 for _ in range(3)]
     xty = [0.0, 0.0, 0.0]

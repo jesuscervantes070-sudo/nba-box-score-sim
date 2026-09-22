@@ -20,9 +20,9 @@ from action_intent import ActionType
 from action_opportunity import ObjectiveOpportunity
 
 # Opportunity types that plausibly require above-baseline vision to
-# perceive at all, per the task's own worked examples (weak-side skip,
-# pocket pass, backdoor cutter, secondary kickout, help-generated
-# dump-off). Everything else always passes through ungated.
+# perceive at all (weak-side skip, pocket pass, backdoor cutter,
+# secondary kickout, help-generated dump-off). Everything else always
+# passes through ungated.
 VISION_GATED_ACTIONS = frozenset({ActionType.KICKOUT, ActionType.POCKET_PASS})
 
 NO_GATE_PROVENANCE = "OBJECTIVE_NO_GATE"

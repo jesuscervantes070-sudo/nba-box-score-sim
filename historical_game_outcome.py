@@ -24,7 +24,7 @@ score predictions AFTER a snapshot/simulation has already been built, in `histor
 import functools
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 from game_metadata import get_game_metadata
 from player_game_log_ingestion import load_player_game_log

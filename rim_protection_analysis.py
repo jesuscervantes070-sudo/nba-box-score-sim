@@ -42,7 +42,7 @@ F. FOUL DISCIPLINE -- legal-contest ability, already a real, separate
 import functools
 import math
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 import rim_protection_ingestion as rpi
 import foul_ingestion as fli
@@ -220,8 +220,8 @@ def team_scheme_bias_report(rows: List[PlayerRimRow], season: str, min_exposure:
     """Real correlation between individual rim-protection signals and
     real TEAM-level context (opponent rim-attempt frequency, real team
     defensive rating via loader.load_teams' cached defense fields) --
-    quantifies contamination, per the task's explicit instruction, rather
-    than assuming or correcting for it blindly."""
+    quantifies contamination rather than assuming or correcting for it
+    blindly."""
     team_opp_rim = rpi.load_team_opp_rim_frequency(season)
     xs_freq, ys_freq = [], []
     xs_fga, ys_oppfga = [], []

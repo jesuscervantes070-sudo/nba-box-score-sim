@@ -348,7 +348,7 @@ def build_defensive_truth_profile_as_of_date(player_id: str, as_of_date: str, as
         if not reference_all_seasons:
             estimates[attribute] = _missing(
                 attribute, player_id, as_of_season,
-                f"player_defensive_truth (no completed prior season)",
+                "player_defensive_truth (no completed prior season)",
                 "no fully-completed prior season exists yet (rookie / first tracked season)",
             )
             continue

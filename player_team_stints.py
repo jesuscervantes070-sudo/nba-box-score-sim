@@ -23,7 +23,7 @@ before.
 """
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import List, Optional, Tuple
+from typing import List, Optional
 
 import player_identity as pid
 from loader import load_roster_membership

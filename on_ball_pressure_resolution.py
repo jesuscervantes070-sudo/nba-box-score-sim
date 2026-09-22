@@ -37,13 +37,11 @@ not re-derived. Real 2023-24 population: mean 0.00858, stdev 0.00737
 
 `defensive_playmaking` (Phase 1-3, KEEP/STRONG): real STL+BLK per-36 --
 already known (Phase 17B/18B) to combine two real, only-partially-
-overlapping defensive event types. **No live isolation study
-(controlling for team scheme/opponent ball-handling/role) was performed
-this phase given time constraints** -- per the task's own explicit
-allowance ("if you cannot isolate strip-specific signal, use limited
-authority and flag"), this module gives it a DELIBERATELY SMALL weight
-in the strip/disruption branch, flagged KEEP BUT FLAG for this specific
-use (distinct from its existing, unchanged classification for blocks/
+overlapping defensive event types. No live isolation study (controlling
+for team scheme/opponent ball-handling/role) has been performed, so this
+module gives it a deliberately small weight in the strip/disruption
+branch, flagged KEEP BUT FLAG for this specific use (distinct from its
+existing, unchanged classification for blocks/
 defensive events generally).
 """
 import random

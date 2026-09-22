@@ -21,14 +21,12 @@ math changes, no substitutions, no new ingestion. Every measurement here is READ
 built snapshots/profiles, plus clearly-labeled, isolated counterfactual snapshots used ONLY for
 diagnostic simulation batches (never written back, never fed into production).
 """
-import functools
 import hashlib
 import json
 import math
 import statistics
-from dataclasses import replace as dc_replace
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
 import historical_game_snapshot as hgs
 import historical_game_outcome as hgo
