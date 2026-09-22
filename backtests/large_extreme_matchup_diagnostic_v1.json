@@ -1,0 +1,827 @@
+{
+  "bench_quality_strong_vs_weak": {
+    "defense": {
+      "gap (strong-weak)": 0.02627533762545503,
+      "strong_bench_mean": 0.48999434479266574,
+      "weak_bench_mean": 0.4637190071672107
+    },
+    "mean_top5_minute_share_large_extreme": 0.6457207529491105,
+    "playmaking": {
+      "gap (strong-weak)": 0.0020011850732290226,
+      "strong_bench_mean": 0.0898205135600206,
+      "weak_bench_mean": 0.08781932848679158
+    },
+    "rebounding": {
+      "gap (strong-weak)": -7.100021000250312e-05,
+      "strong_bench_mean": 0.10938499215660417,
+      "weak_bench_mean": 0.10945599236660668
+    },
+    "role": {
+      "gap (strong-weak)": 0.0183820348235324,
+      "strong_bench_mean": 2.2264938477928893,
+      "weak_bench_mean": 2.208111812969357
+    },
+    "scoring": {
+      "gap (strong-weak)": 0.006120815185387096,
+      "strong_bench_mean": 0.5226718150614171,
+      "weak_bench_mean": 0.51655099987603
+    }
+  },
+  "category_gap_report": {
+    "defense": {
+      "defensive_playmaking_per36": {
+        "mean_full_roster_gap (strong-weak, sign-corrected)": 0.01498992324556113,
+        "mean_primary_five_gap (strong-weak, sign-corrected)": 0.0744864549124488,
+        "n_game_pairs": 16,
+        "share_games_strong_actually_ahead": 0.8125
+      },
+      "poa_containment_shrunk_rate": {
+        "mean_full_roster_gap (strong-weak, sign-corrected)": 0.00012066270383138454,
+        "mean_primary_five_gap (strong-weak, sign-corrected)": 0.0004311330260040544,
+        "n_game_pairs": 16,
+        "share_games_strong_actually_ahead": 0.5
+      },
+      "rim_protection_suppression_rate": {
+        "mean_full_roster_gap (strong-weak, sign-corrected)": 0.003671224280752868,
+        "mean_primary_five_gap (strong-weak, sign-corrected)": 0.004159845080172957,
+        "n_game_pairs": 16,
+        "share_games_strong_actually_ahead": 0.5
+      }
+    },
+    "playmaking": {
+      "ball_security_error_rate": {
+        "mean_full_roster_gap (strong-weak, sign-corrected)": 0.0004088596334771108,
+        "mean_primary_five_gap (strong-weak, sign-corrected)": -5.746494519838594e-06,
+        "n_game_pairs": 16,
+        "share_games_strong_actually_ahead": 0.4375
+      },
+      "passing_accuracy_ast_pct": {
+        "mean_full_roster_gap (strong-weak, sign-corrected)": 0.0019681177721594736,
+        "mean_primary_five_gap (strong-weak, sign-corrected)": -0.0005499999999999949,
+        "n_game_pairs": 16,
+        "share_games_strong_actually_ahead": 0.5
+      },
+      "playmaking_vision_shrunk_rate": {
+        "mean_full_roster_gap (strong-weak, sign-corrected)": 0.0016401876925743863,
+        "mean_primary_five_gap (strong-weak, sign-corrected)": 0.009975324992984955,
+        "n_game_pairs": 16,
+        "share_games_strong_actually_ahead": 0.5
+      }
+    },
+    "rebounding": {
+      "defensive_rebounding_shrunk_rate": {
+        "mean_full_roster_gap (strong-weak, sign-corrected)": 0.000855858314422149,
+        "mean_primary_five_gap (strong-weak, sign-corrected)": 0.0083287578896578,
+        "n_game_pairs": 16,
+        "share_games_strong_actually_ahead": 0.625
+      },
+      "offensive_rebounding_shrunk_rate": {
+        "mean_full_roster_gap (strong-weak, sign-corrected)": -0.0011419923782660774,
+        "mean_primary_five_gap (strong-weak, sign-corrected)": 0.002842555949395099,
+        "n_game_pairs": 16,
+        "share_games_strong_actually_ahead": 0.625
+      }
+    },
+    "role": {
+      "role_off_finishing": {
+        "mean_full_roster_gap (strong-weak, sign-corrected)": 0.013804055966178647,
+        "mean_primary_five_gap (strong-weak, sign-corrected)": -0.017774999999999996,
+        "n_game_pairs": 16,
+        "share_games_strong_actually_ahead": 0.375
+      },
+      "role_off_initiation": {
+        "mean_full_roster_gap (strong-weak, sign-corrected)": 0.21459145213910225,
+        "mean_primary_five_gap (strong-weak, sign-corrected)": 1.1735711620140827,
+        "n_game_pairs": 16,
+        "share_games_strong_actually_ahead": 0.625
+      },
+      "role_off_spacing": {
+        "mean_full_roster_gap (strong-weak, sign-corrected)": 0.0324983738776381,
+        "mean_primary_five_gap (strong-weak, sign-corrected)": -0.017849999999999998,
+        "n_game_pairs": 16,
+        "share_games_strong_actually_ahead": 0.4375
+      }
+    },
+    "scoring": {
+      "floater_short_mid_shrunk_rate": {
+        "mean_full_roster_gap (strong-weak, sign-corrected)": 0.009152556634452483,
+        "mean_primary_five_gap (strong-weak, sign-corrected)": 0.02313555053660421,
+        "n_game_pairs": 16,
+        "share_games_strong_actually_ahead": 0.9375
+      },
+      "free_throw_shrunk_rate": {
+        "mean_full_roster_gap (strong-weak, sign-corrected)": 0.0034997297332782576,
+        "mean_primary_five_gap (strong-weak, sign-corrected)": 0.015559428426573749,
+        "n_game_pairs": 16,
+        "share_games_strong_actually_ahead": 0.75
+      },
+      "midrange_shrunk_rate": {
+        "mean_full_roster_gap (strong-weak, sign-corrected)": 0.00021833114038081677,
+        "mean_primary_five_gap (strong-weak, sign-corrected)": 0.009344980789475973,
+        "n_game_pairs": 16,
+        "share_games_strong_actually_ahead": 0.75
+      },
+      "rim_access_creation_shrunk_rate": {
+        "mean_full_roster_gap (strong-weak, sign-corrected)": 0.01191157595783534,
+        "mean_primary_five_gap (strong-weak, sign-corrected)": 0.03749685748809764,
+        "n_game_pairs": 16,
+        "share_games_strong_actually_ahead": 0.875
+      },
+      "rim_finishing_shrunk_rate": {
+        "mean_full_roster_gap (strong-weak, sign-corrected)": 0.007671608672344378,
+        "mean_primary_five_gap (strong-weak, sign-corrected)": 0.016074586345868218,
+        "n_game_pairs": 16,
+        "share_games_strong_actually_ahead": 0.8125
+      },
+      "three_point_shrunk_rate": {
+        "mean_full_roster_gap (strong-weak, sign-corrected)": 0.002303543834330589,
+        "mean_primary_five_gap (strong-weak, sign-corrected)": 0.014873409080921073,
+        "n_game_pairs": 16,
+        "share_games_strong_actually_ahead": 0.8125
+      }
+    }
+  },
+  "compression_curve_reproduction": [
+    {
+      "bucket": "near_equal (<3)",
+      "n_games": 0
+    },
+    {
+      "bucket": "modest (3-8)",
+      "n_games": 0
+    },
+    {
+      "bucket": "large (8-15)",
+      "mean_abs_strength_diff": 12.784545087587851,
+      "mean_actual_abs_margin": 17.5,
+      "mean_simulated_abs_margin": 4.2703125,
+      "n_games": 8
+    },
+    {
+      "bucket": "extreme (>=15)",
+      "mean_abs_strength_diff": 16.795957508041447,
+      "mean_actual_abs_margin": 19.375,
+      "mean_simulated_abs_margin": 12.10625,
+      "n_games": 8
+    }
+  ],
+  "elite_defense_stacking": {
+    "label": "elite_defense",
+    "marginal_gain_per_additional_stacked_player": [
+      18.06,
+      -1.4466666666666654,
+      1.1799999999999997,
+      3.413333333333334,
+      16.666666666666668
+    ],
+    "progression": [
+      {
+        "mean_margin_stack_perspective": 0.18666666666666668,
+        "n_faults": 0,
+        "n_stacked": 0,
+        "n_valid": 150,
+        "sd_margin": 16.773545308676464
+      },
+      {
+        "mean_margin_stack_perspective": 18.246666666666666,
+        "n_faults": 0,
+        "n_stacked": 1,
+        "n_valid": 150,
+        "sd_margin": 17.98775015268879
+      },
+      {
+        "mean_margin_stack_perspective": 16.8,
+        "n_faults": 0,
+        "n_stacked": 2,
+        "n_valid": 150,
+        "sd_margin": 20.031641636837122
+      },
+      {
+        "mean_margin_stack_perspective": 17.98,
+        "n_faults": 0,
+        "n_stacked": 3,
+        "n_valid": 150,
+        "sd_margin": 18.900959411275043
+      },
+      {
+        "mean_margin_stack_perspective": 21.393333333333334,
+        "n_faults": 0,
+        "n_stacked": 4,
+        "n_valid": 150,
+        "sd_margin": 20.46294102898104
+      },
+      {
+        "mean_margin_stack_perspective": 38.06,
+        "n_faults": 0,
+        "n_stacked": 5,
+        "n_valid": 150,
+        "sd_margin": 17.27704835902244
+      }
+    ]
+  },
+  "elite_rebounding_stacking": {
+    "progression": [
+      {
+        "avg_dreb_per_sim": 35.6,
+        "avg_oreb_per_sim": 10.6625,
+        "n_stacked": 0,
+        "n_valid_sims": 80,
+        "stack_dreb_per_sim": 35.0125,
+        "stack_oreb_per_sim": 11.0875
+      },
+      {
+        "avg_dreb_per_sim": 31.6625,
+        "avg_oreb_per_sim": 7.925,
+        "n_stacked": 1,
+        "n_valid_sims": 80,
+        "stack_dreb_per_sim": 37.475,
+        "stack_oreb_per_sim": 15.925
+      },
+      {
+        "avg_dreb_per_sim": 32.0875,
+        "avg_oreb_per_sim": 8.15,
+        "n_stacked": 3,
+        "n_valid_sims": 80,
+        "stack_dreb_per_sim": 35.5625,
+        "stack_oreb_per_sim": 16.8
+      },
+      {
+        "avg_dreb_per_sim": 29.05,
+        "avg_oreb_per_sim": 5.5875,
+        "n_stacked": 5,
+        "n_valid_sims": 80,
+        "stack_dreb_per_sim": 37.575,
+        "stack_oreb_per_sim": 22.2875
+      }
+    ]
+  },
+  "elite_scoring_stacking": {
+    "label": "elite_scoring",
+    "marginal_gain_per_additional_stacked_player": [
+      16.893333333333334,
+      3.6466666666666683,
+      -3.1333333333333364,
+      6.353333333333335,
+      10.346666666666664
+    ],
+    "progression": [
+      {
+        "mean_margin_stack_perspective": 2.6066666666666665,
+        "n_faults": 0,
+        "n_stacked": 0,
+        "n_valid": 150,
+        "sd_margin": 17.286563825378625
+      },
+      {
+        "mean_margin_stack_perspective": 19.5,
+        "n_faults": 0,
+        "n_stacked": 1,
+        "n_valid": 150,
+        "sd_margin": 17.84479382527763
+      },
+      {
+        "mean_margin_stack_perspective": 23.14666666666667,
+        "n_faults": 0,
+        "n_stacked": 2,
+        "n_valid": 150,
+        "sd_margin": 17.579300959430164
+      },
+      {
+        "mean_margin_stack_perspective": 20.013333333333332,
+        "n_faults": 0,
+        "n_stacked": 3,
+        "n_valid": 150,
+        "sd_margin": 18.50188699085102
+      },
+      {
+        "mean_margin_stack_perspective": 26.366666666666667,
+        "n_faults": 0,
+        "n_stacked": 4,
+        "n_valid": 150,
+        "sd_margin": 18.574325170933008
+      },
+      {
+        "mean_margin_stack_perspective": 36.71333333333333,
+        "n_faults": 0,
+        "n_stacked": 5,
+        "n_valid": 150,
+        "sd_margin": 20.02176704378401
+      }
+    ]
+  },
+  "full_team_average_replacement": [
+    {
+      "baseline_real_mean_margin": 0.26,
+      "both_average_mean_margin": -0.32,
+      "game_id": "0022300030",
+      "margin_explained_by_player_quality_inputs": 0.5800000000000001,
+      "n_sims": 100
+    },
+    {
+      "baseline_real_mean_margin": 8.8,
+      "both_average_mean_margin": -0.28,
+      "game_id": "0022300325",
+      "margin_explained_by_player_quality_inputs": 9.08,
+      "n_sims": 100
+    },
+    {
+      "baseline_real_mean_margin": -19.93,
+      "both_average_mean_margin": 0.61,
+      "game_id": "0022300622",
+      "margin_explained_by_player_quality_inputs": -20.54,
+      "n_sims": 100
+    },
+    {
+      "baseline_real_mean_margin": 1.09,
+      "both_average_mean_margin": 2.07,
+      "game_id": "0022300820",
+      "margin_explained_by_player_quality_inputs": -0.9799999999999998,
+      "n_sims": 100
+    }
+  ],
+  "large_extreme_sample": {
+    "buckets": {
+      "extreme": [
+        "0022300030",
+        "0022300325",
+        "0022300622",
+        "0022300820",
+        "0022300838",
+        "0022300872",
+        "0022300900",
+        "0022300997"
+      ],
+      "large": [
+        "0022300032",
+        "0022300057",
+        "0022300139",
+        "0022300140",
+        "0022300162",
+        "0022300219",
+        "0022300278",
+        "0022300308"
+      ]
+    },
+    "extreme_min": 15.0,
+    "game_ids": [
+      "0022300030",
+      "0022300032",
+      "0022300057",
+      "0022300139",
+      "0022300140",
+      "0022300162",
+      "0022300219",
+      "0022300278",
+      "0022300308",
+      "0022300325",
+      "0022300622",
+      "0022300820",
+      "0022300838",
+      "0022300872",
+      "0022300900",
+      "0022300997"
+    ],
+    "large_max": 15.0,
+    "large_min": 8.0,
+    "n_games": 16,
+    "n_per_bucket": 8
+  },
+  "next_intervention": {
+    "pick": "Trace and rebalance THREE_POINT shot resolution (shot_resolution.py: shot_make_probability and its upstream contest_bucket/release_mode assignment) so that a shooter's own real skill separation survives into simulated team shooting-percentage output.",
+    "second_priority_not_this_phase": "Wiring the already-computed but disabled foul_drawing_shrunk_rate into the free-throw dispatch path (a small, low-risk, already-scoped fix per possession_orchestrator.py's own documented TODO) -- deprioritized behind the 3PT/2PT fix above only because FT rate is a smaller share of total scoring, not because it is unimportant.",
+    "why_this_one_first": "Of every measured collapse point, this is the single largest (three_pt_pct gap erased ~98%, from a real 5.3-percentage-point strong/weak gap down to 0.09 simulated) and it sits directly on the primary scoring pathway (2PT/3PT efficiency dominates total points, unlike FT rate). The engine INPUTS feeding it are already real and correctly directioned (rank 1 finding here is downstream of a working input pipeline, not a broken one) -- so fixing this one link has the largest plausible effect on closing the large/extreme margin-compression gap, without reopening rebounding, defense, turnovers, pace, or calibration."
+  },
+  "output_rate_decomposition": {
+    "effective_fg_pct": {
+      "note": "no real per-game team turnover/OREB box-score cache exists in this repo; simulated-only comparison",
+      "real_gap (strong-weak)": null,
+      "simulated_gap (strong-weak)": 0.01706788618630839,
+      "simulated_strong_mean": 0.5116157795026094,
+      "simulated_weak_mean": 0.494547893316301
+    },
+    "ft_rate": {
+      "real_gap (strong-weak)": 0.06261809923071981,
+      "real_strong_mean": 0.2761987688073681,
+      "real_weak_mean": 0.21358066957664829,
+      "simulated_gap (strong-weak)": -0.0006219668505187959,
+      "simulated_strong_mean": 0.30392548185502194,
+      "simulated_weak_mean": 0.30454744870554074
+    },
+    "oreb_rate_per_100_poss": {
+      "note": "no real per-game team turnover/OREB box-score cache exists in this repo; simulated-only comparison",
+      "real_gap (strong-weak)": null,
+      "simulated_gap (strong-weak)": 1.673953485282663,
+      "simulated_strong_mean": 11.416012888218733,
+      "simulated_weak_mean": 9.74205940293607
+    },
+    "three_pt_pct": {
+      "real_gap (strong-weak)": 0.05304255269927205,
+      "real_strong_mean": 0.4044004418044696,
+      "real_weak_mean": 0.35135788910519755,
+      "simulated_gap (strong-weak)": 0.000890644803133056,
+      "simulated_strong_mean": 0.35758531677904654,
+      "simulated_weak_mean": 0.3566946719759135
+    },
+    "turnover_rate_per_100_poss": {
+      "note": "no real per-game team turnover/OREB box-score cache exists in this repo; simulated-only comparison",
+      "real_gap (strong-weak)": null,
+      "simulated_gap (strong-weak)": -0.29113145154934017,
+      "simulated_strong_mean": 8.741659059747873,
+      "simulated_weak_mean": 9.032790511297213
+    },
+    "two_pt_pct": {
+      "real_gap (strong-weak)": 0.0714584947009913,
+      "real_strong_mean": 0.5921805640018812,
+      "real_weak_mean": 0.5207220693008899,
+      "simulated_gap (strong-weak)": 0.02939933880912987,
+      "simulated_strong_mean": 0.4982618411886109,
+      "simulated_weak_mean": 0.468862502379481
+    }
+  },
+  "pace_variance": {
+    "mean_possessions_across_games": 203.68958333333333,
+    "n_games": 16,
+    "sd_possessions_across_games": 9.427182319922297
+  },
+  "ranked_root_causes": [
+    {
+      "cause": "offensive_shot_resolution_compression",
+      "classification": "HIGH",
+      "evidence": "Real team-level shooting-percentage gap between strong/weak primary fives in large/extreme games (three_pt_pct real gap=0.0530, strong 40.4% vs weak 35.1%; two_pt_pct real gap=0.0715, strong 59.2% vs weak 52.1%) collapses in simulated output to three_pt_pct gap=0.00089 (~98% erased) and two_pt_pct gap=0.0294 (~59% erased). This happens even though the underlying per-player scoring-field engine INPUTS are real and correctly directioned (strong team ahead in 75-94% of large/extreme games across every scoring field per category_gap_report). Mean simulated possession count is stable across the bucket (203.7 +/- 9.4), so this is not a pace/volume effect -- the collapse is specifically in shot-make-probability resolution, not shot volume.",
+      "rank": 1
+    },
+    {
+      "cause": "multi_player_strength_stacking_saturation",
+      "classification": "HIGH",
+      "evidence": "Synthetic stacking progressions (isolated single-dimension, n_sims=150) for elite scoring, weak scoring, and elite defense all show the SAME shape: a large jump from 0->1 stacked player, a relatively flat plateau across 1-4 stacked players, then a further jump only at 5/5. elite_scoring: [2.6, 19.5, 23.1, 20.0, 26.4, 36.7]; weak_scoring: [0.9, -15.5, -16.1, -17.9, -15.9, -28.6]; elite_defense: [0.2, 18.2, 16.8, 18.0, 21.4, 38.1]. Going from 1 to 4 stacked elite/weak players barely moves margin further than 1 alone already produced -- consistent with an opportunity/usage-normalization mechanic that caps how much multiple simultaneous advantages can compound short of replacing the entire lineup.",
+      "rank": 2
+    },
+    {
+      "cause": "foul_drawing_signal_disabled",
+      "classification": "HIGH (narrow scope, small overall share of scoring)",
+      "evidence": "real ft_rate gap=0.0626 (strong 27.6% vs weak 21.4%) collapses to simulated gap=-0.0006 (statistically zero, wrong-signed). possession_orchestrator.py documents foul_drawing_shrunk_rate/foul_discipline_shrunk_rate as PRESENT on PlayerSimulationProfile but explicitly DISABLED this phase -- never read by any dispatch path (verified by an existing test, test_foul_drawing_and_discipline_never_reach_a_resolver). This is a fully documented, already-known gap, not a new discovery, but it is a direct, concrete explanation for one of the three collapsed output rates measured here.",
+      "rank": 3
+    },
+    {
+      "cause": "defensive_input_gap_near_random_for_poa_and_rim_protection",
+      "classification": "MEDIUM",
+      "evidence": "category_gap_report shows poa_containment_shrunk_rate and rim_protection_suppression_rate primary-five gaps between strong/weak teams are tiny (0.0004 and 0.0042) with share_games_strong_actually_ahead == 0.5 for both fields -- literally a coin flip, i.e. these two defensive engine inputs do not reliably separate strong from weak teams at all in this sample, independent of any downstream engine amplification issue. defensive_playmaking_per36 fares better (share_ahead=0.8125).",
+      "rank": 4
+    },
+    {
+      "cause": "rebounding_stacking_partial_saturation",
+      "classification": "LOW",
+      "evidence": "elite_rebounding_stacking shows a real, mostly-monotonic response (stack_oreb_per_sim: 11.1 -> 15.9 -> 16.8 -> 22.3 for n_stacked=0,1,3,5) -- some plateau between 1 and 3 stacked rebounders, but a real continued gain from 3 to 5, unlike the near-total saturation seen for scoring/defense stacking. Not the dominant driver.",
+      "rank": 5
+    },
+    {
+      "cause": "turnover_effect_too_weak",
+      "classification": "LOW (insufficient real baseline)",
+      "evidence": "simulated turnover_rate_per_100_poss gap is small and correctly signed (weak teams turn it over MORE: strong 8.74 vs weak 9.03 per 100 poss) but no real per-game team turnover box-score cache exists in this repo to compare against (only per-player fgm/fga/fg3m/fg3a/ftm/fta are cached) -- report only, per this phase's own scope; cannot be ranked with confidence without new ingestion, which is out of scope this phase.",
+      "rank": 6
+    },
+    {
+      "cause": "fixed_five_bench_omission",
+      "classification": "REJECTED (for large/extreme matchups specifically)",
+      "evidence": "mean_full_minus_top5_gap = -0.00077 (~zero) -- the minute-weighted full-rotation scoring composite gap is essentially IDENTICAL to the top-five-only gap in this subset. bench_quality_strong_vs_weak gaps are tiny across every category (scoring=0.0061, defense=0.0263, rebounding=-0.00007, playmaking=0.0020, role=0.0184). corr_top5_gap_vs_actual_margin (0.388) is actually STRONGER than corr_full_rotation_gap_vs_actual_margin (0.015) -- full-rotation weighting adds noise rather than missing signal here. Real blowout teams in this sample are not meaningfully superior via 6th-10th players.",
+      "rank": 7
+    },
+    {
+      "cause": "missing_team_style_pace",
+      "classification": "REJECTED (not tested this phase beyond a stability check)",
+      "evidence": "mean_possessions_across_games=203.7, sd=9.4 (a ~4.6% CV) across the whole large/extreme sample -- stable, and the compression signature (compression_curve_reproduction) is squarely in the MEAN simulated margin being too small, not in Monte Carlo/possession-count spread (consistent with MARGIN COMPRESSION DIAGNOSTIC V1's own prior monte_carlo_noise_check finding). Not split strong-vs-weak this phase; deprioritized given the offense/defense findings above already explain the dominant channel.",
+      "rank": 8
+    }
+  ],
+  "runtime_seconds": 1187.6788408756256,
+  "scoring_composite_correlations": {
+    "corr_full_rotation_gap_vs_actual_margin": 0.015163203789252531,
+    "corr_full_rotation_gap_vs_simulated_margin": -0.00998377813172588,
+    "corr_top5_gap_vs_actual_margin": 0.3881303212997549,
+    "corr_top5_gap_vs_simulated_margin": 0.19540486351577413,
+    "mean_full_minus_top5_gap": -0.0007700711283592579,
+    "n": 16
+  },
+  "scoring_composite_gap_rows": [
+    {
+      "actual_margin_strong_perspective": 23,
+      "full_minus_top5 (full-rotation gap larger => bench-relevant)": -0.0009813160860807635,
+      "full_rotation_scoring_composite_gap": 0.005667330079441202,
+      "game_id": "0022300030",
+      "simulated_mean_margin_strong_perspective": -0.925,
+      "strength_diff": 17.674242424242422,
+      "strong_team": "Cleveland Cavaliers",
+      "top5_scoring_composite_gap": 0.006648646165521965,
+      "weak_team": "Detroit Pistons"
+    },
+    {
+      "actual_margin_strong_perspective": 9,
+      "full_minus_top5 (full-rotation gap larger => bench-relevant)": 0.00019175443192609443,
+      "full_rotation_scoring_composite_gap": 0.01723063079191478,
+      "game_id": "0022300032",
+      "simulated_mean_margin_strong_perspective": 6.05,
+      "strength_diff": 14.145454545454545,
+      "strong_team": "Sacramento Kings",
+      "top5_scoring_composite_gap": 0.017038876359988686,
+      "weak_team": "San Antonio Spurs"
+    },
+    {
+      "actual_margin_strong_perspective": 33,
+      "full_minus_top5 (full-rotation gap larger => bench-relevant)": 0.0061669049577000035,
+      "full_rotation_scoring_composite_gap": 0.003021882091209016,
+      "game_id": "0022300057",
+      "simulated_mean_margin_strong_perspective": 2.925,
+      "strength_diff": 13.8375,
+      "strong_team": "New York Knicks",
+      "top5_scoring_composite_gap": -0.0031450228664909874,
+      "weak_team": "Charlotte Hornets"
+    },
+    {
+      "actual_margin_strong_perspective": 24,
+      "full_minus_top5 (full-rotation gap larger => bench-relevant)": 0.006056275989506976,
+      "full_rotation_scoring_composite_gap": 0.0025353576102381536,
+      "game_id": "0022300139",
+      "simulated_mean_margin_strong_perspective": 0.8,
+      "strength_diff": 12.5,
+      "strong_team": "Denver Nuggets",
+      "top5_scoring_composite_gap": -0.0035209183792688226,
+      "weak_team": "Chicago Bulls"
+    },
+    {
+      "actual_margin_strong_perspective": 27,
+      "full_minus_top5 (full-rotation gap larger => bench-relevant)": -0.0038211392036949787,
+      "full_rotation_scoring_composite_gap": 0.03397143091816113,
+      "game_id": "0022300140",
+      "simulated_mean_margin_strong_perspective": 0.9625,
+      "strength_diff": 12.666666666666666,
+      "strong_team": "Phoenix Suns",
+      "top5_scoring_composite_gap": 0.037792570121856106,
+      "weak_team": "Detroit Pistons"
+    },
+    {
+      "actual_margin_strong_perspective": 1,
+      "full_minus_top5 (full-rotation gap larger => bench-relevant)": 0.004979672599168872,
+      "full_rotation_scoring_composite_gap": 0.008302492059346522,
+      "game_id": "0022300162",
+      "simulated_mean_margin_strong_perspective": 13.7375,
+      "strength_diff": 9.517857142857142,
+      "strong_team": "Phoenix Suns",
+      "top5_scoring_composite_gap": 0.0033228194601776506,
+      "weak_team": "Chicago Bulls"
+    },
+    {
+      "actual_margin_strong_perspective": 13,
+      "full_minus_top5 (full-rotation gap larger => bench-relevant)": 0.0021751650221675245,
+      "full_rotation_scoring_composite_gap": 0.006113816410972528,
+      "game_id": "0022300219",
+      "simulated_mean_margin_strong_perspective": 3.4375,
+      "strength_diff": 12.589743589743591,
+      "strong_team": "Milwaukee Bucks",
+      "top5_scoring_composite_gap": 0.003938651388805003,
+      "weak_team": "Washington Wizards"
+    },
+    {
+      "actual_margin_strong_perspective": 15,
+      "full_minus_top5 (full-rotation gap larger => bench-relevant)": 0.0003327078910797532,
+      "full_rotation_scoring_composite_gap": 0.00712512148102451,
+      "game_id": "0022300278",
+      "simulated_mean_margin_strong_perspective": -2.675,
+      "strength_diff": 12.473684210526315,
+      "strong_team": "New Orleans Pelicans",
+      "top5_scoring_composite_gap": 0.006792413589944757,
+      "weak_team": "San Antonio Spurs"
+    },
+    {
+      "actual_margin_strong_perspective": 18,
+      "full_minus_top5 (full-rotation gap larger => bench-relevant)": 0.005378622020839163,
+      "full_rotation_scoring_composite_gap": -0.0008059300343734588,
+      "game_id": "0022300308",
+      "simulated_mean_margin_strong_perspective": 3.9125,
+      "strength_diff": 14.545454545454545,
+      "strong_team": "Phoenix Suns",
+      "top5_scoring_composite_gap": -0.006184552055212622,
+      "weak_team": "Golden State Warriors"
+    },
+    {
+      "actual_margin_strong_perspective": 13,
+      "full_minus_top5 (full-rotation gap larger => bench-relevant)": -0.009289701549893836,
+      "full_rotation_scoring_composite_gap": 0.005181205266061584,
+      "game_id": "0022300325",
+      "simulated_mean_margin_strong_perspective": 5.55,
+      "strength_diff": 16.782608695652172,
+      "strong_team": "Los Angeles Clippers",
+      "top5_scoring_composite_gap": 0.01447090681595542,
+      "weak_team": "Golden State Warriors"
+    },
+    {
+      "actual_margin_strong_perspective": 26,
+      "full_minus_top5 (full-rotation gap larger => bench-relevant)": -0.021379541877879715,
+      "full_rotation_scoring_composite_gap": 0.009801568765148483,
+      "game_id": "0022300622",
+      "simulated_mean_margin_strong_perspective": 18.7625,
+      "strength_diff": 16.069767441860467,
+      "strong_team": "Oklahoma City Thunder",
+      "top5_scoring_composite_gap": 0.031181110643028198,
+      "weak_team": "San Antonio Spurs"
+    },
+    {
+      "actual_margin_strong_perspective": 9,
+      "full_minus_top5 (full-rotation gap larger => bench-relevant)": 0.008965971325849864,
+      "full_rotation_scoring_composite_gap": -0.001062561155824704,
+      "game_id": "0022300820",
+      "simulated_mean_margin_strong_perspective": -1.275,
+      "strength_diff": 15.261363636363637,
+      "strong_team": "Cleveland Cavaliers",
+      "top5_scoring_composite_gap": -0.010028532481674568,
+      "weak_team": "Washington Wizards"
+    },
+    {
+      "actual_margin_strong_perspective": 1,
+      "full_minus_top5 (full-rotation gap larger => bench-relevant)": 0.007487933928609025,
+      "full_rotation_scoring_composite_gap": -0.004608250505247935,
+      "game_id": "0022300838",
+      "simulated_mean_margin_strong_perspective": 19.4875,
+      "strength_diff": 15.405323653962492,
+      "strong_team": "Minnesota Timberwolves",
+      "top5_scoring_composite_gap": -0.01209618443385696,
+      "weak_team": "San Antonio Spurs"
+    },
+    {
+      "actual_margin_strong_perspective": 56,
+      "full_minus_top5 (full-rotation gap larger => bench-relevant)": -0.020751591409623904,
+      "full_rotation_scoring_composite_gap": 0.003477517396745178,
+      "game_id": "0022300872",
+      "simulated_mean_margin_strong_perspective": 16.425,
+      "strength_diff": 17.35593220338983,
+      "strong_team": "Boston Celtics",
+      "top5_scoring_composite_gap": 0.024229108806369082,
+      "weak_team": "Golden State Warriors"
+    },
+    {
+      "actual_margin_strong_perspective": 8,
+      "full_minus_top5 (full-rotation gap larger => bench-relevant)": 0.0023350967637106868,
+      "full_rotation_scoring_composite_gap": 0.024544146905152275,
+      "game_id": "0022300900",
+      "simulated_mean_margin_strong_perspective": 23.45,
+      "strength_diff": 15.216120218579235,
+      "strong_team": "Oklahoma City Thunder",
+      "top5_scoring_composite_gap": 0.02220905014144159,
+      "weak_team": "Portland Trail Blazers"
+    },
+    {
+      "actual_margin_strong_perspective": 19,
+      "full_minus_top5 (full-rotation gap larger => bench-relevant)": -0.00016795285713289143,
+      "full_rotation_scoring_composite_gap": 0.018997555841573588,
+      "game_id": "0022300997",
+      "simulated_mean_margin_strong_perspective": -5.9875,
+      "strength_diff": 20.60230179028133,
+      "strong_team": "Indiana Pacers",
+      "top5_scoring_composite_gap": 0.01916550869870648,
+      "weak_team": "Detroit Pistons"
+    }
+  ],
+  "sequential_real_player_replacement": [
+    {
+      "experiment": "strong_side",
+      "game_id": "0022300030",
+      "marginal_shift_per_additional_replacement": [
+        2.8,
+        6.38,
+        -5.25,
+        0.6299999999999999,
+        1.1600000000000001
+      ],
+      "progression": [
+        {
+          "mean_margin_home_perspective": -2.1,
+          "n_replaced": 0,
+          "n_valid": 100
+        },
+        {
+          "mean_margin_home_perspective": 0.7,
+          "n_replaced": 1,
+          "n_valid": 100
+        },
+        {
+          "mean_margin_home_perspective": 7.08,
+          "n_replaced": 2,
+          "n_valid": 100
+        },
+        {
+          "mean_margin_home_perspective": 1.83,
+          "n_replaced": 3,
+          "n_valid": 100
+        },
+        {
+          "mean_margin_home_perspective": 2.46,
+          "n_replaced": 4,
+          "n_valid": 100
+        },
+        {
+          "mean_margin_home_perspective": 3.62,
+          "n_replaced": 5,
+          "n_valid": 100
+        }
+      ],
+      "side": "HOME"
+    },
+    {
+      "experiment": "weak_side_mirror",
+      "game_id": "0022300325",
+      "marginal_shift_per_additional_replacement": [
+        -2.4899999999999993,
+        -2.8400000000000003,
+        2.65,
+        7.050000000000001,
+        -5.82
+      ],
+      "progression": [
+        {
+          "mean_margin_home_perspective": 8.52,
+          "n_replaced": 0,
+          "n_valid": 100
+        },
+        {
+          "mean_margin_home_perspective": 6.03,
+          "n_replaced": 1,
+          "n_valid": 100
+        },
+        {
+          "mean_margin_home_perspective": 3.19,
+          "n_replaced": 2,
+          "n_valid": 100
+        },
+        {
+          "mean_margin_home_perspective": 5.84,
+          "n_replaced": 3,
+          "n_valid": 100
+        },
+        {
+          "mean_margin_home_perspective": 12.89,
+          "n_replaced": 4,
+          "n_valid": 100
+        },
+        {
+          "mean_margin_home_perspective": 7.07,
+          "n_replaced": 5,
+          "n_valid": 100
+        }
+      ],
+      "side": "AWAY"
+    }
+  ],
+  "weak_scoring_stacking": {
+    "label": "weak_scoring",
+    "marginal_gain_per_additional_stacked_player": [
+      -16.306666666666665,
+      -0.6400000000000006,
+      -1.826666666666668,
+      1.9733333333333345,
+      -12.679999999999998
+    ],
+    "progression": [
+      {
+        "mean_margin_stack_perspective": 0.8533333333333334,
+        "n_faults": 0,
+        "n_stacked": 0,
+        "n_valid": 150,
+        "sd_margin": 18.25062068959726
+      },
+      {
+        "mean_margin_stack_perspective": -15.453333333333333,
+        "n_faults": 0,
+        "n_stacked": 1,
+        "n_valid": 150,
+        "sd_margin": 18.24630982478984
+      },
+      {
+        "mean_margin_stack_perspective": -16.093333333333334,
+        "n_faults": 0,
+        "n_stacked": 2,
+        "n_valid": 150,
+        "sd_margin": 18.76178622152545
+      },
+      {
+        "mean_margin_stack_perspective": -17.92,
+        "n_faults": 0,
+        "n_stacked": 3,
+        "n_valid": 150,
+        "sd_margin": 17.46826455795385
+      },
+      {
+        "mean_margin_stack_perspective": -15.946666666666667,
+        "n_faults": 0,
+        "n_stacked": 4,
+        "n_valid": 150,
+        "sd_margin": 16.961441238553075
+      },
+      {
+        "mean_margin_stack_perspective": -28.626666666666665,
+        "n_faults": 0,
+        "n_stacked": 5,
+        "n_valid": 150,
+        "sd_margin": 15.27723651566459
+      }
+    ]
+  }
+}
