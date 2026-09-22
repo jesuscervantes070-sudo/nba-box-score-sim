@@ -1,0 +1,1005 @@
+{
+  "bootstrap_confidence_intervals": {
+    "accuracy_delta": {
+      "ci_2_5": -0.10843373493975904,
+      "ci_97_5": 0.03614457831325301,
+      "mean": -0.03590481927710843
+    },
+    "brier_delta": {
+      "ci_2_5": -0.021442506024096385,
+      "ci_97_5": 0.020145349397590353,
+      "mean": -0.001107506949397588
+    },
+    "margin_mae_delta": {
+      "ci_2_5": -1.0178313253012046,
+      "ci_97_5": 0.7928192771084343,
+      "mean": -0.11609284337349361
+    },
+    "n_bootstrap": 10000,
+    "seed": 20260921
+  },
+  "calibration_comparison": {
+    "v1_bins": [
+      {
+        "actual_hit_rate": 0.4583333333333333,
+        "mean_predicted_confidence": 0.5506666666666667,
+        "n_games": 24,
+        "range": "50-60%"
+      },
+      {
+        "actual_hit_rate": 0.5185185185185185,
+        "mean_predicted_confidence": 0.6506666666666667,
+        "n_games": 27,
+        "range": "60-70%"
+      },
+      {
+        "actual_hit_rate": 0.47619047619047616,
+        "mean_predicted_confidence": 0.746095238095238,
+        "n_games": 21,
+        "range": "70-80%"
+      },
+      {
+        "actual_hit_rate": 0.14285714285714285,
+        "mean_predicted_confidence": 0.8474285714285715,
+        "n_games": 7,
+        "range": "80-90%"
+      },
+      {
+        "actual_hit_rate": 0.5,
+        "mean_predicted_confidence": 0.9299999999999999,
+        "n_games": 4,
+        "range": "90-100%"
+      }
+    ],
+    "v2_bins": [
+      {
+        "actual_hit_rate": 0.3333333333333333,
+        "mean_predicted_confidence": 0.5465000000000001,
+        "n_games": 24,
+        "range": "50-60%"
+      },
+      {
+        "actual_hit_rate": 0.35714285714285715,
+        "mean_predicted_confidence": 0.6425714285714286,
+        "n_games": 14,
+        "range": "60-70%"
+      },
+      {
+        "actual_hit_rate": 0.42857142857142855,
+        "mean_predicted_confidence": 0.7345714285714285,
+        "n_games": 28,
+        "range": "70-80%"
+      },
+      {
+        "actual_hit_rate": 0.6363636363636364,
+        "mean_predicted_confidence": 0.8447272727272727,
+        "n_games": 11,
+        "range": "80-90%"
+      },
+      {
+        "actual_hit_rate": 0.5,
+        "mean_predicted_confidence": 0.9286666666666666,
+        "n_games": 6,
+        "range": "90-100%"
+      }
+    ]
+  },
+  "exposure_vs_improvement": {
+    "caveat": "descriptive only -- sample size far too small to support a causal claim.",
+    "mean_delta_brier_high_exposure": 0.008982564102564112,
+    "mean_delta_brier_low_exposure": -0.010155272727272732,
+    "median_exposure": 27,
+    "n_games": 83,
+    "pearson_r_exposure_vs_delta_brier": -0.05731551136909821
+  },
+  "headline_metrics_table": {
+    "accuracy": {
+      "delta": -0.03614457831325296,
+      "v1": 0.4578313253012048,
+      "v2": 0.42168674698795183
+    },
+    "away_score_mae": {
+      "delta": 1.1082409638554225,
+      "v1": 11.69932530120482,
+      "v2": 12.807566265060242
+    },
+    "brier_score": {
+      "delta": -0.0011627951807228754,
+      "v1": 0.3152053975903614,
+      "v2": 0.31404260240963855
+    },
+    "combined_score_mae": {
+      "delta": 0.8278554216867455,
+      "v1": 12.561518072289157,
+      "v2": 13.389373493975903
+    },
+    "expected_calibration_error": {
+      "delta": 0.05349397590361443,
+      "v1": 0.21812048192771089,
+      "v2": 0.2716144578313253
+    },
+    "home_score_mae": {
+      "delta": 0.5474698795180704,
+      "v1": 13.423710843373495,
+      "v2": 13.971180722891566
+    },
+    "log_loss": {
+      "delta": -0.0015926570661255468,
+      "v1": 0.8666580464936368,
+      "v2": 0.8650653894275112
+    },
+    "margin_mae": {
+      "delta": -0.11604819277108547,
+      "v1": 14.113493975903616,
+      "v2": 13.99744578313253
+    },
+    "margin_rmse": {
+      "delta": -0.3346039603776525,
+      "v1": 17.755692883780473,
+      "v2": 17.42108892340282
+    },
+    "mean_signed_margin_error": {
+      "delta": -0.048674698795180604,
+      "v1": -0.6556626506024097,
+      "v2": -0.7043373493975903
+    }
+  },
+  "intervention_exposure": {
+    "mean_current_season_finishing_per_team": 3.3433734939759034,
+    "mean_current_season_rim_protection_per_team": 3.8795180722891565,
+    "mean_current_season_spacing_per_team": 3.3433734939759034,
+    "mean_real_ast_pct_per_team": 4.801204819277109,
+    "mean_real_rim_access_creation_per_team": 4.602409638554217,
+    "n_team_games": 166,
+    "rows_sample": [
+      {
+        "game_id": "0022300005",
+        "n_current_season_finishing": 0,
+        "n_current_season_rim_protection": 1,
+        "n_current_season_spacing": 0,
+        "n_primary_five": 5,
+        "n_real_ast_pct": 4,
+        "n_real_rim_access_creation": 4,
+        "team": "Oklahoma City Thunder"
+      },
+      {
+        "game_id": "0022300005",
+        "n_current_season_finishing": 0,
+        "n_current_season_rim_protection": 1,
+        "n_current_season_spacing": 0,
+        "n_primary_five": 5,
+        "n_real_ast_pct": 5,
+        "n_real_rim_access_creation": 4,
+        "team": "Golden State Warriors"
+      },
+      {
+        "game_id": "0022300008",
+        "n_current_season_finishing": 0,
+        "n_current_season_rim_protection": 0,
+        "n_current_season_spacing": 0,
+        "n_primary_five": 5,
+        "n_real_ast_pct": 4,
+        "n_real_rim_access_creation": 3,
+        "team": "Detroit Pistons"
+      },
+      {
+        "game_id": "0022300008",
+        "n_current_season_finishing": 0,
+        "n_current_season_rim_protection": 0,
+        "n_current_season_spacing": 0,
+        "n_primary_five": 5,
+        "n_real_ast_pct": 5,
+        "n_real_rim_access_creation": 5,
+        "team": "Philadelphia 76ers"
+      },
+      {
+        "game_id": "0022300014",
+        "n_current_season_finishing": 0,
+        "n_current_season_rim_protection": 0,
+        "n_current_season_spacing": 0,
+        "n_primary_five": 5,
+        "n_real_ast_pct": 5,
+        "n_real_rim_access_creation": 5,
+        "team": "Dallas Mavericks"
+      },
+      {
+        "game_id": "0022300014",
+        "n_current_season_finishing": 0,
+        "n_current_season_rim_protection": 0,
+        "n_current_season_spacing": 0,
+        "n_primary_five": 5,
+        "n_real_ast_pct": 5,
+        "n_real_rim_access_creation": 4,
+        "team": "Los Angeles Clippers"
+      },
+      {
+        "game_id": "0022300016",
+        "n_current_season_finishing": 0,
+        "n_current_season_rim_protection": 1,
+        "n_current_season_spacing": 0,
+        "n_primary_five": 5,
+        "n_real_ast_pct": 5,
+        "n_real_rim_access_creation": 5,
+        "team": "Sacramento Kings"
+      },
+      {
+        "game_id": "0022300016",
+        "n_current_season_finishing": 0,
+        "n_current_season_rim_protection": 1,
+        "n_current_season_spacing": 0,
+        "n_primary_five": 5,
+        "n_real_ast_pct": 4,
+        "n_real_rim_access_creation": 4,
+        "team": "Oklahoma City Thunder"
+      },
+      {
+        "game_id": "0022300019",
+        "n_current_season_finishing": 0,
+        "n_current_season_rim_protection": 0,
+        "n_current_season_spacing": 0,
+        "n_primary_five": 5,
+        "n_real_ast_pct": 5,
+        "n_real_rim_access_creation": 5,
+        "team": "Philadelphia 76ers"
+      },
+      {
+        "game_id": "0022300019",
+        "n_current_season_finishing": 0,
+        "n_current_season_rim_protection": 1,
+        "n_current_season_spacing": 0,
+        "n_primary_five": 5,
+        "n_real_ast_pct": 5,
+        "n_real_rim_access_creation": 5,
+        "team": "Indiana Pacers"
+      }
+    ]
+  },
+  "margin_compression": {
+    "v1": {
+      "actual_ge20pt_rate": 0.1686746987951807,
+      "actual_le5pt_rate": 0.1927710843373494,
+      "actual_margin_sd": 15.171550106902314,
+      "mean_abs_actual_margin": 12.108433734939759,
+      "mean_abs_predicted_margin": 8.601012048192771,
+      "n_games": 83,
+      "predicted_ge20pt_rate": 0.060240963855421686,
+      "predicted_le5pt_rate": 0.3373493975903614,
+      "predicted_margin_sd": 10.603461518028908
+    },
+    "v2": {
+      "actual_ge20pt_rate": 0.1686746987951807,
+      "actual_le5pt_rate": 0.1927710843373494,
+      "actual_margin_sd": 15.171550106902314,
+      "mean_abs_actual_margin": 12.108433734939759,
+      "mean_abs_predicted_margin": 9.724096385542168,
+      "n_games": 83,
+      "predicted_ge20pt_rate": 0.10843373493975904,
+      "predicted_le5pt_rate": 0.3253012048192771,
+      "predicted_margin_sd": 12.032863957555909
+    }
+  },
+  "matchup_strength_buckets": [
+    {
+      "bucket": "near_equal (<3)",
+      "mean_actual_abs_margin": 11.642857142857142,
+      "mean_v1_simulated_abs_margin": 12.804285714285713,
+      "mean_v2_simulated_abs_margin": 12.461714285714285,
+      "n_games": 14
+    },
+    {
+      "bucket": "modest (3-8)",
+      "mean_actual_abs_margin": 9.771428571428572,
+      "mean_v1_simulated_abs_margin": 7.838857142857143,
+      "mean_v2_simulated_abs_margin": 9.911314285714285,
+      "n_games": 35
+    },
+    {
+      "bucket": "large (8-15)",
+      "mean_actual_abs_margin": 13.8,
+      "mean_v1_simulated_abs_margin": 6.7456,
+      "mean_v2_simulated_abs_margin": 7.76208,
+      "n_games": 25
+    },
+    {
+      "bucket": "extreme (>=15)",
+      "mean_actual_abs_margin": 17.22222222222222,
+      "mean_v1_simulated_abs_margin": 10.180444444444444,
+      "mean_v2_simulated_abs_margin": 10.187555555555555,
+      "n_games": 9
+    }
+  ],
+  "oracle_v1_vs_v2": {
+    "delta_accuracy": 0.024096385542168697,
+    "delta_brier": 0.007442120481927661,
+    "delta_margin_mae": -0.24086746987951813,
+    "v1_oracle": {
+      "brier_score": 0.28899450602409643,
+      "log_loss": 0.7782166761954291,
+      "margin_mae": 14.242843373493976,
+      "n_games": 83,
+      "winner_accuracy": 0.4457831325301205
+    },
+    "v2_oracle": {
+      "brier_score": 0.2964366265060241,
+      "log_loss": 0.7976259586638246,
+      "margin_mae": 14.001975903614458,
+      "n_games": 83,
+      "winner_accuracy": 0.46987951807228917
+    }
+  },
+  "paired_deltas_summary": {
+    "delta_abs_margin_error": {
+      "max": 13.520000000000003,
+      "mean": -0.11604819277108397,
+      "median": -0.34799999999999986,
+      "min": -13.256,
+      "sd": 4.202321033663018
+    },
+    "delta_away_score": {
+      "max": 17.303999999999988,
+      "mean": 6.425156626506023,
+      "median": 6.123999999999995,
+      "min": -0.7279999999999802,
+      "sd": 3.8416382313759496
+    },
+    "delta_brier": {
+      "max": 0.3562400000000001,
+      "mean": -0.0011627951807228892,
+      "median": -0.011776000000000009,
+      "min": -0.22598400000000007,
+      "sd": 0.0966908595158917
+    },
+    "delta_home_score": {
+      "max": 16.84400000000001,
+      "mean": 6.376481927710843,
+      "median": 6.143999999999991,
+      "min": -0.6119999999999948,
+      "sd": 3.7451311954803583
+    },
+    "delta_margin": {
+      "max": 13.256,
+      "mean": -0.04867469879518082,
+      "median": -0.5999999999999999,
+      "min": -13.52,
+      "sd": 4.823564120221682
+    },
+    "delta_win_prob": {
+      "max": 0.284,
+      "mean": -9.638554216867696e-05,
+      "median": 0.0039999999999998925,
+      "min": -0.29200000000000004,
+      "sd": 0.09580698649699033
+    },
+    "n_games": 83
+  },
+  "period_comparison": {
+    "late season (mid Feb-Apr)": {
+      "mean_delta_abs_margin_error": -0.8702068965517241,
+      "mean_delta_brier": -0.022072275862068967,
+      "n_games": 29
+    },
+    "midseason (Dec-mid Feb)": {
+      "mean_delta_abs_margin_error": 0.22171428571428636,
+      "mean_delta_brier": 0.00865005714285715,
+      "n_games": 35
+    },
+    "opening (Oct-Nov)": {
+      "mean_delta_abs_margin_error": 0.4128421052631583,
+      "mean_delta_brier": 0.012675368421052631,
+      "n_games": 19
+    }
+  },
+  "runtime_seconds": 234.924546957016,
+  "strength_to_margin_correlation": {
+    "v1": {
+      "n_games": 83,
+      "pearson_r_net_rating_diff_vs_predicted_margin": 0.09170783073059127
+    },
+    "v2": {
+      "n_games": 83,
+      "pearson_r_net_rating_diff_vs_predicted_margin": 0.20774036532084422
+    }
+  },
+  "team_level_comparison": [
+    {
+      "mean_delta_brier": -0.06411200000000002,
+      "n_games": 5,
+      "team": "New Orleans Pelicans"
+    },
+    {
+      "mean_delta_brier": -0.05153599999999998,
+      "n_games": 4,
+      "team": "Washington Wizards"
+    },
+    {
+      "mean_delta_brier": -0.0438582857142857,
+      "n_games": 7,
+      "team": "Houston Rockets"
+    },
+    {
+      "mean_delta_brier": -0.02434742857142858,
+      "n_games": 7,
+      "team": "Chicago Bulls"
+    },
+    {
+      "mean_delta_brier": -0.023239999999999976,
+      "n_games": 4,
+      "team": "Golden State Warriors"
+    },
+    {
+      "mean_delta_brier": -0.02284400000000003,
+      "n_games": 4,
+      "team": "Cleveland Cavaliers"
+    },
+    {
+      "mean_delta_brier": -0.022373999999999995,
+      "n_games": 8,
+      "team": "Toronto Raptors"
+    },
+    {
+      "mean_delta_brier": -0.02202559999999999,
+      "n_games": 5,
+      "team": "Brooklyn Nets"
+    },
+    {
+      "mean_delta_brier": -0.021272,
+      "n_games": 10,
+      "team": "Indiana Pacers"
+    },
+    {
+      "mean_delta_brier": -0.018486399999999986,
+      "n_games": 5,
+      "team": "Milwaukee Bucks"
+    },
+    {
+      "mean_delta_brier": -0.018061999999999995,
+      "n_games": 8,
+      "team": "Detroit Pistons"
+    },
+    {
+      "mean_delta_brier": -0.016722666666666653,
+      "n_games": 6,
+      "team": "Portland Trail Blazers"
+    },
+    {
+      "mean_delta_brier": -0.01506133333333332,
+      "n_games": 3,
+      "team": "Dallas Mavericks"
+    },
+    {
+      "mean_delta_brier": -0.005594666666666662,
+      "n_games": 3,
+      "team": "Miami Heat"
+    },
+    {
+      "mean_delta_brier": -0.002338000000000023,
+      "n_games": 8,
+      "team": "Orlando Magic"
+    },
+    {
+      "mean_delta_brier": 0.0020091428571428617,
+      "n_games": 7,
+      "team": "Boston Celtics"
+    },
+    {
+      "mean_delta_brier": 0.0029831111111111464,
+      "n_games": 9,
+      "team": "Los Angeles Clippers"
+    },
+    {
+      "mean_delta_brier": 0.0032342857142856995,
+      "n_games": 7,
+      "team": "Utah Jazz"
+    },
+    {
+      "mean_delta_brier": 0.01004266666666668,
+      "n_games": 3,
+      "team": "New York Knicks"
+    },
+    {
+      "mean_delta_brier": 0.012313142857142838,
+      "n_games": 7,
+      "team": "Denver Nuggets"
+    },
+    {
+      "mean_delta_brier": 0.014306666666666657,
+      "n_games": 6,
+      "team": "Philadelphia 76ers"
+    },
+    {
+      "mean_delta_brier": 0.016784000000000018,
+      "n_games": 4,
+      "team": "Minnesota Timberwolves"
+    },
+    {
+      "mean_delta_brier": 0.01883199999999996,
+      "n_games": 3,
+      "team": "Phoenix Suns"
+    },
+    {
+      "mean_delta_brier": 0.020995200000000002,
+      "n_games": 5,
+      "team": "Memphis Grizzlies"
+    },
+    {
+      "mean_delta_brier": 0.03182,
+      "n_games": 4,
+      "team": "Atlanta Hawks"
+    },
+    {
+      "mean_delta_brier": 0.035374000000000023,
+      "n_games": 8,
+      "team": "Los Angeles Lakers"
+    },
+    {
+      "mean_delta_brier": 0.03724799999999999,
+      "n_games": 5,
+      "team": "San Antonio Spurs"
+    },
+    {
+      "mean_delta_brier": 0.053312,
+      "n_games": 1,
+      "team": "Charlotte Hornets"
+    },
+    {
+      "mean_delta_brier": 0.06195600000000003,
+      "n_games": 4,
+      "team": "Oklahoma City Thunder"
+    },
+    {
+      "mean_delta_brier": 0.08721066666666663,
+      "n_games": 6,
+      "team": "Sacramento Kings"
+    }
+  ],
+  "top_improvements_and_regressions": {
+    "most_improved_by_brier": [
+      {
+        "actual_margin": -16,
+        "away_team": "Phoenix Suns",
+        "date": "2024-01-31",
+        "delta_abs_margin_error": -10.612000000000002,
+        "delta_brier": -0.22598400000000007,
+        "game_id": "0022300677",
+        "home_team": "Brooklyn Nets",
+        "v1_margin": 1.42,
+        "v2_margin": -9.192
+      },
+      {
+        "actual_margin": 18,
+        "away_team": "Golden State Warriors",
+        "date": "2023-11-03",
+        "delta_abs_margin_error": -7.584000000000003,
+        "delta_brier": -0.2080799999999999,
+        "game_id": "0022300005",
+        "home_team": "Oklahoma City Thunder",
+        "v1_margin": -6.984,
+        "v2_margin": 0.6
+      },
+      {
+        "actual_margin": 22,
+        "away_team": "Houston Rockets",
+        "date": "2024-02-22",
+        "delta_abs_margin_error": -5.751999999999999,
+        "delta_brier": -0.19353600000000004,
+        "game_id": "0022300798",
+        "home_team": "New Orleans Pelicans",
+        "v1_margin": -11.388,
+        "v2_margin": -5.636
+      },
+      {
+        "actual_margin": 7,
+        "away_team": "Minnesota Timberwolves",
+        "date": "2024-01-10",
+        "delta_abs_margin_error": -4.827999999999999,
+        "delta_brier": -0.13435199999999986,
+        "game_id": "0022300517",
+        "home_team": "Boston Celtics",
+        "v1_margin": -8.18,
+        "v2_margin": -3.352
+      },
+      {
+        "actual_margin": 22,
+        "away_team": "Brooklyn Nets",
+        "date": "2024-04-01",
+        "delta_abs_margin_error": -5.116000000000003,
+        "delta_brier": -0.13363200000000003,
+        "game_id": "0022301089",
+        "home_team": "Indiana Pacers",
+        "v1_margin": -11.828,
+        "v2_margin": -6.712
+      },
+      {
+        "actual_margin": -17,
+        "away_team": "Indiana Pacers",
+        "date": "2024-04-09",
+        "delta_abs_margin_error": -7.483999999999995,
+        "delta_brier": -0.1152160000000001,
+        "game_id": "0022301146",
+        "home_team": "Toronto Raptors",
+        "v1_margin": 16.648,
+        "v2_margin": 9.164
+      },
+      {
+        "actual_margin": -6,
+        "away_team": "Toronto Raptors",
+        "date": "2024-04-05",
+        "delta_abs_margin_error": -3.508,
+        "delta_brier": -0.11519999999999997,
+        "game_id": "0022301122",
+        "home_team": "Milwaukee Bucks",
+        "v1_margin": 4.888,
+        "v2_margin": 1.38
+      },
+      {
+        "actual_margin": -5,
+        "away_team": "Los Angeles Lakers",
+        "date": "2024-04-03",
+        "delta_abs_margin_error": -5.684,
+        "delta_brier": -0.11231999999999995,
+        "game_id": "0022301103",
+        "home_team": "Washington Wizards",
+        "v1_margin": 5.404,
+        "v2_margin": -0.28
+      },
+      {
+        "actual_margin": 38,
+        "away_team": "San Antonio Spurs",
+        "date": "2024-04-10",
+        "delta_abs_margin_error": -13.256,
+        "delta_brier": -0.10999999999999999,
+        "game_id": "0022301163",
+        "home_team": "Oklahoma City Thunder",
+        "v1_margin": 5.296,
+        "v2_margin": 18.552
+      },
+      {
+        "actual_margin": 10,
+        "away_team": "Chicago Bulls",
+        "date": "2024-03-09",
+        "delta_abs_margin_error": 4.852,
+        "delta_brier": -0.10540799999999999,
+        "game_id": "0022300917",
+        "home_team": "Los Angeles Clippers",
+        "v1_margin": 6.244,
+        "v2_margin": 18.608
+      }
+    ],
+    "most_improved_by_margin_error": [
+      {
+        "actual_margin": 38,
+        "away_team": "San Antonio Spurs",
+        "date": "2024-04-10",
+        "delta_abs_margin_error": -13.256,
+        "delta_brier": -0.10999999999999999,
+        "game_id": "0022301163",
+        "home_team": "Oklahoma City Thunder",
+        "v1_margin": 5.296,
+        "v2_margin": 18.552
+      },
+      {
+        "actual_margin": -16,
+        "away_team": "Phoenix Suns",
+        "date": "2024-01-31",
+        "delta_abs_margin_error": -10.612000000000002,
+        "delta_brier": -0.22598400000000007,
+        "game_id": "0022300677",
+        "home_team": "Brooklyn Nets",
+        "v1_margin": 1.42,
+        "v2_margin": -9.192
+      },
+      {
+        "actual_margin": 18,
+        "away_team": "Golden State Warriors",
+        "date": "2023-11-03",
+        "delta_abs_margin_error": -7.584000000000003,
+        "delta_brier": -0.2080799999999999,
+        "game_id": "0022300005",
+        "home_team": "Oklahoma City Thunder",
+        "v1_margin": -6.984,
+        "v2_margin": 0.6
+      },
+      {
+        "actual_margin": -17,
+        "away_team": "Indiana Pacers",
+        "date": "2024-04-09",
+        "delta_abs_margin_error": -7.483999999999995,
+        "delta_brier": -0.1152160000000001,
+        "game_id": "0022301146",
+        "home_team": "Toronto Raptors",
+        "v1_margin": 16.648,
+        "v2_margin": 9.164
+      },
+      {
+        "actual_margin": 22,
+        "away_team": "Houston Rockets",
+        "date": "2024-02-22",
+        "delta_abs_margin_error": -5.751999999999999,
+        "delta_brier": -0.19353600000000004,
+        "game_id": "0022300798",
+        "home_team": "New Orleans Pelicans",
+        "v1_margin": -11.388,
+        "v2_margin": -5.636
+      },
+      {
+        "actual_margin": -5,
+        "away_team": "Los Angeles Lakers",
+        "date": "2024-04-03",
+        "delta_abs_margin_error": -5.684,
+        "delta_brier": -0.11231999999999995,
+        "game_id": "0022301103",
+        "home_team": "Washington Wizards",
+        "v1_margin": 5.404,
+        "v2_margin": -0.28
+      },
+      {
+        "actual_margin": 6,
+        "away_team": "Chicago Bulls",
+        "date": "2024-02-10",
+        "delta_abs_margin_error": -5.372000000000002,
+        "delta_brier": -0.10363200000000006,
+        "game_id": "0022300752",
+        "home_team": "Orlando Magic",
+        "v1_margin": -15.252,
+        "v2_margin": -9.88
+      },
+      {
+        "actual_margin": -20,
+        "away_team": "Philadelphia 76ers",
+        "date": "2023-12-27",
+        "delta_abs_margin_error": -5.359999999999999,
+        "delta_brier": -0.033792,
+        "game_id": "0022300415",
+        "home_team": "Orlando Magic",
+        "v1_margin": -12.736,
+        "v2_margin": -21.904
+      },
+      {
+        "actual_margin": 22,
+        "away_team": "Brooklyn Nets",
+        "date": "2024-04-01",
+        "delta_abs_margin_error": -5.116000000000003,
+        "delta_brier": -0.13363200000000003,
+        "game_id": "0022301089",
+        "home_team": "Indiana Pacers",
+        "v1_margin": -11.828,
+        "v2_margin": -6.712
+      },
+      {
+        "actual_margin": 7,
+        "away_team": "Philadelphia 76ers",
+        "date": "2024-02-01",
+        "delta_abs_margin_error": -4.859999999999999,
+        "delta_brier": 0.061999999999999986,
+        "game_id": "0022300686",
+        "home_team": "Utah Jazz",
+        "v1_margin": 11.908,
+        "v2_margin": 7.048
+      }
+    ],
+    "most_worsened_by_brier": [
+      {
+        "actual_margin": 9,
+        "away_team": "Oklahoma City Thunder",
+        "date": "2024-01-05",
+        "delta_abs_margin_error": 13.520000000000003,
+        "delta_brier": 0.3562400000000001,
+        "game_id": "0022300481",
+        "home_team": "Brooklyn Nets",
+        "v1_margin": 1.844,
+        "v2_margin": -11.676
+      },
+      {
+        "actual_margin": -11,
+        "away_team": "San Antonio Spurs",
+        "date": "2023-11-02",
+        "delta_abs_margin_error": 10.076,
+        "delta_brier": 0.264688,
+        "game_id": "0022300131",
+        "home_team": "Phoenix Suns",
+        "v1_margin": -6.384,
+        "v2_margin": 3.692
+      },
+      {
+        "actual_margin": 11,
+        "away_team": "Minnesota Timberwolves",
+        "date": "2024-03-10",
+        "delta_abs_margin_error": 7.315999999999999,
+        "delta_brier": 0.22007999999999994,
+        "game_id": "0022300932",
+        "home_team": "Los Angeles Lakers",
+        "v1_margin": -10.024,
+        "v2_margin": -17.34
+      },
+      {
+        "actual_margin": 7,
+        "away_team": "Oklahoma City Thunder",
+        "date": "2023-11-10",
+        "delta_abs_margin_error": 6.988000000000001,
+        "delta_brier": 0.2096639999999999,
+        "game_id": "0022300016",
+        "home_team": "Sacramento Kings",
+        "v1_margin": -1.136,
+        "v2_margin": -8.124
+      },
+      {
+        "actual_margin": 15,
+        "away_team": "Atlanta Hawks",
+        "date": "2024-01-22",
+        "delta_abs_margin_error": 6.071999999999999,
+        "delta_brier": 0.1831199999999999,
+        "game_id": "0022300613",
+        "home_team": "Sacramento Kings",
+        "v1_margin": -4.972,
+        "v2_margin": -11.044
+      },
+      {
+        "actual_margin": -9,
+        "away_team": "Los Angeles Lakers",
+        "date": "2024-02-01",
+        "delta_abs_margin_error": 7.5920000000000005,
+        "delta_brier": 0.17160000000000003,
+        "game_id": "0022300684",
+        "home_team": "Boston Celtics",
+        "v1_margin": 2.624,
+        "v2_margin": 10.216
+      },
+      {
+        "actual_margin": -1,
+        "away_team": "Los Angeles Clippers",
+        "date": "2024-03-27",
+        "delta_abs_margin_error": 6.316000000000001,
+        "delta_brier": 0.15288000000000004,
+        "game_id": "0022301052",
+        "home_team": "Philadelphia 76ers",
+        "v1_margin": -0.884,
+        "v2_margin": 5.432
+      },
+      {
+        "actual_margin": 2,
+        "away_team": "Detroit Pistons",
+        "date": "2024-02-26",
+        "delta_abs_margin_error": 0.7599999999999998,
+        "delta_brier": 0.11563200000000001,
+        "game_id": "0022300828",
+        "home_team": "New York Knicks",
+        "v1_margin": 4.208,
+        "v2_margin": -0.968
+      },
+      {
+        "actual_margin": 14,
+        "away_team": "Utah Jazz",
+        "date": "2023-11-29",
+        "delta_abs_margin_error": 1.4720000000000013,
+        "delta_brier": 0.10919999999999999,
+        "game_id": "0022300261",
+        "home_team": "Memphis Grizzlies",
+        "v1_margin": -0.924,
+        "v2_margin": -2.396
+      },
+      {
+        "actual_margin": -16,
+        "away_team": "Sacramento Kings",
+        "date": "2024-02-25",
+        "delta_abs_margin_error": 3.1439999999999984,
+        "delta_brier": 0.0878560000000001,
+        "game_id": "0022300827",
+        "home_team": "Los Angeles Clippers",
+        "v1_margin": 5.676,
+        "v2_margin": 8.82
+      }
+    ],
+    "most_worsened_by_margin_error": [
+      {
+        "actual_margin": 9,
+        "away_team": "Oklahoma City Thunder",
+        "date": "2024-01-05",
+        "delta_abs_margin_error": 13.520000000000003,
+        "delta_brier": 0.3562400000000001,
+        "game_id": "0022300481",
+        "home_team": "Brooklyn Nets",
+        "v1_margin": 1.844,
+        "v2_margin": -11.676
+      },
+      {
+        "actual_margin": -11,
+        "away_team": "San Antonio Spurs",
+        "date": "2023-11-02",
+        "delta_abs_margin_error": 10.076,
+        "delta_brier": 0.264688,
+        "game_id": "0022300131",
+        "home_team": "Phoenix Suns",
+        "v1_margin": -6.384,
+        "v2_margin": 3.692
+      },
+      {
+        "actual_margin": -9,
+        "away_team": "Los Angeles Lakers",
+        "date": "2024-02-01",
+        "delta_abs_margin_error": 7.5920000000000005,
+        "delta_brier": 0.17160000000000003,
+        "game_id": "0022300684",
+        "home_team": "Boston Celtics",
+        "v1_margin": 2.624,
+        "v2_margin": 10.216
+      },
+      {
+        "actual_margin": 11,
+        "away_team": "Minnesota Timberwolves",
+        "date": "2024-03-10",
+        "delta_abs_margin_error": 7.315999999999999,
+        "delta_brier": 0.22007999999999994,
+        "game_id": "0022300932",
+        "home_team": "Los Angeles Lakers",
+        "v1_margin": -10.024,
+        "v2_margin": -17.34
+      },
+      {
+        "actual_margin": 7,
+        "away_team": "Oklahoma City Thunder",
+        "date": "2023-11-10",
+        "delta_abs_margin_error": 6.988000000000001,
+        "delta_brier": 0.2096639999999999,
+        "game_id": "0022300016",
+        "home_team": "Sacramento Kings",
+        "v1_margin": -1.136,
+        "v2_margin": -8.124
+      },
+      {
+        "actual_margin": -1,
+        "away_team": "Los Angeles Clippers",
+        "date": "2024-03-27",
+        "delta_abs_margin_error": 6.316000000000001,
+        "delta_brier": 0.15288000000000004,
+        "game_id": "0022301052",
+        "home_team": "Philadelphia 76ers",
+        "v1_margin": -0.884,
+        "v2_margin": 5.432
+      },
+      {
+        "actual_margin": 12,
+        "away_team": "Milwaukee Bucks",
+        "date": "2024-01-03",
+        "delta_abs_margin_error": 6.295999999999999,
+        "delta_brier": 0.07315200000000005,
+        "game_id": "0022300466",
+        "home_team": "Indiana Pacers",
+        "v1_margin": 1.564,
+        "v2_margin": -4.732
+      },
+      {
+        "actual_margin": 15,
+        "away_team": "Atlanta Hawks",
+        "date": "2024-01-22",
+        "delta_abs_margin_error": 6.071999999999999,
+        "delta_brier": 0.1831199999999999,
+        "game_id": "0022300613",
+        "home_team": "Sacramento Kings",
+        "v1_margin": -4.972,
+        "v2_margin": -11.044
+      },
+      {
+        "actual_margin": 10,
+        "away_team": "Chicago Bulls",
+        "date": "2024-03-09",
+        "delta_abs_margin_error": 4.852,
+        "delta_brier": -0.10540799999999999,
+        "game_id": "0022300917",
+        "home_team": "Los Angeles Clippers",
+        "v1_margin": 6.244,
+        "v2_margin": 18.608
+      },
+      {
+        "actual_margin": -11,
+        "away_team": "Golden State Warriors",
+        "date": "2024-02-08",
+        "delta_abs_margin_error": 4.736000000000001,
+        "delta_brier": 0.06219200000000008,
+        "game_id": "0022300733",
+        "home_team": "Indiana Pacers",
+        "v1_margin": 2.564,
+        "v2_margin": 7.3
+      }
+    ]
+  }
+}
