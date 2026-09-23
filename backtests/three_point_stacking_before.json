@@ -1,0 +1,102 @@
+{
+  "elite_0.42": [
+    {
+      "n_shooters": 0,
+      "team_3pa_per_sim": 35.28666666666667,
+      "team_3pt_pct": 0.34725108634044966,
+      "mean_make_probability": 0.34592674988518596,
+      "mean_margin": 0.47333333333333333,
+      "n_sims": 150
+    },
+    {
+      "n_shooters": 1,
+      "team_3pa_per_sim": 35.46,
+      "team_3pt_pct": 0.3728144388042865,
+      "mean_make_probability": 0.3743468859001098,
+      "mean_margin": 3.1333333333333333,
+      "n_sims": 150
+    },
+    {
+      "n_shooters": 2,
+      "team_3pa_per_sim": 34.24666666666667,
+      "team_3pt_pct": 0.3745376678995523,
+      "mean_make_probability": 0.37477874260024185,
+      "mean_margin": 3.2266666666666666,
+      "n_sims": 150
+    },
+    {
+      "n_shooters": 3,
+      "team_3pa_per_sim": 34.026666666666664,
+      "team_3pt_pct": 0.37558777429467083,
+      "mean_make_probability": 0.3736403314641816,
+      "mean_margin": 1.2266666666666666,
+      "n_sims": 150
+    },
+    {
+      "n_shooters": 4,
+      "team_3pa_per_sim": 35.82666666666667,
+      "team_3pt_pct": 0.37160401935243764,
+      "mean_make_probability": 0.3793243025109436,
+      "mean_margin": 2.74,
+      "n_sims": 150
+    },
+    {
+      "n_shooters": 5,
+      "team_3pa_per_sim": 34.82666666666667,
+      "team_3pt_pct": 0.3906967840735069,
+      "mean_make_probability": 0.3948759647159834,
+      "mean_margin": 3.92,
+      "n_sims": 150
+    }
+  ],
+  "weak_0.30": [
+    {
+      "n_shooters": 0,
+      "team_3pa_per_sim": 34.806666666666665,
+      "team_3pt_pct": 0.3361425014365064,
+      "mean_make_probability": 0.34589592525021645,
+      "mean_margin": 0.7733333333333333,
+      "n_sims": 150
+    },
+    {
+      "n_shooters": 1,
+      "team_3pa_per_sim": 34.95333333333333,
+      "team_3pt_pct": 0.30059126454320045,
+      "mean_make_probability": 0.3056887004601457,
+      "mean_margin": -4.42,
+      "n_sims": 150
+    },
+    {
+      "n_shooters": 2,
+      "team_3pa_per_sim": 35.00666666666667,
+      "team_3pt_pct": 0.30756046467339554,
+      "mean_make_probability": 0.3054396851588093,
+      "mean_margin": -2.6,
+      "n_sims": 150
+    },
+    {
+      "n_shooters": 3,
+      "team_3pa_per_sim": 34.94,
+      "team_3pt_pct": 0.2986071360427399,
+      "mean_make_probability": 0.3052861137714665,
+      "mean_margin": -2.8666666666666667,
+      "n_sims": 150
+    },
+    {
+      "n_shooters": 4,
+      "team_3pa_per_sim": 35.85333333333333,
+      "team_3pt_pct": 0.2941613982893269,
+      "mean_make_probability": 0.29944648406451996,
+      "mean_margin": -5.633333333333334,
+      "n_sims": 150
+    },
+    {
+      "n_shooters": 5,
+      "team_3pa_per_sim": 34.96666666666667,
+      "team_3pt_pct": 0.2751191611058151,
+      "mean_make_probability": 0.27850348919786844,
+      "mean_margin": -5.693333333333333,
+      "n_sims": 150
+    }
+  ]
+}

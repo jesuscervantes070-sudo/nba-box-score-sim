@@ -389,6 +389,7 @@
   "next_intervention": {
     "pick": "Trace and rebalance THREE_POINT shot resolution (shot_resolution.py: shot_make_probability and its upstream contest_bucket/release_mode assignment) so that a shooter's own real skill separation survives into simulated team shooting-percentage output.",
     "second_priority_not_this_phase": "Wiring the already-computed but disabled foul_drawing_shrunk_rate into the free-throw dispatch path (a small, low-risk, already-scoped fix per possession_orchestrator.py's own documented TODO) -- deprioritized behind the 3PT/2PT fix above only because FT rate is a smaller share of total scoring, not because it is unimportant.",
+    "superseded_note": "SUPERSEDED by three-point resolution diagnostic (backtests/three_point_resolution_before.json): the ~98%-erased 3PT figure compared single-game realized box-score gaps (noise-dominated) with a simulated gap aggregated over team sets that overlapped (a team can be both strong and weak across games). Per-game paired, the sim gap (0.36pp) tracks its expected make-probability gap (0.54pp); shot_make_probability passes skill through at slope ~0.98.",
     "why_this_one_first": "Of every measured collapse point, this is the single largest (three_pt_pct gap erased ~98%, from a real 5.3-percentage-point strong/weak gap down to 0.09 simulated) and it sits directly on the primary scoring pathway (2PT/3PT efficiency dominates total points, unlike FT rate). The engine INPUTS feeding it are already real and correctly directioned (rank 1 finding here is downstream of a working input pipeline, not a broken one) -- so fixing this one link has the largest plausible effect on closing the large/extreme margin-compression gap, without reopening rebounding, defense, turnovers, pace, or calibration."
   },
   "output_rate_decomposition": {
@@ -448,7 +449,8 @@
       "cause": "offensive_shot_resolution_compression",
       "classification": "HIGH",
       "evidence": "Real team-level shooting-percentage gap between strong/weak primary fives in large/extreme games (three_pt_pct real gap=0.0530, strong 40.4% vs weak 35.1%; two_pt_pct real gap=0.0715, strong 59.2% vs weak 52.1%) collapses in simulated output to three_pt_pct gap=0.00089 (~98% erased) and two_pt_pct gap=0.0294 (~59% erased). This happens even though the underlying per-player scoring-field engine INPUTS are real and correctly directioned (strong team ahead in 75-94% of large/extreme games across every scoring field per category_gap_report). Mean simulated possession count is stable across the bucket (203.7 +/- 9.4), so this is not a pace/volume effect -- the collapse is specifically in shot-make-probability resolution, not shot volume.",
-      "rank": 1
+      "rank": 1,
+      "superseded_note": "SUPERSEDED by three-point resolution diagnostic (backtests/three_point_resolution_before.json): the ~98%-erased 3PT figure compared single-game realized box-score gaps (noise-dominated) with a simulated gap aggregated over team sets that overlapped (a team can be both strong and weak across games). Per-game paired, the sim gap (0.36pp) tracks its expected make-probability gap (0.54pp); shot_make_probability passes skill through at slope ~0.98."
     },
     {
       "cause": "multi_player_strength_stacking_saturation",
