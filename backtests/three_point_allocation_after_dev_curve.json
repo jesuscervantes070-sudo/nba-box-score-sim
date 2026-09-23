@@ -1,0 +1,24 @@
+[
+  {
+    "bucket": "near_equal (<3)",
+    "n_games": 0
+  },
+  {
+    "bucket": "modest (3-8)",
+    "n_games": 0
+  },
+  {
+    "bucket": "large (8-15)",
+    "n_games": 8,
+    "mean_abs_strength_diff": 12.784545087587851,
+    "mean_actual_abs_margin": 17.5,
+    "mean_simulated_abs_margin": 7.28125
+  },
+  {
+    "bucket": "extreme (>=15)",
+    "n_games": 8,
+    "mean_abs_strength_diff": 16.795957508041447,
+    "mean_actual_abs_margin": 19.375,
+    "mean_simulated_abs_margin": 9.11875
+  }
+]

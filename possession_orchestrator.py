@@ -106,6 +106,7 @@ EXPLICITLY UNCALIBRATED, hand-set positive per-action-type duration
 (`PossessionConfig`'s `*_action_seconds` fields). No player-specific
 speed/pace latent exists anywhere in this file.
 """
+import hashlib
 import random
 from dataclasses import dataclass, field, replace
 from typing import Dict, List, Optional, Tuple
@@ -858,8 +859,15 @@ _V0_SPACING_CYCLE: Tuple[SpatialZone, ...] = (
 )
 
 
+def symmetric_offset(key: str, n: int) -> int:
+    """Deterministic, RNG-free rotation offset in [0, n) derived from `key`. Replaces "first in
+    lineup order" tie-breaks so no lineup slot is structurally favoured, without consuming the
+    game's random stream."""
+    return int(hashlib.sha256(key.encode()).hexdigest()[:8], 16) % n
+
+
 def default_v0_zone_placement(offensive_five: Tuple[str, ...], ball_handler_id: str,
-                               ball_zone: SpatialZone) -> Dict[str, SpatialZone]:
+                               ball_zone: SpatialZone, rotation_key: Optional[str] = None) -> Dict[str, SpatialZone]:
     """Ball handler at `ball_zone`; the other four offensive players
     cycle deterministically through the coarse off-ball spacing zones in
     lineup order (skipping duplication of the ball handler's own zone
@@ -869,6 +877,9 @@ def default_v0_zone_placement(offensive_five: Tuple[str, ...], ball_handler_id: 
     `initial_player_zones` parameter)."""
     zones = {ball_handler_id: ball_zone}
     others = [p for p in offensive_five if p != ball_handler_id]
+    if rotation_key is not None and others:
+        offset = symmetric_offset(rotation_key, len(others))
+        others = others[offset:] + others[:offset]
     for i, pid in enumerate(others):
         zones[pid] = _V0_SPACING_CYCLE[i % len(_V0_SPACING_CYCLE)]
     return zones
@@ -892,11 +903,14 @@ def _nearest_teammate_id(engine: PossessionEngine, world: PossessionWorld, carri
     """Deterministic COARSE zone/topology proximity -- NOT Euclidean
     distance (no continuous coordinates exist). A teammate whose zone
     shares the carrier's `ball_side()` classification (LEFT/RIGHT/
-    CENTRAL) is considered "nearest"; ties broken by lineup order. Falls
-    back to the first teammate in lineup order if none share a side."""
+    CENTRAL) is considered "nearest". Ties (and the no-match fallback) are broken by a
+    state-keyed rotation of the teammate scan order rather than fixed lineup order, so no
+    lineup slot is structurally favoured."""
     teammates = world.teammates_of(engine, carrier_id)
     if not teammates:
         return None
+    offset = symmetric_offset(f"{engine.state.possession_id}|{carrier_id}|{len(engine.log.events)}", len(teammates))
+    teammates = teammates[offset:] + teammates[:offset]
     carrier_side = ball_side(world.player_zones.get(carrier_id, engine.state.ball_zone))
     for pid in teammates:
         if ball_side(world.player_zones.get(pid, engine.state.ball_zone)) == carrier_side:
@@ -2708,7 +2722,8 @@ def simulate_possession(
 
     engine.inbound(inbound_receiver_id, config.initial_ball_zone, config.initial_phase)
     zones = initial_player_zones if initial_player_zones is not None else \
-        default_v0_zone_placement(offensive_five, inbound_receiver_id, config.initial_ball_zone)
+        default_v0_zone_placement(offensive_five, inbound_receiver_id, config.initial_ball_zone,
+                                  rotation_key=possession_id)
     world.player_zones = dict(zones)
     _mirror_defender_zones(world.player_zones, engine.state.assignments)
     world.just_caught_pass_player_id = inbound_receiver_id

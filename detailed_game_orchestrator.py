@@ -31,6 +31,7 @@ from possession_orchestrator import (
     StatDeltas,
     derive_stat_deltas_from_events,
     simulate_possession,
+    symmetric_offset,
     validate_lineups,
 )
 from possession_rules import EraRules, get_era_rules
@@ -229,15 +230,17 @@ def initialize_next_possession(state: DetailedGameState,
     offense_five = _lineup_for(state.current_offense_team_id, state, home_five, away_five)
     defense_five = _lineup_for(state.current_defense_team_id, state, home_five, away_five)
     validate_lineups(offense_five, defense_five)
+    possession_id = f"period{state.period}-possession{state.next_possession_sequence}"
+    default_receiver = offense_five[symmetric_offset(possession_id, len(offense_five))]
     restart = restart_context or RestartContext(
         restart_type=RestartType.DEAD_BALL_INBOUND,
         source=PossessionChangeSource.PERIOD_START,
-        ball_carrier_id=offense_five[0],
+        ball_carrier_id=default_receiver,
     )
     if restart.restart_type not in (RestartType.DEAD_BALL_INBOUND, RestartType.LIVE_TRANSITION,
                                     RestartType.CONTROLLED_ADVANCE):
         raise ValueError(f"unsupported restart_type {restart.restart_type!r}")
-    receiver = restart.ball_carrier_id or offense_five[0]
+    receiver = restart.ball_carrier_id or default_receiver
     if receiver not in offense_five:
         raise ValueError("restart ball carrier must belong to the current offensive five")
     # CONTROLLED_ADVANCE is live (the ball never went dead), same as LIVE_TRANSITION, for
@@ -248,7 +251,7 @@ def initialize_next_possession(state: DetailedGameState,
                                                                     RestartType.CONTROLLED_ADVANCE) \
         else PossessionPhase.HALFCOURT
     return PossessionStart(
-        possession_id=f"period{state.period}-possession{state.next_possession_sequence}",
+        possession_id=possession_id,
         offense_team_id=state.current_offense_team_id,
         defense_team_id=state.current_defense_team_id,
         offensive_five=offense_five,
@@ -385,7 +388,9 @@ def next_restart_context(result: PossessionTerminalResult,
                                                   new_state.current_defense_team_id, carrier)
         return RestartContext(restart_type, source,
                               carrier, SpatialZone.TOP_OF_KEY, transition_diagnostic=diagnostic)
-    return RestartContext(restart_type, source, next_five[0], SpatialZone.TOP_OF_KEY)
+    inbound_key = f"period{new_state.period}-possession{new_state.next_possession_sequence}"
+    return RestartContext(restart_type, source, next_five[symmetric_offset(inbound_key, len(next_five))],
+                          SpatialZone.TOP_OF_KEY)
 
 
 def simulate_possessions(home_five: Tuple[str, ...], away_five: Tuple[str, ...],

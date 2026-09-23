@@ -44,10 +44,11 @@ class TestTurnoverDiagnosis(unittest.TestCase):
         # "Activate on-ball screen roll creation", "Add pass-created interior seal", "Model
         # action-specific jump-shot selection", "Activate empirical foul occurrence", "Calibrate
         # drive follow-up decisions", "Expand interior scoring opportunities", "Add interior
-        # shot-opportunity generation", and "Calibrate source-conditioned transition routing".)
-        self.assertEqual(self.diagnosis.engine_accounted_turnovers, 4409)
-        self.assertEqual(self.diagnosis.player_charged_turnovers, 3903)
-        self.assertEqual(self.diagnosis.categories[TurnoverCategory.SHOT_CLOCK_VIOLATION].engine_accounted_turnovers, 506)
+        # shot-opportunity generation", "Calibrate source-conditioned transition routing", and "Correct
+        # three-point shooter allocation" (symmetric inbound/teammate tie-breaks).)
+        self.assertEqual(self.diagnosis.engine_accounted_turnovers, 4405)
+        self.assertEqual(self.diagnosis.player_charged_turnovers, 3898)
+        self.assertEqual(self.diagnosis.categories[TurnoverCategory.SHOT_CLOCK_VIOLATION].engine_accounted_turnovers, 507)
 
     def test_steals_are_consistent_with_current_clean_interception_semantics(self):
         steals = sum(o.steal_credited for o in self.diagnosis.observations)

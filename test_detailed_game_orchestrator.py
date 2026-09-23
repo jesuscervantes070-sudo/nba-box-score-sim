@@ -180,7 +180,8 @@ class TestInitializationAndFlipRules(unittest.TestCase):
     def test_initial_dead_ball_start_builds_phase23a_inputs(self):
         start = game.initialize_next_possession(initial_state(), HOME, AWAY)
         self.assertEqual(start.possession_id, "period1-possession1")
-        self.assertEqual(start.inbound_receiver_id, HOME[0])
+        self.assertIn(start.inbound_receiver_id, HOME)
+        self.assertEqual(start.inbound_receiver_id, game.initialize_next_possession(initial_state(), HOME, AWAY).inbound_receiver_id)
         self.assertEqual(start.phase, PossessionPhase.HALFCOURT)
 
     def test_made_shot_flips_to_opponent_dead_ball_inbound(self):

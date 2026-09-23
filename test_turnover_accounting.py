@@ -124,8 +124,8 @@ class TestTurnoverAccountingReconciliation(unittest.TestCase):
         # decisions", "Expand interior scoring opportunities", "Add interior shot-opportunity
         # generation", "Calibrate source-conditioned transition routing", and "Fix missed and-one
         # rebound continuation".)
-        self.assertEqual(team_total, 4409)
-        self.assertEqual(player_total, 3903)
+        self.assertEqual(team_total, 4405)
+        self.assertEqual(player_total, 3898)
 
     def test_basketball_output_digest_matches_first_shot_mix_baseline(self):
         payload = []
@@ -175,8 +175,9 @@ class TestTurnoverAccountingReconciliation(unittest.TestCase):
         # "Activate empirical foul occurrence", "Calibrate drive follow-up decisions", "Expand
         # interior scoring opportunities", "Add interior shot-opportunity generation", "Calibrate
         # source-conditioned transition routing", "Model drive floor fouls as observable outcomes",
-        # and "Fix missed and-one rebound continuation".)
-        self.assertEqual(digest, "3c3f33f2e34666871a561de4354fc3a40bbe19972635e0f97164964c587a613d")
+        # "Fix missed and-one rebound continuation", and "Correct three-point shooter allocation" --
+        # symmetric, RNG-free inbound/teammate tie-breaks replaced lineup-order first-match.)
+        self.assertEqual(digest, "4c6631135543d64d4646745f1d8a2c5e9b4b7543501527123629fc026b2c5eb4")
 
 
 if __name__ == "__main__":

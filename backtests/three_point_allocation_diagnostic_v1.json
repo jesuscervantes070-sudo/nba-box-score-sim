@@ -1,0 +1,636 @@
+{
+ "after": {
+  "balanced_stacking_elite": [
+   {
+    "mean_margin": -0.1,
+    "n_shooters": 0,
+    "team_3pa_per_sim": 33.3,
+    "team_3pt_pct": 0.3663663663663664
+   },
+   {
+    "mean_margin": 0.31000000000000016,
+    "n_shooters": 1,
+    "team_3pa_per_sim": 35.21,
+    "team_3pt_pct": 0.3518886679920477
+   },
+   {
+    "mean_margin": 1.54,
+    "n_shooters": 2,
+    "team_3pa_per_sim": 34.795,
+    "team_3pt_pct": 0.3698807299899411
+   },
+   {
+    "mean_margin": 4.16,
+    "n_shooters": 3,
+    "team_3pa_per_sim": 35.07,
+    "team_3pt_pct": 0.37439406900484745
+   },
+   {
+    "mean_margin": 1.23,
+    "n_shooters": 4,
+    "team_3pa_per_sim": 34.91,
+    "team_3pt_pct": 0.37668289888284157
+   },
+   {
+    "mean_margin": 3,
+    "n_shooters": 5,
+    "team_3pa_per_sim": 33.45,
+    "team_3pt_pct": 0.4020926756352765
+   }
+  ],
+  "balanced_stacking_weak": [
+   {
+    "mean_margin": 4,
+    "n_shooters": 0,
+    "team_3pa_per_sim": 34.5,
+    "team_3pt_pct": 0.3391304347826087
+   },
+   {
+    "mean_margin": 1.87,
+    "n_shooters": 1,
+    "team_3pa_per_sim": 35.82,
+    "team_3pt_pct": 0.3389168062534897
+   },
+   {
+    "mean_margin": -3.685,
+    "n_shooters": 2,
+    "team_3pa_per_sim": 34.73,
+    "team_3pt_pct": 0.31053843938957676
+   },
+   {
+    "mean_margin": -2.735,
+    "n_shooters": 3,
+    "team_3pa_per_sim": 34.745,
+    "team_3pt_pct": 0.3075262627716218
+   },
+   {
+    "mean_margin": -5.92,
+    "n_shooters": 4,
+    "team_3pa_per_sim": 35.13,
+    "team_3pt_pct": 0.29063478508397383
+   },
+   {
+    "mean_margin": 1.45,
+    "n_shooters": 5,
+    "team_3pa_per_sim": 36.9,
+    "team_3pt_pct": 0.2953929539295393
+   }
+  ],
+  "nearest_teammate_branch_counts": {
+   "by_lineup_index": {
+    "0": 247805,
+    "1": 214110,
+    "2": 187613,
+    "3": 164049
+   },
+   "same_side_first_match": 813577
+  },
+  "permutation_tests": {
+   "A_all_identical": {
+    "mean_share_by_player": [
+     0.20532882738354233,
+     0.1929099811885435,
+     0.19204808704865578,
+     0.20496101043413856,
+     0.20475209394511984
+    ],
+    "mean_share_by_slot": [
+     0.20434660521550727,
+     0.23293654807031028,
+     0.21938829770358703,
+     0.1674120707687023,
+     0.17591647824189316
+    ],
+    "sd_of_player_means": 0.006149661925781448,
+    "sd_of_slot_means": 0.024986413969945852
+   },
+   "B_realistic_roles": {
+    "mean_share_by_player": [
+     0.17205738028485165,
+     0.2000046403665519,
+     0.19736310856185318,
+     0.20435461917292377,
+     0.22622025161381945
+    ],
+    "mean_share_by_slot": [
+     0.21173443704375888,
+     0.22720707338496315,
+     0.2131724870633939,
+     0.1699642403961479,
+     0.17792176211173613
+    ],
+    "sd_of_player_means": 0.017287032812881267,
+    "sd_of_slot_means": 0.022095391888695498
+   },
+   "C_spacing_only": {
+    "mean_share_by_player": [
+     0.22236949061643818,
+     0.21808100786572152,
+     0.19079554581457628,
+     0.19239326929597855,
+     0.17636068640728547
+    ],
+    "mean_share_by_slot": [
+     0.21245950056510426,
+     0.23331137819657408,
+     0.2079124505038583,
+     0.16637546712608323,
+     0.17994120360838012
+    ],
+    "sd_of_player_means": 0.017485527912356344,
+    "sd_of_slot_means": 0.02391843836178526
+   },
+   "D_initiation_only": {
+    "mean_share_by_player": [
+     0.21119372241580125,
+     0.19967825416450607,
+     0.20173909812024862,
+     0.19471136964097904,
+     0.19267755565846498
+    ],
+    "mean_share_by_slot": [
+     0.20794941840840514,
+     0.22771649303155533,
+     0.21115770470965334,
+     0.1781879066599402,
+     0.174988477190446
+    ],
+    "sd_of_player_means": 0.006480975333786696,
+    "sd_of_slot_means": 0.0202841578702015
+   },
+   "E_finishing_only": {
+    "mean_share_by_player": [
+     0.14997125773929731,
+     0.17754159684776655,
+     0.19847362520341089,
+     0.22195755392427674,
+     0.25205596628524846
+    ],
+    "mean_share_by_slot": [
+     0.21520686707741657,
+     0.22895709698505853,
+     0.2026106258071578,
+     0.17557907858818908,
+     0.17764633154217802
+    ],
+    "sd_of_player_means": 0.035218013983142706,
+    "sd_of_slot_means": 0.020845361763909834
+   },
+   "F_three_point_preference_only": {
+    "mean_share_by_player": [
+     0.26784046361481983,
+     0.23607145955354591,
+     0.21366724401030504,
+     0.15816593744505034,
+     0.12425489537627887
+    ],
+    "mean_share_by_slot": [
+     0.20861169415285397,
+     0.2361453831225887,
+     0.2128785429566084,
+     0.17497892272573767,
+     0.16738545704221128
+    ],
+    "sd_of_player_means": 0.0521108087078754,
+    "sd_of_slot_means": 0.025441185452947275
+   }
+  },
+  "real_vs_sim_allocation": {
+   "concentration": {
+    "real_hhi": 0.24769786626638488,
+    "real_top1": 0.3235353185290047,
+    "real_top2": 0.5874868161756388,
+    "sim_hhi": 0.2487144366982063,
+    "sim_top1": 0.3485582711554317,
+    "sim_top2": 0.5805930161352706
+   },
+   "mae": 0.10787965240427852,
+   "mean_slot_share_real": [
+    0.18931984897648818,
+    0.2518468014955939,
+    0.19102718323137755,
+    0.1950427446668514,
+    0.172763421629689
+   ],
+   "mean_slot_share_sim": [
+    0.20046748586866406,
+    0.25969530032792787,
+    0.17813998572361242,
+    0.1923253062409016,
+    0.16937192183889407
+   ],
+   "n_players": 145,
+   "n_teams": 29,
+   "pearson": 0.09652031046999067,
+   "spearman": 0.04400886081806258
+  },
+  "sim_correlations_with_sim_share": {
+   "ability": {
+    "pearson": 0.1725665239851656,
+    "spearman": 0.13568742686928598
+   },
+   "expected_minutes": {
+    "pearson": -0.21306682862529416,
+    "spearman": -0.261600535348764
+   },
+   "finishing": {
+    "pearson": 0.6888312574878177,
+    "spearman": 0.6770730479724661
+   },
+   "initiation": {
+    "pearson": -0.39251790084368926,
+    "spearman": -0.45029364146188855
+   },
+   "slot": {
+    "pearson": -0.1856290142052271,
+    "spearman": -0.150875845694368
+   },
+   "spacing": {
+    "pearson": 0.45282447750858723,
+    "spearman": 0.5257268671788135
+   },
+   "tendency": {
+    "pearson": 0.47076600127488855,
+    "spearman": 0.46815462131947727
+   }
+  },
+  "sim_explanatory_r2": {
+   "B_tendency": 0.2506958155292479,
+   "C_spacing": 0.24955646669857467,
+   "D_tendency_role": 0.6844194620586173,
+   "E_tendency_role_ability": 0.6874381302311974,
+   "ability_only": 0.038341398937703275,
+   "minutes_only": 0.11593322881320733,
+   "slot_only": 0.10343109940481043,
+   "slot_plus_fields": 0.7427633099206408
+  }
+ },
+ "before": {
+  "balanced_stacking_elite": [
+   {
+    "mean_margin": -0.05,
+    "n_shooters": 0,
+    "team_3pa_per_sim": 33.3,
+    "team_3pt_pct": 0.3663663663663664
+   },
+   {
+    "mean_margin": -0.08000000000000004,
+    "n_shooters": 1,
+    "team_3pa_per_sim": 34.85,
+    "team_3pt_pct": 0.35064562410329986
+   },
+   {
+    "mean_margin": 1.595,
+    "n_shooters": 2,
+    "team_3pa_per_sim": 34.79,
+    "team_3pt_pct": 0.36662834147743606
+   },
+   {
+    "mean_margin": 5.315,
+    "n_shooters": 3,
+    "team_3pa_per_sim": 35.34,
+    "team_3pt_pct": 0.3794567062818336
+   },
+   {
+    "mean_margin": 1.74,
+    "n_shooters": 4,
+    "team_3pa_per_sim": 34.59,
+    "team_3pt_pct": 0.37872217403873953
+   },
+   {
+    "mean_margin": 3,
+    "n_shooters": 5,
+    "team_3pa_per_sim": 33.45,
+    "team_3pt_pct": 0.4020926756352765
+   }
+  ],
+  "balanced_stacking_weak": [
+   {
+    "mean_margin": 4,
+    "n_shooters": 0,
+    "team_3pa_per_sim": 34.5,
+    "team_3pt_pct": 0.3391304347826087
+   },
+   {
+    "mean_margin": 1.04,
+    "n_shooters": 1,
+    "team_3pa_per_sim": 35.8,
+    "team_3pt_pct": 0.3324022346368715
+   },
+   {
+    "mean_margin": -3.695,
+    "n_shooters": 2,
+    "team_3pa_per_sim": 34.71,
+    "team_3pt_pct": 0.30740420628061077
+   },
+   {
+    "mean_margin": -3.86,
+    "n_shooters": 3,
+    "team_3pa_per_sim": 34.82,
+    "team_3pt_pct": 0.3032739804709937
+   },
+   {
+    "mean_margin": -6.88,
+    "n_shooters": 4,
+    "team_3pa_per_sim": 34.85,
+    "team_3pt_pct": 0.29010043041606887
+   },
+   {
+    "mean_margin": 1.4,
+    "n_shooters": 5,
+    "team_3pa_per_sim": 36.85,
+    "team_3pt_pct": 0.2944369063772049
+   }
+  ],
+  "nearest_teammate_branch_counts": {
+   "by_lineup_index": {
+    "0": 162937,
+    "1": 6,
+    "2": 14,
+    "3": 648330
+   },
+   "same_side_first_match": 811287
+  },
+  "permutation_tests": {
+   "A_all_identical": {
+    "mean_share_by_player": [
+     0.19547179775374618,
+     0.20394659033394275,
+     0.20416439443529083,
+     0.1972595644990471,
+     0.1991576529779731
+    ],
+    "mean_share_by_slot": [
+     0.5953669005437706,
+     0.0,
+     0.0,
+     0.09063614743045362,
+     0.31399695202577577
+    ],
+    "sd_of_player_means": 0.0035111794912829563,
+    "sd_of_slot_means": 0.22859166361248098
+   },
+   "B_realistic_roles": {
+    "mean_share_by_player": [
+     0.18500080039330918,
+     0.19140967949482135,
+     0.20728744972071747,
+     0.19405031659206753,
+     0.22225175379908446
+    ],
+    "mean_share_by_slot": [
+     0.5940213648111784,
+     0.0,
+     0.0,
+     0.0849081516264467,
+     0.3210704835623749
+    ],
+    "sd_of_player_means": 0.013284696447000425,
+    "sd_of_slot_means": 0.22941535758520265
+   },
+   "C_spacing_only": {
+    "mean_share_by_player": [
+     0.20882404890769146,
+     0.1987745181516826,
+     0.20423697050501716,
+     0.20304776376176004,
+     0.18511669867384878
+    ],
+    "mean_share_by_slot": [
+     0.5907056835396408,
+     0.0,
+     0.0,
+     0.09135275159476244,
+     0.31794156486559677
+    ],
+    "sd_of_player_means": 0.008100852871874467,
+    "sd_of_slot_means": 0.22731712142254182
+   },
+   "D_initiation_only": {
+    "mean_share_by_player": [
+     0.20165905247378063,
+     0.19865928361205143,
+     0.20537006096761323,
+     0.19225314687048053,
+     0.20205845607607417
+    ],
+    "mean_share_by_slot": [
+     0.594625558263083,
+     0.0,
+     0.0,
+     0.09928052680286649,
+     0.30609391493405047
+    ],
+    "sd_of_player_means": 0.004419015844439277,
+    "sd_of_slot_means": 0.22677286535279814
+   },
+   "E_finishing_only": {
+    "mean_share_by_player": [
+     0.15374320088680288,
+     0.19018757950787138,
+     0.1981986767559652,
+     0.1976501013944698,
+     0.2602204414548907
+    ],
+    "mean_share_by_slot": [
+     0.5777136702084581,
+     0.0,
+     0.0,
+     0.08282131670436194,
+     0.33946501308717997
+    ],
+    "sd_of_player_means": 0.03426731217361733,
+    "sd_of_slot_means": 0.22620740498783437
+   },
+   "F_three_point_preference_only": {
+    "mean_share_by_player": [
+     0.2438861645663611,
+     0.20811399051010912,
+     0.20612637885868573,
+     0.1862379862959535,
+     0.1556354797688905
+    ],
+    "mean_share_by_slot": [
+     0.5749918603649884,
+     0.0,
+     0.0,
+     0.09449916315181447,
+     0.3305089764831971
+    ],
+    "sd_of_player_means": 0.0289377555342183,
+    "sd_of_slot_means": 0.22306138834785105
+   }
+  },
+  "real_vs_sim_allocation": {
+   "concentration": {
+    "real_hhi": 0.24769786626638488,
+    "real_top1": 0.3235353185290047,
+    "real_top2": 0.5874868161756388,
+    "sim_hhi": 0.5080603879577379,
+    "sim_top1": 0.6322627839633194,
+    "sim_top2": 0.896869768667201
+   },
+   "mae": 0.22599409483205143,
+   "mean_slot_share_real": [
+    0.18931984897648818,
+    0.2518468014955939,
+    0.19102718323137755,
+    0.1950427446668514,
+    0.172763421629689
+   ],
+   "mean_slot_share_sim": [
+    0.5931755876628543,
+    3.0898529230008654e-05,
+    4.6099944680066385e-05,
+    0.10305323285888887,
+    0.3036941810043468
+   ],
+   "n_players": 145,
+   "n_teams": 29,
+   "pearson": -0.10708442138834738,
+   "spearman": -0.17679995595919606
+  },
+  "sim_correlations_with_sim_share": {
+   "ability": {
+    "pearson": -0.04075013300169028,
+    "spearman": -0.08627876777677006
+   },
+   "expected_minutes": {
+    "pearson": -0.07445394823826844,
+    "spearman": -0.06824968103898611
+   },
+   "finishing": {
+    "pearson": 0.10832848144726068,
+    "spearman": 0.021405752474980666
+   },
+   "initiation": {
+    "pearson": -0.013150443608453194,
+    "spearman": 0.024354237720887045
+   },
+   "slot": {
+    "pearson": -0.27116567501061994,
+    "spearman": -0.014641638783924178
+   },
+   "spacing": {
+    "pearson": 0.15955276392583662,
+    "spearman": 0.1666514144926372
+   },
+   "tendency": {
+    "pearson": -0.04774258006472927,
+    "spearman": -0.14497000246596153
+   }
+  },
+  "sim_explanatory_r2": {
+   "B_tendency": 0.002578390391519747,
+   "C_spacing": 0.03098258875465354,
+   "D_tendency_role": 0.04552494447905153,
+   "E_tendency_role_ability": 0.045623290026264085,
+   "ability_only": 0.002138025660951892,
+   "minutes_only": 0.014156363771269054,
+   "slot_only": 0.8268099866595265,
+   "slot_plus_fields": 0.8651576622687784
+  }
+ },
+ "classification": "E (combination): implementation artifact (first-in-lineup inbound receiver, lineup-order spacing cycle, first-match nearest-teammate) -- fixed; remaining gap is a role/tendency modeling gap (sim allocation driven by role_off_finishing/spacing; real by three_point_preference)",
+ "development_large_extreme": {
+  "margin_curve_after": [
+   {
+    "bucket": "near_equal (<3)",
+    "n_games": 0
+   },
+   {
+    "bucket": "modest (3-8)",
+    "n_games": 0
+   },
+   {
+    "bucket": "large (8-15)",
+    "mean_abs_strength_diff": 12.784545087587851,
+    "mean_actual_abs_margin": 17.5,
+    "mean_simulated_abs_margin": 7.28125,
+    "n_games": 8
+   },
+   {
+    "bucket": "extreme (>=15)",
+    "mean_abs_strength_diff": 16.795957508041447,
+    "mean_actual_abs_margin": 19.375,
+    "mean_simulated_abs_margin": 9.11875,
+    "n_games": 8
+   }
+  ],
+  "per_game_3pt_gap_after": {
+   "expected_make_prob_gap": 0.0156683629675112,
+   "input_attempt_weighted_gap": 0.01678865486615183,
+   "input_primary_five_gap": 0.014873409080921073,
+   "mean_league_sim_3pt_pct": 0.3325683259471118,
+   "mean_share_by_shooter_rank": [
+    0.20358674116137862,
+    0.20574618755289312,
+    0.23960178094143506,
+    0.160088000339124,
+    0.19097729000516922
+   ],
+   "real_3pt_gap": 0.062001977750549254,
+   "sim_3pt_gap": 0.016397455357399636
+  },
+  "per_game_3pt_gap_before": {
+   "expected_make_prob_gap": 0.00540179498766068,
+   "input_attempt_weighted_gap": 0.007166892349952665,
+   "input_primary_five_gap": 0.014873409080921073,
+   "mean_league_sim_3pt_pct": 0.33082515597846945,
+   "mean_share_by_shooter_rank": [
+    0.17358679998872942,
+    0.23708698651723903,
+    0.23174669217026841,
+    0.22156723018378371,
+    0.1360122911399794
+   ],
+   "real_3pt_gap": 0.062001977750549254,
+   "sim_3pt_gap": 0.003610180238837985
+  }
+ },
+ "fix": "RNG-free symmetric_offset(key) rotation for default inbound receiver, spacing placement order, and _nearest_teammate_id scan order",
+ "real_correlations_with_real_share": {
+  "ability": {
+   "pearson": 0.3625651778614315,
+   "spearman": 0.3296278728307999
+  },
+  "expected_minutes": {
+   "pearson": 0.13307988104816512,
+   "spearman": 0.1310542936686724
+  },
+  "finishing": {
+   "pearson": -0.1201433858337956,
+   "spearman": -0.12367558298592816
+  },
+  "initiation": {
+   "pearson": 0.09350660944471577,
+   "spearman": 0.10321975393808265
+  },
+  "real_3pa_per_min": {
+   "pearson": 0.8074373180280131,
+   "spearman": 0.7809718380135986
+  },
+  "real_3pct": {
+   "pearson": 0.4293320678214739,
+   "spearman": 0.3000046168776426
+  },
+  "spacing": {
+   "pearson": 0.06310047212983655,
+   "spearman": -0.1358871713033357
+  },
+  "tendency": {
+   "pearson": 0.6343366196174585,
+   "spearman": 0.523504687750891
+  }
+ },
+ "real_explanatory_r2": {
+  "B_tendency": 0.45517297726461536,
+  "C_spacing": 0.004845897862410298,
+  "D_tendency_role": 0.5170636676535527,
+  "E_tendency_role_ability": 0.51799175122308,
+  "ability_only": 0.16924935926475748,
+  "minutes_only": 0.04522734105187309,
+  "slot_only": 0.07650391431248604,
+  "slot_plus_fields": 0.5392343937227713
+ }
+}

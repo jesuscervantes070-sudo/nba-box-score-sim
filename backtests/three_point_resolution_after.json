@@ -1,0 +1,774 @@
+{
+  "engine_input_distribution": {
+    "mean": 0.35711360216540594,
+    "n": 103,
+    "p00": 0.2329249864584371,
+    "p05": 0.3071798673412254,
+    "p100": 0.41460065189466055,
+    "p25": 0.3369769628189205,
+    "p50": 0.3555323488619644,
+    "p75": 0.380245853487434,
+    "p95": 0.4081005685626329,
+    "sd": 0.03320459723595227
+  },
+  "games": [
+    {
+      "expected_make_prob_gap": 0.01452306396639863,
+      "game_id": "0022300030",
+      "input_attempt_weighted_gap": 0.017258026357373835,
+      "input_primary_five_gap": 0.018717748531315803,
+      "real_3pt_gap": 0.1527093596059113,
+      "sim_3pt_gap": 0.0045790451180850456,
+      "strength_diff": 17.674242424242422,
+      "strong": {
+        "attempt_weighted_input_rate": 0.35148440574132817,
+        "attempts": 2236,
+        "catch_and_shoot_share": 0.43828264758497315,
+        "mean_make_probability": 0.3288081495470029,
+        "pct": 0.3224508050089445,
+        "primary_five_mean_rate": 0.34902184804436814,
+        "share_by_shooter_rank": [
+          0.10330948121645796,
+          0.12567084078711985,
+          0.38953488372093026,
+          0.21869409660107333,
+          0.16279069767441862
+        ]
+      },
+      "strong_team": "Cleveland Cavaliers",
+      "weak": {
+        "attempt_weighted_input_rate": 0.33422637938395433,
+        "attempts": 2199,
+        "catch_and_shoot_share": 0.46839472487494316,
+        "mean_make_probability": 0.31428508558060425,
+        "pct": 0.3178717598908595,
+        "primary_five_mean_rate": 0.33030409951305234,
+        "share_by_shooter_rank": [
+          0.14961346066393816,
+          0.41246020918599363,
+          0.1778080945884493,
+          0.110050022737608,
+          0.15006821282401092
+        ]
+      },
+      "weak_team": "Detroit Pistons"
+    },
+    {
+      "expected_make_prob_gap": 0.03905352383469851,
+      "game_id": "0022300032",
+      "input_attempt_weighted_gap": 0.039202385581104005,
+      "input_primary_five_gap": 0.032494813335621264,
+      "real_3pt_gap": 0.011904761904761862,
+      "sim_3pt_gap": 0.03141178617801038,
+      "strength_diff": 14.145454545454545,
+      "strong": {
+        "attempt_weighted_input_rate": 0.37128301298475075,
+        "attempts": 2551,
+        "catch_and_shoot_share": 0.5096040768326147,
+        "mean_make_probability": 0.35170249288842786,
+        "pct": 0.34417875343002746,
+        "primary_five_mean_rate": 0.3619660259326153,
+        "share_by_shooter_rank": [
+          0.22736181889455115,
+          0.32065856526852216,
+          0.20148961191689532,
+          0.1826734613876911,
+          0.06781654253234026
+        ]
+      },
+      "strong_team": "Sacramento Kings",
+      "weak": {
+        "attempt_weighted_input_rate": 0.33208062740364674,
+        "attempts": 2107,
+        "catch_and_shoot_share": 0.49169435215946844,
+        "mean_make_probability": 0.31264896905372935,
+        "pct": 0.3127669672520171,
+        "primary_five_mean_rate": 0.329471212596994,
+        "share_by_shooter_rank": [
+          0.26198386331276696,
+          0.2102515424774561,
+          0.18984337921214997,
+          0.13906027527289985,
+          0.1988609397247271
+        ]
+      },
+      "weak_team": "San Antonio Spurs"
+    },
+    {
+      "expected_make_prob_gap": 0.005319584691484913,
+      "game_id": "0022300057",
+      "input_attempt_weighted_gap": 0.0034872013681626624,
+      "input_primary_five_gap": 0.008545137362387323,
+      "real_3pt_gap": -0.019056261343012693,
+      "sim_3pt_gap": -0.028646652213009383,
+      "strength_diff": 13.8375,
+      "strong": {
+        "attempt_weighted_input_rate": 0.35470191597915274,
+        "attempts": 1831,
+        "catch_and_shoot_share": 0.4079737848170399,
+        "mean_make_probability": 0.33188108997423105,
+        "pct": 0.3173129437465866,
+        "primary_five_mean_rate": 0.3596278983398401,
+        "share_by_shooter_rank": [
+          0.10759148006553795,
+          0.22610595303113054,
+          0.3244128891316221,
+          0.1720371381758602,
+          0.16985253959584926
+        ]
+      },
+      "strong_team": "New York Knicks",
+      "weak": {
+        "attempt_weighted_input_rate": 0.3512147146109901,
+        "attempts": 1980,
+        "catch_and_shoot_share": 0.37424242424242427,
+        "mean_make_probability": 0.32656150528274613,
+        "pct": 0.34595959595959597,
+        "primary_five_mean_rate": 0.3510827609774528,
+        "share_by_shooter_rank": [
+          0.24545454545454545,
+          0.11212121212121212,
+          0.1712121212121212,
+          0.20202020202020202,
+          0.2691919191919192
+        ]
+      },
+      "weak_team": "Charlotte Hornets"
+    },
+    {
+      "expected_make_prob_gap": 0.026506791016724762,
+      "game_id": "0022300139",
+      "input_attempt_weighted_gap": 0.02740851978818931,
+      "input_primary_five_gap": 0.027738340982843723,
+      "real_3pt_gap": 0.1752136752136752,
+      "sim_3pt_gap": 0.035798581677219554,
+      "strength_diff": 12.5,
+      "strong": {
+        "attempt_weighted_input_rate": 0.3744116422196996,
+        "attempts": 2361,
+        "catch_and_shoot_share": 0.4531977975434138,
+        "mean_make_probability": 0.35382436334911826,
+        "pct": 0.3540872511647607,
+        "primary_five_mean_rate": 0.3761602973844679,
+        "share_by_shooter_rank": [
+          0.16857263871241,
+          0.11901736552308344,
+          0.2939432443879712,
+          0.21812791190173655,
+          0.2003388394747988
+        ]
+      },
+      "strong_team": "Denver Nuggets",
+      "weak": {
+        "attempt_weighted_input_rate": 0.34700312243151027,
+        "attempts": 2127,
+        "catch_and_shoot_share": 0.5044663845792196,
+        "mean_make_probability": 0.3273175723323935,
+        "pct": 0.31828866948754114,
+        "primary_five_mean_rate": 0.34842195640162416,
+        "share_by_shooter_rank": [
+          0.10484250117536437,
+          0.27127409496944055,
+          0.22519981194170194,
+          0.38928067700987307,
+          0.009402914903620122
+        ]
+      },
+      "weak_team": "Chicago Bulls"
+    },
+    {
+      "expected_make_prob_gap": 0.04265056071322648,
+      "game_id": "0022300140",
+      "input_attempt_weighted_gap": 0.04545436323712987,
+      "input_primary_five_gap": 0.034237963281298245,
+      "real_3pt_gap": -0.007936507936507964,
+      "sim_3pt_gap": 0.04713787954206072,
+      "strength_diff": 12.666666666666666,
+      "strong": {
+        "attempt_weighted_input_rate": 0.38257746821989647,
+        "attempts": 1640,
+        "catch_and_shoot_share": 0.4292682926829268,
+        "mean_make_probability": 0.3590428296289604,
+        "pct": 0.37621951219512195,
+        "primary_five_mean_rate": 0.3735717768978422,
+        "share_by_shooter_rank": [
+          0.44085365853658537,
+          0.0701219512195122,
+          0.29634146341463413,
+          0.11219512195121951,
+          0.08048780487804878
+        ]
+      },
+      "strong_team": "Phoenix Suns",
+      "weak": {
+        "attempt_weighted_input_rate": 0.3371231049827666,
+        "attempts": 1960,
+        "catch_and_shoot_share": 0.4520408163265306,
+        "mean_make_probability": 0.3163922689157339,
+        "pct": 0.32908163265306123,
+        "primary_five_mean_rate": 0.33933381361654397,
+        "share_by_shooter_rank": [
+          0.15357142857142858,
+          0.15255102040816326,
+          0.38316326530612244,
+          0.14387755102040817,
+          0.16683673469387755
+        ]
+      },
+      "weak_team": "Detroit Pistons"
+    },
+    {
+      "expected_make_prob_gap": 0.01206835486149671,
+      "game_id": "0022300162",
+      "input_attempt_weighted_gap": 0.01719786944288565,
+      "input_primary_five_gap": 0.015217715540069732,
+      "real_3pt_gap": -0.02840909090909094,
+      "sim_3pt_gap": 0.01842377786165711,
+      "strength_diff": 9.517857142857142,
+      "strong": {
+        "attempt_weighted_input_rate": 0.3821666207231569,
+        "attempts": 1705,
+        "catch_and_shoot_share": 0.42639296187683284,
+        "mean_make_probability": 0.3578218640698665,
+        "pct": 0.35835777126099705,
+        "primary_five_mean_rate": 0.3738736874479683,
+        "share_by_shooter_rank": [
+          0.4439882697947214,
+          0.05923753665689149,
+          0.3090909090909091,
+          0.0780058651026393,
+          0.10967741935483871
+        ]
+      },
+      "strong_team": "Phoenix Suns",
+      "weak": {
+        "attempt_weighted_input_rate": 0.36496875128027123,
+        "attempts": 1818,
+        "catch_and_shoot_share": 0.5379537953795379,
+        "mean_make_probability": 0.3457535092083698,
+        "pct": 0.33993399339933994,
+        "primary_five_mean_rate": 0.35865597190789855,
+        "share_by_shooter_rank": [
+          0.3333333333333333,
+          0.13916391639163916,
+          0.27502750275027504,
+          0.018151815181518153,
+          0.23432343234323433
+        ]
+      },
+      "weak_team": "Chicago Bulls"
+    },
+    {
+      "expected_make_prob_gap": 0.011615592344016434,
+      "game_id": "0022300219",
+      "input_attempt_weighted_gap": 0.010050972788630763,
+      "input_primary_five_gap": 0.00034726006603674753,
+      "real_3pt_gap": 0.03448275862068961,
+      "sim_3pt_gap": -0.018356462999226053,
+      "strength_diff": 12.589743589743591,
+      "strong": {
+        "attempt_weighted_input_rate": 0.357488741684668,
+        "attempts": 2494,
+        "catch_and_shoot_share": 0.48235765838011224,
+        "mean_make_probability": 0.3371442949554294,
+        "pct": 0.3155573376102646,
+        "primary_five_mean_rate": 0.3488916215628607,
+        "share_by_shooter_rank": [
+          0.1912590216519647,
+          0.2939053728949479,
+          0.3027265437048917,
+          0.12229350441058541,
+          0.08981555733761026
+        ]
+      },
+      "strong_team": "Milwaukee Bucks",
+      "weak": {
+        "attempt_weighted_input_rate": 0.3474377688960372,
+        "attempts": 2297,
+        "catch_and_shoot_share": 0.4370918589464519,
+        "mean_make_probability": 0.325528702611413,
+        "pct": 0.33391380060949066,
+        "primary_five_mean_rate": 0.34854436149682394,
+        "share_by_shooter_rank": [
+          0.195472355245973,
+          0.20156726164562472,
+          0.15542011319111884,
+          0.20592076621680452,
+          0.24161950370047888
+        ]
+      },
+      "weak_team": "Washington Wizards"
+    },
+    {
+      "expected_make_prob_gap": 0.024239341351984633,
+      "game_id": "0022300278",
+      "input_attempt_weighted_gap": 0.024853346444529578,
+      "input_primary_five_gap": 0.028104203037292497,
+      "real_3pt_gap": -0.08767576509511993,
+      "sim_3pt_gap": 0.05002307333205741,
+      "strength_diff": 12.473684210526315,
+      "strong": {
+        "attempt_weighted_input_rate": 0.3585636403401629,
+        "attempts": 2138,
+        "catch_and_shoot_share": 0.5060804490177736,
+        "mean_make_probability": 0.3383071240248985,
+        "pct": 0.35547240411599623,
+        "primary_five_mean_rate": 0.35660317130712554,
+        "share_by_shooter_rank": [
+          0.3372310570626754,
+          0.11225444340505145,
+          0.04303086997193639,
+          0.17867165575304023,
+          0.32881197380729654
+        ]
+      },
+      "strong_team": "New Orleans Pelicans",
+      "weak": {
+        "attempt_weighted_input_rate": 0.33371029389563334,
+        "attempts": 2092,
+        "catch_and_shoot_share": 0.47753346080305925,
+        "mean_make_probability": 0.31406778267291385,
+        "pct": 0.3054493307839388,
+        "primary_five_mean_rate": 0.32849896826983305,
+        "share_by_shooter_rank": [
+          0.2418738049713193,
+          0.20219885277246655,
+          0.252868068833652,
+          0.2084130019120459,
+          0.09464627151051626
+        ]
+      },
+      "weak_team": "San Antonio Spurs"
+    },
+    {
+      "expected_make_prob_gap": 0.0032603662944839518,
+      "game_id": "0022300308",
+      "input_attempt_weighted_gap": 0.0041200179327811615,
+      "input_primary_five_gap": 0.002158260672952217,
+      "real_3pt_gap": 0.02564102564102566,
+      "sim_3pt_gap": 0.010686772894890617,
+      "strength_diff": 14.545454545454545,
+      "strong": {
+        "attempt_weighted_input_rate": 0.37075430083667577,
+        "attempts": 2335,
+        "catch_and_shoot_share": 0.4937901498929336,
+        "mean_make_probability": 0.34899417175023373,
+        "pct": 0.3374732334047109,
+        "primary_five_mean_rate": 0.37885176170103946,
+        "share_by_shooter_rank": [
+          0.05182012847965739,
+          0.291220556745182,
+          0.27237687366167024,
+          0.05481798715203426,
+          0.3297644539614561
+        ]
+      },
+      "strong_team": "Phoenix Suns",
+      "weak": {
+        "attempt_weighted_input_rate": 0.3666342829038946,
+        "attempts": 2393,
+        "catch_and_shoot_share": 0.45507730881738406,
+        "mean_make_probability": 0.3457338054557498,
+        "pct": 0.3267864605098203,
+        "primary_five_mean_rate": 0.37669350102808724,
+        "share_by_shooter_rank": [
+          0.17509402423735895,
+          0.1420810697868784,
+          0.15712494776431257,
+          0.17969076473046386,
+          0.3460091934809862
+        ]
+      },
+      "weak_team": "Golden State Warriors"
+    },
+    {
+      "expected_make_prob_gap": -0.002130738416263489,
+      "game_id": "0022300325",
+      "input_attempt_weighted_gap": 0.00039072860256605946,
+      "input_primary_five_gap": -0.002163287838269523,
+      "real_3pt_gap": 0.04039634146341464,
+      "sim_3pt_gap": -0.00759071972365849,
+      "strength_diff": 16.782608695652172,
+      "strong": {
+        "attempt_weighted_input_rate": 0.3686413281208064,
+        "attempts": 1719,
+        "catch_and_shoot_share": 0.35602094240837695,
+        "mean_make_probability": 0.34446839060408535,
+        "pct": 0.341477603257708,
+        "primary_five_mean_rate": 0.3740072801412267,
+        "share_by_shooter_rank": [
+          0.0983129726585224,
+          0.21873182082606166,
+          0.18906340895869692,
+          0.14659685863874344,
+          0.3472949389179756
+        ]
+      },
+      "strong_team": "Los Angeles Clippers",
+      "weak": {
+        "attempt_weighted_input_rate": 0.36825059951824035,
+        "attempts": 2415,
+        "catch_and_shoot_share": 0.420703933747412,
+        "mean_make_probability": 0.34659912902034884,
+        "pct": 0.3490683229813665,
+        "primary_five_mean_rate": 0.3761705679794962,
+        "share_by_shooter_rank": [
+          0.18757763975155278,
+          0.15527950310559005,
+          0.19461697722567287,
+          0.14285714285714285,
+          0.3196687370600414
+        ]
+      },
+      "weak_team": "Golden State Warriors"
+    },
+    {
+      "expected_make_prob_gap": 0.018919272702407675,
+      "game_id": "0022300622",
+      "input_attempt_weighted_gap": 0.01951803020516013,
+      "input_primary_five_gap": 0.019352744011068956,
+      "real_3pt_gap": 0.16875,
+      "sim_3pt_gap": 0.024070163806833356,
+      "strength_diff": 16.069767441860467,
+      "strong": {
+        "attempt_weighted_input_rate": 0.35344102354377005,
+        "attempts": 1844,
+        "catch_and_shoot_share": 0.46746203904555317,
+        "mean_make_probability": 0.33142149829184325,
+        "pct": 0.3297180043383948,
+        "primary_five_mean_rate": 0.3527399504572413,
+        "share_by_shooter_rank": [
+          0.12960954446854664,
+          0.27928416485900215,
+          0.3004338394793926,
+          0.052060737527114966,
+          0.2386117136659436
+        ]
+      },
+      "strong_team": "Oklahoma City Thunder",
+      "weak": {
+        "attempt_weighted_input_rate": 0.3339229933386099,
+        "attempts": 1806,
+        "catch_and_shoot_share": 0.4523809523809524,
+        "mean_make_probability": 0.3125022255894356,
+        "pct": 0.30564784053156147,
+        "primary_five_mean_rate": 0.33338720644617237,
+        "share_by_shooter_rank": [
+          0.20431893687707642,
+          0.22702104097452935,
+          0.17331118493909192,
+          0.20044296788482835,
+          0.19490586932447398
+        ]
+      },
+      "weak_team": "San Antonio Spurs"
+    },
+    {
+      "expected_make_prob_gap": -0.012966766974342125,
+      "game_id": "0022300820",
+      "input_attempt_weighted_gap": -0.01256988360673339,
+      "input_primary_five_gap": -0.019534193358369423,
+      "real_3pt_gap": 0.012500000000000011,
+      "sim_3pt_gap": -0.007439319662820576,
+      "strength_diff": 15.261363636363637,
+      "strong": {
+        "attempt_weighted_input_rate": 0.3362492600952333,
+        "attempts": 2064,
+        "catch_and_shoot_share": 0.45397286821705424,
+        "mean_make_probability": 0.3156672080068331,
+        "pct": 0.313468992248062,
+        "primary_five_mean_rate": 0.3298808039157946,
+        "share_by_shooter_rank": [
+          0.11676356589147287,
+          0.1429263565891473,
+          0.4268410852713178,
+          0.18459302325581395,
+          0.12887596899224807
+        ]
+      },
+      "strong_team": "Cleveland Cavaliers",
+      "weak": {
+        "attempt_weighted_input_rate": 0.3488191437019667,
+        "attempts": 2334,
+        "catch_and_shoot_share": 0.47429305912596403,
+        "mean_make_probability": 0.32863397498117525,
+        "pct": 0.3209083119108826,
+        "primary_five_mean_rate": 0.34941499727416403,
+        "share_by_shooter_rank": [
+          0.16538131962296487,
+          0.26735218508997427,
+          0.21893744644387317,
+          0.19237360754070265,
+          0.155955441302485
+        ]
+      },
+      "weak_team": "Washington Wizards"
+    },
+    {
+      "expected_make_prob_gap": 0.04870406754530232,
+      "game_id": "0022300838",
+      "input_attempt_weighted_gap": 0.04921046968817461,
+      "input_primary_five_gap": 0.042850436947492354,
+      "real_3pt_gap": 0.023549201009251453,
+      "sim_3pt_gap": 0.05609912729393818,
+      "strength_diff": 15.405323653962492,
+      "strong": {
+        "attempt_weighted_input_rate": 0.37578912710643114,
+        "attempts": 2208,
+        "catch_and_shoot_share": 0.4279891304347826,
+        "mean_make_probability": 0.35352421180472116,
+        "pct": 0.3491847826086957,
+        "primary_five_mean_rate": 0.37083600162608293,
+        "share_by_shooter_rank": [
+          0.24230072463768115,
+          0.23822463768115942,
+          0.11911231884057971,
+          0.23505434782608695,
+          0.16530797101449277
+        ]
+      },
+      "strong_team": "Minnesota Timberwolves",
+      "weak": {
+        "attempt_weighted_input_rate": 0.32657865741825653,
+        "attempts": 1938,
+        "catch_and_shoot_share": 0.41124871001031993,
+        "mean_make_probability": 0.30482014425941883,
+        "pct": 0.2930856553147575,
+        "primary_five_mean_rate": 0.3279855646785906,
+        "share_by_shooter_rank": [
+          0.17647058823529413,
+          0.21104231166150672,
+          0.17647058823529413,
+          0.23581011351909184,
+          0.2002063983488132
+        ]
+      },
+      "weak_team": "San Antonio Spurs"
+    },
+    {
+      "expected_make_prob_gap": -0.004633901901789084,
+      "game_id": "0022300872",
+      "input_attempt_weighted_gap": -0.0026638453839298304,
+      "input_primary_five_gap": -0.006376782717319673,
+      "real_3pt_gap": 0.33071690214547356,
+      "sim_3pt_gap": -0.010176583715854393,
+      "strength_diff": 17.35593220338983,
+      "strong": {
+        "attempt_weighted_input_rate": 0.36772442919835896,
+        "attempts": 2155,
+        "catch_and_shoot_share": 0.40835266821345706,
+        "mean_make_probability": 0.344676792979762,
+        "pct": 0.3396751740139211,
+        "primary_five_mean_rate": 0.3679861120181665,
+        "share_by_shooter_rank": [
+          0.16751740139211138,
+          0.2296983758700696,
+          0.27470997679814385,
+          0.1777262180974478,
+          0.15034802784222737
+        ]
+      },
+      "strong_team": "Boston Celtics",
+      "weak": {
+        "attempt_weighted_input_rate": 0.3703882745822888,
+        "attempts": 2361,
+        "catch_and_shoot_share": 0.47606946209233375,
+        "mean_make_probability": 0.3493106948815511,
+        "pct": 0.3498517577297755,
+        "primary_five_mean_rate": 0.3743628947354862,
+        "share_by_shooter_rank": [
+          0.16857263871241,
+          0.17026683608640406,
+          0.17619652689538332,
+          0.24904701397712833,
+          0.23591698432867428
+        ]
+      },
+      "weak_team": "Golden State Warriors"
+    },
+    {
+      "expected_make_prob_gap": -0.009436684268371298,
+      "game_id": "0022300900",
+      "input_attempt_weighted_gap": -0.009227444896341086,
+      "input_primary_five_gap": 0.00016090297745663396,
+      "real_3pt_gap": -0.0026737967914438054,
+      "sim_3pt_gap": 0.015795930453910922,
+      "strength_diff": 15.216120218579235,
+      "strong": {
+        "attempt_weighted_input_rate": 0.35967024541250625,
+        "attempts": 1848,
+        "catch_and_shoot_share": 0.454004329004329,
+        "mean_make_probability": 0.33660333920592433,
+        "pct": 0.35064935064935066,
+        "primary_five_mean_rate": 0.3612142468067453,
+        "share_by_shooter_rank": [
+          0.13041125541125542,
+          0.27813852813852813,
+          0.3116883116883117,
+          0.047619047619047616,
+          0.23214285714285715
+        ]
+      },
+      "strong_team": "Oklahoma City Thunder",
+      "weak": {
+        "attempt_weighted_input_rate": 0.36889769030884734,
+        "attempts": 1535,
+        "catch_and_shoot_share": 0.41954397394136805,
+        "mean_make_probability": 0.34604002347429563,
+        "pct": 0.33485342019543973,
+        "primary_five_mean_rate": 0.36105334382928866,
+        "share_by_shooter_rank": [
+          0.2045602605863192,
+          0.22149837133550487,
+          0.29511400651465797,
+          0.06840390879478828,
+          0.21042345276872965
+        ]
+      },
+      "weak_team": "Portland Trail Blazers"
+    },
+    {
+      "expected_make_prob_gap": 0.03300137971872019,
+      "game_id": "0022300997",
+      "input_attempt_weighted_gap": 0.03492772030874597,
+      "input_primary_five_gap": 0.036123282462860284,
+      "real_3pt_gap": 0.1619190404797601,
+      "sim_3pt_gap": 0.04054288587429977,
+      "strength_diff": 20.60230179028133,
+      "strong": {
+        "attempt_weighted_input_rate": 0.36599624888360727,
+        "attempts": 2441,
+        "catch_and_shoot_share": 0.49774682507169193,
+        "mean_make_probability": 0.34554651554114163,
+        "pct": 0.3469889389594428,
+        "primary_five_mean_rate": 0.36151372460998504,
+        "share_by_shooter_rank": [
+          0.29537074969274885,
+          0.1388775092175338,
+          0.325686194182712,
+          0.1638672675133142,
+          0.07619827939369112
+        ]
+      },
+      "strong_team": "Indiana Pacers",
+      "weak": {
+        "attempt_weighted_input_rate": 0.3310685285748613,
+        "attempts": 2901,
+        "catch_and_shoot_share": 0.5222337125129266,
+        "mean_make_probability": 0.31254513582242144,
+        "pct": 0.30644605308514306,
+        "primary_five_mean_rate": 0.32539044214712476,
+        "share_by_shooter_rank": [
+          0.2943812478455705,
+          0.34367459496725267,
+          0.06446053085143054,
+          0.09238193726301275,
+          0.20510168907273355
+        ]
+      },
+      "weak_team": "Detroit Pistons"
+    }
+  ],
+  "label": "after",
+  "n_games": 16,
+  "n_sims": 60,
+  "response_curves": {
+    "catch_and_shoot_open": [
+      {
+        "base_rate": 0.28,
+        "dp_d_base": 0.9833133892706292,
+        "make_probability": 0.2724829069863273
+      },
+      {
+        "base_rate": 0.32,
+        "dp_d_base": 0.9862531623874349,
+        "make_probability": 0.3118741927692174
+      },
+      {
+        "base_rate": 0.36,
+        "dp_d_base": 0.9892061386233386,
+        "make_probability": 0.3513833332679882
+      },
+      {
+        "base_rate": 0.4,
+        "dp_d_base": 0.9921723971607121,
+        "make_probability": 0.3910108581890169
+      },
+      {
+        "base_rate": 0.44,
+        "dp_d_base": 0.9951520177764517,
+        "make_probability": 0.43075730041784727
+      }
+    ],
+    "catch_and_shoot_tight": [
+      {
+        "base_rate": 0.28,
+        "dp_d_base": 0.89666702562399,
+        "make_probability": 0.23688000003665352
+      },
+      {
+        "base_rate": 0.32,
+        "dp_d_base": 0.9122091846416158,
+        "make_probability": 0.27305614707599857
+      },
+      {
+        "base_rate": 0.36,
+        "dp_d_base": 0.9281589683071967,
+        "make_probability": 0.30986208460135317
+      },
+      {
+        "base_rate": 0.4,
+        "dp_d_base": 0.9445307566267436,
+        "make_probability": 0.3473144030565699
+      },
+      {
+        "base_rate": 0.44,
+        "dp_d_base": 0.9613395693591709,
+        "make_probability": 0.38543028076593133
+      }
+    ],
+    "pull_up_open": [
+      {
+        "base_rate": 0.28,
+        "dp_d_base": 0.9450397517915876,
+        "make_probability": 0.2561146726468863
+      },
+      {
+        "base_rate": 0.32,
+        "dp_d_base": 0.9540612098219214,
+        "make_probability": 0.29409624993035205
+      },
+      {
+        "base_rate": 0.36,
+        "dp_d_base": 0.9632124669707975,
+        "make_probability": 0.3324412730189103
+      },
+      {
+        "base_rate": 0.4,
+        "dp_d_base": 0.9724960252685044,
+        "make_probability": 0.3711549837126447
+      },
+      {
+        "base_rate": 0.44,
+        "dp_d_base": 0.9819144473241337,
+        "make_probability": 0.41024272509844817
+      }
+    ]
+  },
+  "runtime_seconds": 122.49818396568298,
+  "summary": {
+    "expected_make_prob_gap": 0.0156683629675112,
+    "input_attempt_weighted_gap": 0.01678865486615183,
+    "input_primary_five_gap": 0.014873409080921073,
+    "mean_league_sim_3pt_pct": 0.3325683259471118,
+    "mean_share_by_shooter_rank": [
+      0.20358674116137862,
+      0.20574618755289312,
+      0.23960178094143506,
+      0.160088000339124,
+      0.19097729000516922
+    ],
+    "real_3pt_gap": 0.062001977750549254,
+    "sim_3pt_gap": 0.016397455357399636
+  }
+}

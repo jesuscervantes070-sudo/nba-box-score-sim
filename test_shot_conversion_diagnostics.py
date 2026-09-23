@@ -32,6 +32,13 @@ def _profiles(**overrides_for_player_1):
     return profiles
 
 
+def _profiles_all_home(**overrides):
+    profiles = {p: PlayerSimulationProfile.synthetic(p, "HOME", **overrides) for p in HOME_FIVE}
+    for p in AWAY_FIVE:
+        profiles[p] = PlayerSimulationProfile.synthetic(p, "AWAY")
+    return profiles
+
+
 class TestShotConversionDiagnostics(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -111,9 +118,10 @@ class TestShotConversionDiagnostics(unittest.TestCase):
     def test_rim_finishing_ability_is_monotonic(self):
         results = []
         for rate in (0.45, 0.62, 0.80):
-            game = simulate_detailed_game("HOME", "AWAY", HOME_FIVE, AWAY_FIVE,
-                                           _profiles(rim_finishing_shrunk_rate=rate), rng_seed=42)
-            results.append(diagnose_shot_conversion([game]).by_family["RIM"].clean_make_pct)
+            games = [simulate_detailed_game("HOME", "AWAY", HOME_FIVE, AWAY_FIVE,
+                                             _profiles_all_home(rim_finishing_shrunk_rate=rate), rng_seed=seed)
+                     for seed in range(42, 45)]
+            results.append(diagnose_shot_conversion(games).by_family["RIM"].clean_make_pct)
         self.assertLess(results[0], results[1])
         self.assertLess(results[1], results[2])
 
@@ -134,12 +142,12 @@ class TestShotConversionDiagnostics(unittest.TestCase):
     # G. FT conversion independent of FT occurrence -- raising free_throw_shrunk_rate changes FT%
     # but not FTA (occurrence is governed entirely by foul hazards, untouched by this phase).
     def test_ft_conversion_independent_of_ft_occurrence(self):
-        low = simulate_detailed_game("HOME", "AWAY", HOME_FIVE, AWAY_FIVE,
-                                      _profiles(free_throw_shrunk_rate=0.60), rng_seed=99)
-        high = simulate_detailed_game("HOME", "AWAY", HOME_FIVE, AWAY_FIVE,
-                                       _profiles(free_throw_shrunk_rate=0.95), rng_seed=99)
-        low_diag = diagnose_shot_conversion([low])
-        high_diag = diagnose_shot_conversion([high])
+        low = [simulate_detailed_game("HOME", "AWAY", HOME_FIVE, AWAY_FIVE,
+                                       _profiles(free_throw_shrunk_rate=0.60), rng_seed=seed) for seed in (99, 100, 101)]
+        high = [simulate_detailed_game("HOME", "AWAY", HOME_FIVE, AWAY_FIVE,
+                                        _profiles(free_throw_shrunk_rate=0.95), rng_seed=seed) for seed in (99, 100, 101)]
+        low_diag = diagnose_shot_conversion(low)
+        high_diag = diagnose_shot_conversion(high)
         self.assertLess(low_diag.free_throws.ft_pct, high_diag.free_throws.ft_pct)
 
     # H. Probability bounds valid -- every resolved shot's implied outcome is a real make/miss;
