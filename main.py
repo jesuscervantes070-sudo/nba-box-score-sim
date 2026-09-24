@@ -18,7 +18,7 @@ import textwrap
 import sys
 from typing import Dict, List, Optional, Tuple
 
-from loader import load_teams, load_team_abbreviations, load_roster_membership, load_league_pace_variation, DEFAULT_SEASON, load_schedule, available_seasons, load_team_coaches, load_real_best_record
+from loader import load_teams, load_team_abbreviations, load_roster_membership, load_league_pace_variation, load_schedule, available_seasons, load_team_coaches, load_real_best_record
 from models import Player, Team
 from game_engine import simulate_game, compute_league_averages, GameResult, LeagueAverages
 from data_source import fetch_real_standings
@@ -31,6 +31,7 @@ from awards import (
     simulated_coy_candidates, mip_features_from_simulated, coy_features_from_simulated,
 )
 import db
+from season_picker import parse_season_choice, season_span, run_label, team_count_text
 
 # Plain ASCII only for every divider/border in this file, on purpose --
 # no fancy unicode box-drawing characters, just characters already on a
@@ -334,7 +335,7 @@ def _render_banner(text: str) -> List[str]:
     return [row.rstrip() for row in rows]
 
 
-def print_title() -> None:
+def print_title(seasons: List[str]) -> None:
     """
     Screen 1 -- the title screen. Pure presentation, no state: prints
     the banner and waits for Enter, same "press enter" pattern as every
@@ -351,7 +352,7 @@ def print_title() -> None:
     for line in _render_banner(BANNER_TEXT):
         print(_style(line.center(LINE_WIDTH).rstrip(), "bold", "purple"))
     print()
-    print("1996-97 through 2025-26".center(LINE_WIDTH))
+    print(season_span(seasons).center(LINE_WIDTH))
     print()
     print("[ press ENTER to begin ]".center(LINE_WIDTH))
     print(DIVIDER)
@@ -2325,8 +2326,8 @@ def select_season(seasons: List[str]) -> Optional[str]:
     directly). 1 is the newest season, counting back through history.
 
     Enter alone takes the newest, since that's what almost everyone
-    wants. The season string itself is still accepted, so anyone who
-    already knows what they want can just type it.
+    wants. The season string itself is still accepted, and 'b' backs out
+    (returns None).
 
     Game Sim's ONLY caller now (History Sim moved to the richer
     select_season_range screen) -- so the blurb only mentions real
@@ -2349,15 +2350,14 @@ def select_season(seasons: List[str]) -> Optional[str]:
         print("   " + "   ".join(f"{i + j + 1:>2}. {s}" for j, s in enumerate(row)))
     print()
     while True:
-        choice = _prompt(f"Season number 1-{len(seasons)} "
-                          f"(or press Enter for {seasons[0]}): ").strip()
-        if choice == "":
-            return seasons[0]
-        if choice.isdigit() and 1 <= int(choice) <= len(seasons):
-            return seasons[int(choice) - 1]
-        if choice in seasons:
-            return choice  # typed the season itself -- still fine
-        print(f"Please enter a number from 1 to {len(seasons)}.")
+        choice = parse_season_choice(
+            _prompt(f"Season number 1-{len(seasons)} (Enter for {seasons[0]}, 'b' to go back): "),
+            seasons, default_index=0)
+        if choice.kind == "back":
+            return None
+        if choice.kind in ("season", "default"):
+            return seasons[choice.index]
+        print(f"Please enter a number from 1 to {len(seasons)}, or 'b' to go back.")
 
 
 # =====================================================================
@@ -2520,7 +2520,7 @@ SEASON_HIGHLIGHTS = {
 }
 
 
-def select_season_range(seasons: List[str]) -> List[str]:
+def select_season_range(seasons: List[str]) -> Optional[List[str]]:
     """
     Screen 3 -- pick which season(s) of History Sim to play. Oldest
     first here (opposite of select_season's newest-first order above),
@@ -2543,6 +2543,7 @@ def select_season_range(seasons: List[str]) -> List[str]:
     season pick returns a length-1 list, not a special case -- a
     caller branches on len() to route to the richer single-season flow
     (all the per-team browsing screens) or the multi-season one.
+    Returns None if the user backs out ('b') at either prompt.
     """
     ordered = seasons[::-1]
     print()
@@ -2558,23 +2559,67 @@ def select_season_range(seasons: List[str]) -> List[str]:
     print(SECTION)
     print()
 
-    def _pick(label: str, default_index: int) -> int:
+    def _pick(label: str, default_index: int) -> Optional[int]:
         while True:
-            raw = _prompt(f"{label} (1-{len(ordered)}, Enter for "
-                          f"{ordered[default_index]}): ").strip()
-            if raw == "":
-                return default_index
-            if raw.isdigit() and 1 <= int(raw) <= len(ordered):
-                return int(raw) - 1
-            if raw in ordered:
-                return ordered.index(raw)
-            print(f"Please enter a number from 1 to {len(ordered)}.")
+            choice = parse_season_choice(
+                _prompt(f"{label} (1-{len(ordered)}, Enter for {ordered[default_index]}, 'b' to go back): "),
+                ordered, default_index=default_index)
+            if choice.kind == "back":
+                return None
+            if choice.kind in ("season", "default"):
+                return choice.index
+            print(f"Please enter a number from 1 to {len(ordered)}, or 'b' to go back.")
 
     start = _pick("Start season", 0)
+    if start is None:
+        return None
     end = _pick("Play through to which season", start)
+    if end is None:
+        return None
     if end < start:
         start, end = end, start
     return ordered[start:end + 1]
+
+
+def confirm_season_run(run: List[str]) -> bool:
+    """
+    The last screen before a History Sim starts: what was picked, how
+    many teams it has, and its real best record and highlight when the
+    cache has them. Returns True to start, False to go back and pick
+    again. A season that fails to load prints a short reason and also
+    returns False, so a bad cache entry never becomes a traceback.
+    """
+    counts = []
+    for season in run:
+        try:
+            counts.append(len(load_teams(season)))
+        except Exception as error:
+            print(f"\nCan't load {season}: {error}. Pick another season.")
+            return False
+    print()
+    print(DIVIDER)
+    print(_style(run_label(run).center(LINE_WIDTH), "bold", "cyan"))
+    print(DIVIDER)
+    print(f"  {team_count_text(counts)}")
+    if len(run) == 1:
+        record = load_real_best_record(run[0])
+        if record:
+            print(f"  Team to beat: {record['team']} {record['wins']}-{record['losses']}")
+        highlight = SEASON_HIGHLIGHTS.get(run[0])
+        if highlight:
+            for line in textwrap.wrap(highlight, LINE_WIDTH - 4):
+                print(f"  {line}")
+    print()
+    print("  1  Start Season")
+    print("  2  Choose Another Season")
+    print(DIVIDER)
+    while True:
+        answer = _prompt("Choose 1-2 ('b' to go back): ").strip().lower()
+        if answer == "1":
+            return True
+        if answer in ("2", "b", "back"):
+            return False
+        print("Please enter 1 or 2.")
 
 
 def run_multi_season_flow(abbrev: Dict[str, str], run: List[str]) -> None:
@@ -2797,6 +2842,8 @@ def _pick_game_sim_side(seasons: List[str], label: str) -> Optional[Tuple[str, s
     the team pick.
     """
     season = select_season(seasons) if len(seasons) > 1 else seasons[0]
+    if season is None:
+        return None
     print(f"-> {season}\n")
     teams, team_names, league_avg = _load_season(season)
     print_team_list_with_best_player(teams, team_names)
@@ -2854,9 +2901,15 @@ def _run_history_sim(seasons: List[str], abbrev: Dict[str, str]) -> None:
     """History Sim: pick a season or a range (screen 3), then go
     straight into playing it -- a single season gets the richer
     single-season flow (per-team browsing screens throughout); a range
-    gets the year-by-year multi-season flow. No menu in between; the
-    range picked here is the only choice this mode asks up front."""
-    run = select_season_range(seasons)
+    gets the year-by-year multi-season flow. A short confirmation
+    screen follows the pick, with "choose another" looping back to it;
+    backing out of the pick itself returns to the mode menu."""
+    while True:
+        run = select_season_range(seasons)
+        if run is None:
+            return
+        if confirm_season_run(run):
+            break
     if len(run) == 1:
         teams, team_names, league_avg = _load_season(run[0])
         run_season_flow(teams, team_names, league_avg, abbrev, run[0])
@@ -2865,12 +2918,11 @@ def _run_history_sim(seasons: List[str], abbrev: Dict[str, str]) -> None:
 
 
 def main() -> None:
-    print_title()
-
     seasons = available_seasons()
     if not seasons:
         print("No season data is cached yet. Run `python data_source.py` first.")
         return
+    print_title(seasons)
     # Real 3-letter team codes, only used for the compact playoff
     # bracket diagram -- doesn't depend on season, loaded once.
     abbrev = load_team_abbreviations()
