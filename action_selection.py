@@ -152,7 +152,12 @@ ROLE_SPACING_WEIGHT = 1.5       # applied ONLY to CATCH_AND_SHOOT's opportunity 
 TENDENCY_DRIVE_WEIGHT = 1.5
 TENDENCY_PASS_VS_SHOOT_WEIGHT = 1.5
 TENDENCY_PULLUP_VS_CATCH_WEIGHT = 1.0
-TENDENCY_ZONE_WEIGHT = 1.0
+# Coefficient on three_point_preference in the three-vs-midrange choice. The estimated preference is a
+# shrunk latent, so a coefficient of 1 under-spreads real 3PA volume: on 29 real teams (development
+# split) the player-level correlation between real and simulated 3PA share rose monotonically with
+# this weight (1.0 -> r 0.21, 2.0 -> 0.36, 3.0 -> 0.41) while top-1/HHI concentration overshot real
+# past ~2. 2.0 is the largest value that keeps concentration near real.
+THREE_POINT_PREFERENCE_WEIGHT = 2.0
 
 
 DRIVE_FOLLOWUP_LOG_WEIGHT: Dict[str, float] = {
@@ -409,8 +414,8 @@ def shot_zone_probabilities(action_type: ActionType, options: Tuple[SpatialZone,
     ACTION-SPECIFIC by construction ("Model action-specific jump-shot selection" phase) --
     CATCH_AND_SHOOT and PULL_UP no longer share one generic perimeter-vs-MIDRANGE weight (see
     `CATCH_AND_SHOOT_THREE_BASELINE_LOG_WEIGHT`'s own docstring for the full root-cause history).
-    `three_point_preference` is already a logit-relative-to-league-average player deviation for
-    real 3PA/FGA, so its natural coefficient here is 1, applied identically for both actions (a
+    `three_point_preference` is a logit-relative-to-league-average player deviation for
+    real 3PA/FGA, scaled by THREE_POINT_PREFERENCE_WEIGHT and applied identically for both actions (a
     player's real 3-point shot-selection preference does not change basketball meaning by action
     type). `midrange_preference` is now READ (see `MIDRANGE_PREFERENCE_WEIGHT`'s own docstring) --
     still only within this already-eligible two-way (or three-way, for a genuine interior PULL_UP
@@ -430,7 +435,7 @@ def shot_zone_probabilities(action_type: ActionType, options: Tuple[SpatialZone,
     for zone in options:
         score = 0.0
         if zone in PERIMETER_ZONES or zone == SpatialZone.BACKCOURT:
-            score += context.three_point_baseline_log_weight + action_prior + player_three_deviation
+            score += context.three_point_baseline_log_weight + action_prior + THREE_POINT_PREFERENCE_WEIGHT * player_three_deviation
         elif zone in MIDRANGE_ZONES:
             score += MIDRANGE_PREFERENCE_WEIGHT * player_midrange_deviation
             if late_clock:

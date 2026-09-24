@@ -1,0 +1,787 @@
+{
+ "A_current": {
+  "all": {
+   "hhi": 0.24524246342003608,
+   "mae": 0.10615025958870049,
+   "mean_within_team_spearman": 0.024137931034482762,
+   "n_players": 145,
+   "n_teams": 29,
+   "pearson": 0.09335279406839746,
+   "spearman": 0.04076724213437077,
+   "top1": 0.34023029775321467
+  },
+  "dev": {
+   "hhi": 0.23870770280520384,
+   "mae": 0.09492055038867406,
+   "mean_within_team_spearman": 0.05625000000000001,
+   "n_players": 80,
+   "n_teams": 16,
+   "pearson": 0.205726239927759,
+   "spearman": 0.08982653539615565,
+   "top1": 0.3269126327688058
+  },
+  "kwargs": {},
+  "mean_3pa_per_game_by_tendency_tercile": {
+   "high_preference": 9.200680272108842,
+   "low_preference": 5.2562500000000005,
+   "mid_preference": 6.796527777777778
+  },
+  "runtime": 39.63891100883484,
+  "sim_standardized_betas": {
+   "n": 145,
+   "r2": 0.6967309463259239,
+   "standardized_betas": {
+    "ability": -0.005651316236339033,
+    "expected_minutes": -0.008396121442204784,
+    "finishing": 0.07671316629250062,
+    "initiation": 0.018695684548874065,
+    "spacing": -0.005930359169017581,
+    "tendency": 0.03849901372744055
+   }
+  },
+  "team_3pa_per_game": 35.49540229885057,
+  "team_points_per_game": 119.64710144927535,
+  "validation": {
+   "hhi": 0.2532852457152142,
+   "mae": 0.11997144014257917,
+   "mean_within_team_spearman": -0.015384615384615384,
+   "n_players": 65,
+   "n_teams": 13,
+   "pearson": -0.019405567265261325,
+   "spearman": -0.07932692307692307,
+   "top1": 0.3566212700417179
+  }
+ },
+ "F0_P2": {
+  "all": {
+   "hhi": 0.26282304180686006,
+   "mae": 0.09292211990584683,
+   "mean_within_team_spearman": 0.3341244365229634,
+   "n_players": 145,
+   "n_teams": 29,
+   "pearson": 0.3653932740687955,
+   "spearman": 0.34434802461821884,
+   "top1": 0.35570115824985843
+  },
+  "dev": {
+   "hhi": 0.25302993649919825,
+   "mae": 0.08627005368976005,
+   "mean_within_team_spearman": 0.2556005411978711,
+   "n_players": 80,
+   "n_teams": 16,
+   "pearson": 0.42696005693380396,
+   "spearman": 0.31670368439177443,
+   "top1": 0.3344663248582648
+  },
+  "kwargs": {
+   "finishing_weight": 0.0,
+   "pref_scale": 2.0
+  },
+  "mean_3pa_per_game_by_tendency_tercile": {
+   "high_preference": 9.197959183673468,
+   "low_preference": 2.9583333333333335,
+   "mid_preference": 6.407638888888889
+  },
+  "runtime": 39.55673599243164,
+  "sim_standardized_betas": {
+   "n": 145,
+   "r2": 0.7496808119210454,
+   "standardized_betas": {
+    "ability": -0.007543835354205059,
+    "expected_minutes": -0.00973426489361703,
+    "finishing": 0.04709618984927066,
+    "initiation": 0.010195124449751862,
+    "spacing": -0.0027772466013495033,
+    "tendency": 0.08340328523203115
+   }
+  },
+  "team_3pa_per_game": 31.04367816091954,
+  "team_points_per_game": 115.52101449275364,
+  "validation": {
+   "hhi": 0.2748760944932131,
+   "mae": 0.10110927832564592,
+   "mean_within_team_spearman": 0.4307692307692308,
+   "n_players": 65,
+   "n_teams": 13,
+   "pearson": 0.30577938272846106,
+   "spearman": 0.33125,
+   "top1": 0.381836337808743
+  }
+ },
+ "F0_R1": {
+  "all": {
+   "hhi": 0.24207717320011019,
+   "mae": 0.09500507719698416,
+   "mean_within_team_spearman": 0.12017485432120545,
+   "n_players": 145,
+   "n_teams": 29,
+   "pearson": 0.23795229800298917,
+   "spearman": 0.17502216685028604,
+   "top1": 0.3295984546689351
+  },
+  "dev": {
+   "hhi": 0.23707738989020427,
+   "mae": 0.0838239260605053,
+   "mean_within_team_spearman": 0.10466746465505603,
+   "n_players": 80,
+   "n_teams": 16,
+   "pearson": 0.3325142421025352,
+   "spearman": 0.19030819449573447,
+   "top1": 0.31571646686866006
+  },
+  "kwargs": {
+   "finishing_weight": 0.0,
+   "receiver_weights": {
+    "tendency": 1.0
+   }
+  },
+  "mean_3pa_per_game_by_tendency_tercile": {
+   "high_preference": 9.841496598639456,
+   "low_preference": 4.7444444444444445,
+   "mid_preference": 6.9006944444444445
+  },
+  "runtime": 40.21017408370972,
+  "sim_standardized_betas": {
+   "n": 145,
+   "r2": 0.6990314489603169,
+   "standardized_betas": {
+    "ability": -0.009767544261321624,
+    "expected_minutes": -0.008903500700553056,
+    "finishing": 0.05762377594585478,
+    "initiation": 0.018467714340952828,
+    "spacing": -0.007513858569131308,
+    "tendency": 0.05902560917189588
+   }
+  },
+  "team_3pa_per_game": 35.90344827586207,
+  "team_points_per_game": 114.8123188405797,
+  "validation": {
+   "hhi": 0.24823075265845593,
+   "mae": 0.10876649398034274,
+   "mean_within_team_spearman": 0.1392608723718509,
+   "n_players": 65,
+   "n_teams": 13,
+   "pearson": 0.14054770564447555,
+   "spearman": 0.06739584130473679,
+   "top1": 0.34668397811542745
+  }
+ },
+ "F0_R1_P2": {
+  "all": {
+   "hhi": 0.2715146993228183,
+   "mae": 0.09433549205939638,
+   "mean_within_team_spearman": 0.3301613598096861,
+   "n_players": 145,
+   "n_teams": 29,
+   "pearson": 0.4034746108132092,
+   "spearman": 0.3707592716880643,
+   "top1": 0.37143922507203747
+  },
+  "dev": {
+   "hhi": 0.26269362529637136,
+   "mae": 0.08715947286562621,
+   "mean_within_team_spearman": 0.31091746465505604,
+   "n_players": 80,
+   "n_teams": 16,
+   "pearson": 0.4372913904860734,
+   "spearman": 0.3173600407933117,
+   "top1": 0.3545599578630963
+  },
+  "kwargs": {
+   "finishing_weight": 0.0,
+   "pref_scale": 2.0,
+   "receiver_weights": {
+    "tendency": 1.0
+   }
+  },
+  "mean_3pa_per_game_by_tendency_tercile": {
+   "high_preference": 11.168027210884354,
+   "low_preference": 3.1125000000000003,
+   "mid_preference": 6.5874999999999995
+  },
+  "runtime": 40.41374206542969,
+  "sim_standardized_betas": {
+   "n": 145,
+   "r2": 0.8169380342403164,
+   "standardized_betas": {
+    "ability": -0.010819832226654627,
+    "expected_minutes": -0.008070345342834935,
+    "finishing": 0.05553135953189126,
+    "initiation": 0.013545968977536961,
+    "spacing": -0.008871853615035561,
+    "tendency": 0.09679066536778419
+   }
+  },
+  "team_3pa_per_game": 34.92528735632184,
+  "team_points_per_game": 114.60652173913043,
+  "validation": {
+   "hhi": 0.2823714058169069,
+   "mae": 0.10316751568249813,
+   "mean_within_team_spearman": 0.35384615384615387,
+   "n_players": 65,
+   "n_teams": 13,
+   "pearson": 0.3695640516489652,
+   "spearman": 0.36682692307692305,
+   "top1": 0.3922137077907343
+  }
+ },
+ "F0_finishing_off": {
+  "all": {
+   "hhi": 0.23229161000388404,
+   "mae": 0.09373709361284978,
+   "mean_within_team_spearman": 0.07586206896551724,
+   "n_players": 145,
+   "n_teams": 29,
+   "pearson": 0.1742183545893197,
+   "spearman": 0.1319931231235121,
+   "top1": 0.3132609324532189
+  },
+  "dev": {
+   "hhi": 0.22731892770242101,
+   "mae": 0.0815486044959731,
+   "mean_within_team_spearman": 0.10625000000000001,
+   "n_players": 80,
+   "n_teams": 16,
+   "pearson": 0.30885333098740897,
+   "spearman": 0.19022503516174402,
+   "top1": 0.29978881494531995
+  },
+  "kwargs": {
+   "finishing_weight": 0.0
+  },
+  "mean_3pa_per_game_by_tendency_tercile": {
+   "high_preference": 8.353061224489796,
+   "low_preference": 4.904166666666667,
+   "mid_preference": 6.657638888888889
+  },
+  "runtime": 40.14066219329834,
+  "sim_standardized_betas": {
+   "n": 145,
+   "r2": 0.5797275231401511,
+   "standardized_betas": {
+    "ability": -0.0031363701982741075,
+    "expected_minutes": -0.009649262123725095,
+    "finishing": 0.047820112074046045,
+    "initiation": 0.013734562284275532,
+    "spacing": -0.0014466396865886841,
+    "tendency": 0.038259347407969206
+   }
+  },
+  "team_3pa_per_game": 33.250574712643676,
+  "team_points_per_game": 115.44710144927537,
+  "validation": {
+   "hhi": 0.23841183437491548,
+   "mae": 0.1087383109874672,
+   "mean_within_team_spearman": 0.038461538461538464,
+   "n_players": 65,
+   "n_teams": 13,
+   "pearson": 0.0408779837399007,
+   "spearman": 0.007604895104895105,
+   "top1": 0.3298420001552484
+  }
+ },
+ "F1_finishing_half": {
+  "all": {
+   "hhi": 0.23989669238525274,
+   "mae": 0.10311586851421244,
+   "mean_within_team_spearman": 0.03226592780528156,
+   "n_players": 145,
+   "n_teams": 29,
+   "pearson": 0.11899838146224485,
+   "spearman": 0.061840837587135086,
+   "top1": 0.3309622476564439
+  },
+  "dev": {
+   "hhi": 0.23579787930785046,
+   "mae": 0.0923581561594569,
+   "mean_within_team_spearman": 0.04342527059893558,
+   "n_players": 80,
+   "n_teams": 16,
+   "pearson": 0.22194204472175066,
+   "spearman": 0.09803151682960665,
+   "top1": 0.31980134220617346
+  },
+  "kwargs": {
+   "finishing_weight": 1.0
+  },
+  "mean_3pa_per_game_by_tendency_tercile": {
+   "high_preference": 8.861224489795918,
+   "low_preference": 5.156944444444444,
+   "mid_preference": 6.728472222222222
+  },
+  "runtime": 40.284600019454956,
+  "sim_standardized_betas": {
+   "n": 145,
+   "r2": 0.6444345775869513,
+   "standardized_betas": {
+    "ability": -0.005673830201239691,
+    "expected_minutes": -0.009098576716146686,
+    "finishing": 0.06043795304580086,
+    "initiation": 0.013488982583030456,
+    "spacing": -0.000951278610480677,
+    "tendency": 0.03944937166998842
+   }
+  },
+  "team_3pa_per_game": 34.6448275862069,
+  "team_points_per_game": 117.32898550724637,
+  "validation": {
+   "hhi": 0.244941385403594,
+   "mae": 0.11635612987391156,
+   "mean_within_team_spearman": 0.018531352059245852,
+   "n_players": 65,
+   "n_teams": 13,
+   "pearson": 0.010676223451947055,
+   "spearman": -0.042614101992294665,
+   "top1": 0.3446987466721613
+  }
+ },
+ "P15_pref_x1.5": {
+  "all": {
+   "hhi": 0.2618672835305557,
+   "mae": 0.10388921942765772,
+   "mean_within_team_spearman": 0.19655172413793104,
+   "n_players": 145,
+   "n_teams": 29,
+   "pearson": 0.24239219965769673,
+   "spearman": 0.21069734165627985,
+   "top1": 0.3638424452454727
+  },
+  "dev": {
+   "hhi": 0.2525324963931135,
+   "mae": 0.09432444489317446,
+   "mean_within_team_spearman": 0.15625,
+   "n_players": 80,
+   "n_teams": 16,
+   "pearson": 0.32331342968269855,
+   "spearman": 0.2192217533989686,
+   "top1": 0.34451312315715504
+  },
+  "kwargs": {
+   "pref_scale": 1.5
+  },
+  "mean_3pa_per_game_by_tendency_tercile": {
+   "high_preference": 9.986394557823129,
+   "low_preference": 4.15625,
+   "mid_preference": 6.7131944444444445
+  },
+  "runtime": 39.83782386779785,
+  "sim_standardized_betas": {
+   "n": 145,
+   "r2": 0.758294313114168,
+   "standardized_betas": {
+    "ability": -0.008360041587480188,
+    "expected_minutes": -0.006213158390423078,
+    "finishing": 0.07403078027055926,
+    "initiation": 0.019564695641824295,
+    "spacing": -0.002284339365040625,
+    "tendency": 0.06711770009474065
+   }
+  },
+  "team_3pa_per_game": 34.86436781609195,
+  "team_points_per_game": 119.36521739130436,
+  "validation": {
+   "hhi": 0.27335625231509997,
+   "mae": 0.11566124962394482,
+   "mean_within_team_spearman": 0.24615384615384614,
+   "n_players": 65,
+   "n_teams": 13,
+   "pearson": 0.16249038945332026,
+   "spearman": 0.15437062937062937,
+   "top1": 0.3876323801234021
+  }
+ },
+ "P25_pref_x2.5": {
+  "all": {
+   "hhi": 0.28804294395094393,
+   "mae": 0.10484748082281821,
+   "mean_within_team_spearman": 0.30344827586206896,
+   "n_players": 145,
+   "n_teams": 29,
+   "pearson": 0.3527293066000823,
+   "spearman": 0.33911031639749967,
+   "top1": 0.3951141931606562
+  },
+  "dev": {
+   "hhi": 0.27751766861496063,
+   "mae": 0.09842877026279227,
+   "mean_within_team_spearman": 0.2625,
+   "n_players": 80,
+   "n_teams": 16,
+   "pearson": 0.3884783984481892,
+   "spearman": 0.30072667604313175,
+   "top1": 0.3757634961520098
+  },
+  "kwargs": {
+   "pref_scale": 2.5
+  },
+  "mean_3pa_per_game_by_tendency_tercile": {
+   "high_preference": 10.91972789115646,
+   "low_preference": 2.788888888888889,
+   "mid_preference": 6.570138888888889
+  },
+  "runtime": 38.901532888412476,
+  "sim_standardized_betas": {
+   "n": 145,
+   "r2": 0.8182239109658231,
+   "standardized_betas": {
+    "ability": -0.011793813652610036,
+    "expected_minutes": -0.006847403008021101,
+    "finishing": 0.07098448627478145,
+    "initiation": 0.01417264536726271,
+    "spacing": -0.00356166870426223,
+    "tendency": 0.09784988765122479
+   }
+  },
+  "team_3pa_per_game": 33.94137931034483,
+  "team_points_per_game": 119.29347826086956,
+  "validation": {
+   "hhi": 0.30099712897984643,
+   "mae": 0.11274743228131166,
+   "mean_within_team_spearman": 0.35384615384615387,
+   "n_players": 65,
+   "n_teams": 13,
+   "pearson": 0.31648902108902505,
+   "spearman": 0.33387237762237765,
+   "top1": 0.41893043563283644
+  }
+ },
+ "P2_pref_x2": {
+  "all": {
+   "hhi": 0.2750892263050503,
+   "mae": 0.10245635316629233,
+   "mean_within_team_spearman": 0.2689655172413793,
+   "n_players": 145,
+   "n_teams": 29,
+   "pearson": 0.3124057024120812,
+   "spearman": 0.2955561088374412,
+   "top1": 0.3800573256152624
+  },
+  "dev": {
+   "hhi": 0.2639597541795601,
+   "mae": 0.09482313659688826,
+   "mean_within_team_spearman": 0.21875,
+   "n_players": 80,
+   "n_teams": 16,
+   "pearson": 0.3595481155691395,
+   "spearman": 0.263033286451008,
+   "top1": 0.35909212978050753
+  },
+  "kwargs": {
+   "pref_scale": 2.0
+  },
+  "mean_3pa_per_game_by_tendency_tercile": {
+   "high_preference": 10.464625850340136,
+   "low_preference": 3.3708333333333336,
+   "mid_preference": 6.736805555555556
+  },
+  "runtime": 39.60170888900757,
+  "sim_standardized_betas": {
+   "n": 145,
+   "r2": 0.8021369822077168,
+   "standardized_betas": {
+    "ability": -0.011526690504027302,
+    "expected_minutes": -0.006449093602290168,
+    "finishing": 0.07062514278518986,
+    "initiation": 0.016778120363585895,
+    "spacing": -0.0017719884079902312,
+    "tendency": 0.08591941966151465
+   }
+  },
+  "team_3pa_per_game": 34.41149425287356,
+  "team_points_per_game": 119.23260869565217,
+  "validation": {
+   "hhi": 0.2887870381518074,
+   "mae": 0.11185108125171271,
+   "mean_within_team_spearman": 0.33076923076923076,
+   "n_players": 65,
+   "n_teams": 13,
+   "pearson": 0.2663357063233007,
+   "spearman": 0.2916958041958042,
+   "top1": 0.40586064356572993
+  }
+ },
+ "P3_pref_x3": {
+  "all": {
+   "hhi": 0.3019015882268707,
+   "mae": 0.10792048570885014,
+   "mean_within_team_spearman": 0.32299606651225343,
+   "n_players": 145,
+   "n_teams": 29,
+   "pearson": 0.3697028775434406,
+   "spearman": 0.37308801691095334,
+   "top1": 0.4087051524018568
+  },
+  "dev": {
+   "hhi": 0.284252799362975,
+   "mae": 0.09893940752071774,
+   "mean_within_team_spearman": 0.2625,
+   "n_players": 80,
+   "n_teams": 16,
+   "pearson": 0.40884100546176483,
+   "spearman": 0.3391956117944544,
+   "top1": 0.37933337458540367
+  },
+  "kwargs": {
+   "pref_scale": 3.0
+  },
+  "mean_3pa_per_game_by_tendency_tercile": {
+   "high_preference": 11.417687074829933,
+   "low_preference": 2.259027777777778,
+   "mid_preference": 6.572222222222223
+  },
+  "runtime": 38.984840869903564,
+  "sim_standardized_betas": {
+   "n": 145,
+   "r2": 0.8037096413882543,
+   "standardized_betas": {
+    "ability": -0.008836904849292915,
+    "expected_minutes": -0.007509350116681963,
+    "finishing": 0.06773242041704751,
+    "initiation": 0.00835577003161786,
+    "spacing": -0.0036650054246896557,
+    "tendency": 0.10546907947899335
+   }
+  },
+  "team_3pa_per_game": 33.90919540229885,
+  "team_points_per_game": 119.57681159420291,
+  "validation": {
+   "hhi": 0.32362317452089623,
+   "mae": 0.11897412040193618,
+   "mean_within_team_spearman": 0.39745276375810384,
+   "n_players": 65,
+   "n_teams": 13,
+   "pearson": 0.3336125073412231,
+   "spearman": 0.36130202473774753,
+   "top1": 0.44485503279133753
+  }
+ },
+ "R1_receiver_tendency_1": {
+  "all": {
+   "hhi": 0.2573376241313361,
+   "mae": 0.10641164893559746,
+   "mean_within_team_spearman": 0.10176892819325026,
+   "n_players": 145,
+   "n_teams": 29,
+   "pearson": 0.18344672611487217,
+   "spearman": 0.13046199508344175,
+   "top1": 0.3550371808818587
+  },
+  "dev": {
+   "hhi": 0.2508202681218689,
+   "mae": 0.09518646866799274,
+   "mean_within_team_spearman": 0.0969561823502661,
+   "n_players": 80,
+   "n_teams": 16,
+   "pearson": 0.2779068861232007,
+   "spearman": 0.16258885718081104,
+   "top1": 0.3385055234407632
+  },
+  "kwargs": {
+   "receiver_weights": {
+    "tendency": 1.0
+   }
+  },
+  "mean_3pa_per_game_by_tendency_tercile": {
+   "high_preference": 10.935374149659864,
+   "low_preference": 5.164583333333334,
+   "mid_preference": 7.179861111111111
+  },
+  "runtime": 39.738823890686035,
+  "sim_standardized_betas": {
+   "n": 145,
+   "r2": 0.7543452055831572,
+   "standardized_betas": {
+    "ability": -0.012257398658328986,
+    "expected_minutes": -0.007240979167542004,
+    "finishing": 0.0804051445806426,
+    "initiation": 0.01853638169243945,
+    "spacing": -0.00797154373626336,
+    "tendency": 0.05978179292820725
+   }
+  },
+  "team_3pa_per_game": 38.909195402298856,
+  "team_points_per_game": 118.99565217391304,
+  "validation": {
+   "hhi": 0.26535898537375724,
+   "mae": 0.12022725541880326,
+   "mean_within_team_spearman": 0.1076923076923077,
+   "n_players": 65,
+   "n_teams": 13,
+   "pearson": 0.08543134747356344,
+   "spearman": 0.024737762237762237,
+   "top1": 0.37538383619397625
+  }
+ },
+ "R2_receiver_tendency_2": {
+  "all": {
+   "hhi": 0.2682865621281148,
+   "mae": 0.109621935519688,
+   "mean_within_team_spearman": 0.15013437078664735,
+   "n_players": 145,
+   "n_teams": 29,
+   "pearson": 0.20328456256834232,
+   "spearman": 0.1641791926058743,
+   "top1": 0.37801316375604904
+  },
+  "dev": {
+   "hhi": 0.25976220581845,
+   "mae": 0.0981244402266039,
+   "mean_within_team_spearman": 0.20961854705079833,
+   "n_players": 80,
+   "n_teams": 16,
+   "pearson": 0.283728128709939,
+   "spearman": 0.2102332995424025,
+   "top1": 0.3584158519237114
+  },
+  "kwargs": {
+   "receiver_weights": {
+    "tendency": 2.0
+   }
+  },
+  "mean_3pa_per_game_by_tendency_tercile": {
+   "high_preference": 11.575510204081633,
+   "low_preference": 4.852777777777778,
+   "mid_preference": 6.863888888888888
+  },
+  "runtime": 39.66769599914551,
+  "sim_standardized_betas": {
+   "n": 145,
+   "r2": 0.743053279940427,
+   "standardized_betas": {
+    "ability": -0.012207025897323842,
+    "expected_minutes": -0.008917227637629397,
+    "finishing": 0.08960870883525111,
+    "initiation": 0.026038063186820188,
+    "spacing": -0.011326662399886377,
+    "tendency": 0.06675835001272838
+   }
+  },
+  "team_3pa_per_game": 38.95172413793103,
+  "team_points_per_game": 119.6840579710145,
+  "validation": {
+   "hhi": 0.27877807758616374,
+   "mae": 0.12377269895733001,
+   "mean_within_team_spearman": 0.07692307692307693,
+   "n_players": 65,
+   "n_teams": 13,
+   "pearson": 0.12103780691917784,
+   "spearman": 0.04807692307692308,
+   "top1": 0.40213293216508
+  }
+ },
+ "RF_receiver_finishing": {
+  "all": {
+   "hhi": 0.2535385509032746,
+   "mae": 0.11253149919261911,
+   "mean_within_team_spearman": 0.04323781906250942,
+   "n_players": 145,
+   "n_teams": 29,
+   "pearson": 0.07719800015329849,
+   "spearman": 0.03355186890227701,
+   "top1": 0.3541512454596269
+  },
+  "dev": {
+   "hhi": 0.24768441588553192,
+   "mae": 0.10437899990486788,
+   "mean_within_team_spearman": 0.06586854705079832,
+   "n_players": 80,
+   "n_teams": 16,
+   "pearson": 0.1635372061932982,
+   "spearman": 0.07094509461616559,
+   "top1": 0.34289944466403444
+  },
+  "kwargs": {
+   "receiver_weights": {
+    "finishing": 2.0
+   }
+  },
+  "mean_3pa_per_game_by_tendency_tercile": {
+   "high_preference": 10.11768707482993,
+   "low_preference": 5.647916666666667,
+   "mid_preference": 7.334027777777777
+  },
+  "runtime": 39.76684379577637,
+  "sim_standardized_betas": {
+   "n": 145,
+   "r2": 0.7461280888192058,
+   "standardized_betas": {
+    "ability": -0.00732659836246332,
+    "expected_minutes": -0.006667471558796115,
+    "finishing": 0.0832406903729724,
+    "initiation": 0.014799152959545458,
+    "spacing": -0.0016823760591355777,
+    "tendency": 0.03965464053190306
+   }
+  },
+  "team_3pa_per_game": 38.58275862068966,
+  "team_points_per_game": 119.44782608695652,
+  "validation": {
+   "hhi": 0.26074364015588103,
+   "mae": 0.12256534446985139,
+   "mean_within_team_spearman": 0.015384615384615385,
+   "n_players": 65,
+   "n_teams": 13,
+   "pearson": -0.012999756445647348,
+   "spearman": -0.03872377622377622,
+   "top1": 0.36799961566958683
+  }
+ },
+ "RS_receiver_tendency_spacing": {
+  "all": {
+   "hhi": 0.2660906623011156,
+   "mae": 0.11224253858572598,
+   "mean_within_team_spearman": 0.14482758620689656,
+   "n_players": 145,
+   "n_teams": 29,
+   "pearson": 0.1525682557038402,
+   "spearman": 0.11024258998843119,
+   "top1": 0.37112911353507777
+  },
+  "dev": {
+   "hhi": 0.2581073601831637,
+   "mae": 0.1025674959271978,
+   "mean_within_team_spearman": 0.175,
+   "n_players": 80,
+   "n_teams": 16,
+   "pearson": 0.2356631156386441,
+   "spearman": 0.14338959212376934,
+   "top1": 0.35225234046926485
+  },
+  "kwargs": {
+   "receiver_weights": {
+    "spacing": 1.5,
+    "tendency": 1.0
+   }
+  },
+  "mean_3pa_per_game_by_tendency_tercile": {
+   "high_preference": 10.979591836734693,
+   "low_preference": 5.175694444444445,
+   "mid_preference": 7.120833333333334
+  },
+  "runtime": 39.406837940216064,
+  "sim_standardized_betas": {
+   "n": 145,
+   "r2": 0.7553437059448329,
+   "standardized_betas": {
+    "ability": -0.009415162956779459,
+    "expected_minutes": -0.007372401860205949,
+    "finishing": 0.0895471062046603,
+    "initiation": 0.022918337987329326,
+    "spacing": -0.0017640012956745684,
+    "tendency": 0.05523435155152645
+   }
+  },
+  "team_3pa_per_game": 38.90459770114943,
+  "team_points_per_game": 119.8050724637681,
+  "validation": {
+   "hhi": 0.2759162649078256,
+   "mae": 0.12415028339622222,
+   "mean_within_team_spearman": 0.1076923076923077,
+   "n_players": 65,
+   "n_teams": 13,
+   "pearson": 0.0670609040335608,
+   "spearman": 0.002054195804195804,
+   "top1": 0.3943620650006937
+  }
+ }
+}

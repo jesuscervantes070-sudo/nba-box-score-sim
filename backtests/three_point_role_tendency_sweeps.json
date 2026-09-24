@@ -1,0 +1,282 @@
+{
+ "three_point_preference": {
+  "field": "three_point_preference",
+  "rows": [
+   {
+    "value": 1.0,
+    "share_3pa": 0.2797129961809976,
+    "share_touches": 0.20135835567470955,
+    "share_fga": 0.20366812227074235,
+    "fga_per_touch": 0.413988993431564,
+    "three_share_of_fga": 0.5182246998284734,
+    "cs_share_of_3pa": 0.3847745138601572,
+    "three_pt_pct": 0.33843607778237483
+   },
+   {
+    "value": 0.5,
+    "share_3pa": 0.24476333757666938,
+    "share_touches": 0.20114387846291332,
+    "share_fga": 0.20222707423580785,
+    "fga_per_touch": 0.41149813399680113,
+    "three_share_of_fga": 0.45670481537464913,
+    "cs_share_of_3pa": 0.3981087470449173,
+    "three_pt_pct": 0.34231678486997635
+   },
+   {
+    "value": 0.0,
+    "share_3pa": 0.19615785210045134,
+    "share_touches": 0.19941018766756033,
+    "share_fga": 0.19860262008733626,
+    "fga_per_touch": 0.4076364614143587,
+    "three_share_of_fga": 0.37269129287598945,
+    "cs_share_of_3pa": 0.36342182890855457,
+    "three_pt_pct": 0.3380530973451327
+   },
+   {
+    "value": -0.5,
+    "share_3pa": 0.15785210045133666,
+    "share_touches": 0.19996425379803395,
+    "share_fga": 0.19681222707423582,
+    "fga_per_touch": 0.4028423310690025,
+    "three_share_of_fga": 0.30264033725316175,
+    "cs_share_of_3pa": 0.38049853372434017,
+    "three_pt_pct": 0.34310850439882695
+   },
+   {
+    "value": -1.0,
+    "share_3pa": 0.12151371369054507,
+    "share_touches": 0.19812332439678285,
+    "share_fga": 0.19868995633187772,
+    "fga_per_touch": 0.41046459179070816,
+    "three_share_of_fga": 0.23076923076923078,
+    "cs_share_of_3pa": 0.37238095238095237,
+    "three_pt_pct": 0.34
+   }
+  ],
+  "team_3pa_per_sim": 34.564
+ },
+ "role_off_finishing": {
+  "field": "role_off_finishing",
+  "rows": [
+   {
+    "value": 0.2,
+    "share_3pa": 0.14817797463257498,
+    "share_touches": 0.192305483778352,
+    "share_fga": 0.14270283743924225,
+    "fga_per_touch": 0.3418931024186324,
+    "three_share_of_fga": 0.4285298398835517,
+    "cs_share_of_3pa": 0.38383152173913043,
+    "three_pt_pct": 0.3233695652173913
+   },
+   {
+    "value": 0.35,
+    "share_3pa": 0.18049124219851018,
+    "share_touches": 0.19152071968609435,
+    "share_fga": 0.16837688504839848,
+    "fga_per_touch": 0.4050569658205077,
+    "three_share_of_fga": 0.44238835430545276,
+    "cs_share_of_3pa": 0.38315672058003347,
+    "three_pt_pct": 0.3441160066926938
+   },
+   {
+    "value": 0.5,
+    "share_3pa": 0.19538957116972017,
+    "share_touches": 0.21278591252751458,
+    "share_fga": 0.2115824020605708,
+    "fga_per_touch": 0.4581271925879284,
+    "three_share_of_fga": 0.38111132927547614,
+    "cs_share_of_3pa": 0.38794435857805254,
+    "three_pt_pct": 0.3446676970633694
+   },
+   {
+    "value": 0.65,
+    "share_3pa": 0.22800483189047716,
+    "share_touches": 0.2045746004402335,
+    "share_fga": 0.22857380250093473,
+    "fga_per_touch": 0.5147829341317365,
+    "three_share_of_fga": 0.4116684841875682,
+    "cs_share_of_3pa": 0.37527593818984545,
+    "three_pt_pct": 0.35275938189845474
+   },
+   {
+    "value": 0.8,
+    "share_3pa": 0.24793638010871755,
+    "share_touches": 0.19881328356780553,
+    "share_fga": 0.24876407295085373,
+    "fga_per_touch": 0.5764898430730722,
+    "three_share_of_fga": 0.41132264529058116,
+    "cs_share_of_3pa": 0.3743402354851807,
+    "three_pt_pct": 0.34185952090946004
+   }
+  ],
+  "team_3pa_per_sim": 39.736
+ },
+ "role_off_spacing": {
+  "field": "role_off_spacing",
+  "rows": [
+   {
+    "value": 0.1,
+    "share_3pa": 0.1829571106094808,
+    "share_touches": 0.2033727661716587,
+    "share_fga": 0.1855217391304348,
+    "fga_per_touch": 0.3772100424328147,
+    "three_share_of_fga": 0.3798921959221936,
+    "cs_share_of_3pa": 0.27267119062307216,
+    "three_pt_pct": 0.3392967304133251
+   },
+   {
+    "value": 0.3,
+    "share_3pa": 0.18769751693002257,
+    "share_touches": 0.20055014203013197,
+    "share_fga": 0.18965217391304348,
+    "fga_per_touch": 0.39103541012998655,
+    "three_share_of_fga": 0.38124713434204494,
+    "cs_share_of_3pa": 0.31028262176788934,
+    "three_pt_pct": 0.35117257967528565
+   },
+   {
+    "value": 0.5,
+    "share_3pa": 0.19480812641083523,
+    "share_touches": 0.19848261479270793,
+    "share_fga": 0.19656521739130434,
+    "fga_per_touch": 0.4095108695652174,
+    "three_share_of_fga": 0.38177394381773944,
+    "cs_share_of_3pa": 0.3864426419466976,
+    "three_pt_pct": 0.3603707995365006
+   },
+   {
+    "value": 0.7,
+    "share_3pa": 0.2064334085778781,
+    "share_touches": 0.1993995181762612,
+    "share_fga": 0.20717391304347826,
+    "fga_per_touch": 0.42962762600306553,
+    "three_share_of_fga": 0.3838405036726128,
+    "cs_share_of_3pa": 0.46364133406232916,
+    "three_pt_pct": 0.34390377255330784
+   },
+   {
+    "value": 0.9,
+    "share_3pa": 0.22810383747178328,
+    "share_touches": 0.19819495882924024,
+    "share_fga": 0.22108695652173913,
+    "fga_per_touch": 0.46126632801161105,
+    "three_share_of_fga": 0.39744346116027535,
+    "cs_share_of_3pa": 0.524987629886195,
+    "three_pt_pct": 0.34240475012370114
+   }
+  ],
+  "team_3pa_per_sim": 35.44
+ },
+ "role_off_initiation": {
+  "field": "role_off_initiation",
+  "rows": [
+   {
+    "value": 1.0,
+    "share_3pa": 0.20119567716716485,
+    "share_touches": 0.20123089069116487,
+    "share_fga": 0.19815204063758976,
+    "fga_per_touch": 0.403477485510477,
+    "three_share_of_fga": 0.3867403314917127,
+    "cs_share_of_3pa": 0.4102857142857143,
+    "three_pt_pct": 0.3554285714285714
+   },
+   {
+    "value": 2.5,
+    "share_3pa": 0.20188549091745228,
+    "share_touches": 0.20085408741835928,
+    "share_fga": 0.19863373620599054,
+    "fga_per_touch": 0.40521708057888156,
+    "three_share_of_fga": 0.3871252204585538,
+    "cs_share_of_3pa": 0.3809794988610478,
+    "three_pt_pct": 0.34965831435079725
+   },
+   {
+    "value": 4.0,
+    "share_3pa": 0.19303288112209704,
+    "share_touches": 0.19836000861264624,
+    "share_fga": 0.197320021019443,
+    "fga_per_touch": 0.40759837177747626,
+    "three_share_of_fga": 0.3726142920550377,
+    "cs_share_of_3pa": 0.37998808814770696,
+    "three_pt_pct": 0.3299583085169744
+   },
+   {
+    "value": 7.0,
+    "share_3pa": 0.20292021154288342,
+    "share_touches": 0.19954424747003516,
+    "share_fga": 0.19955333683657384,
+    "fga_per_touch": 0.40976530887510115,
+    "three_share_of_fga": 0.3873162168093044,
+    "cs_share_of_3pa": 0.3422096317280453,
+    "three_pt_pct": 0.33541076487252125
+   },
+   {
+    "value": 10.0,
+    "share_3pa": 0.2009657392504024,
+    "share_touches": 0.20001076580779445,
+    "share_fga": 0.20634086530040288,
+    "fga_per_touch": 0.4227146317394815,
+    "three_share_of_fga": 0.3709677419354839,
+    "cs_share_of_3pa": 0.2866132723112128,
+    "three_pt_pct": 0.36784897025171626
+   }
+  ],
+  "team_3pa_per_sim": 34.792
+ },
+ "three_point_shrunk_rate": {
+  "field": "three_point_shrunk_rate",
+  "rows": [
+   {
+    "value": 0.3,
+    "share_3pa": 0.19790599749630136,
+    "share_touches": 0.20225514665533784,
+    "share_fga": 0.20465948257056849,
+    "fga_per_touch": 0.41055487484684056,
+    "three_share_of_fga": 0.3707098699637604,
+    "cs_share_of_3pa": 0.3881541115583669,
+    "three_pt_pct": 0.26969522714203564
+   },
+   {
+    "value": 0.33,
+    "share_3pa": 0.2026857858199613,
+    "share_touches": 0.1987856902625104,
+    "share_fga": 0.1995113651236857,
+    "fga_per_touch": 0.4072128227960819,
+    "three_share_of_fga": 0.3894598731685983,
+    "cs_share_of_3pa": 0.38517686692869174,
+    "three_pt_pct": 0.2914093206064009
+   },
+   {
+    "value": 0.36,
+    "share_3pa": 0.19722317059292135,
+    "share_touches": 0.19717487122298338,
+    "share_fga": 0.19750447188168055,
+    "fga_per_touch": 0.40640991112308106,
+    "three_share_of_fga": 0.3828142257565717,
+    "cs_share_of_3pa": 0.40796306982111946,
+    "three_pt_pct": 0.3421811886901327
+   },
+   {
+    "value": 0.39,
+    "share_3pa": 0.2043928530784113,
+    "share_touches": 0.20025489883702405,
+    "share_fga": 0.20160551459360412,
+    "fga_per_touch": 0.4084681340051268,
+    "three_share_of_fga": 0.3886604631032244,
+    "cs_share_of_3pa": 0.3914253897550111,
+    "three_pt_pct": 0.3658129175946548
+   },
+   {
+    "value": 0.42,
+    "share_3pa": 0.1977921930124047,
+    "share_touches": 0.20152939302214434,
+    "share_fga": 0.19671916583046115,
+    "fga_per_touch": 0.3960474308300395,
+    "three_share_of_fga": 0.3854513195830561,
+    "cs_share_of_3pa": 0.38837744533947066,
+    "three_pt_pct": 0.3676639815880322
+   }
+  ],
+  "team_3pa_per_sim": 35.147999999999996
+ }
+}
