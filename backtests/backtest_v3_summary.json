@@ -1,0 +1,255 @@
+{
+  "baseline_metrics": [
+    {
+      "baseline": "BASELINE_5050",
+      "brier_score": 0.25,
+      "log_loss": 0.6931471805599456,
+      "margin_mae": 12.108433734939759,
+      "margin_rmse": 15.181234453036824,
+      "n_games": 83,
+      "winner_accuracy": 0.4819277108433735
+    },
+    {
+      "baseline": "BASELINE_NET_RATING",
+      "brier_score": 0.2737109903189977,
+      "log_loss": 0.7871642811974409,
+      "margin_mae": 11.61021294165605,
+      "margin_rmse": 14.165015174008476,
+      "n_games": 83,
+      "winner_accuracy": 0.6265060240963856
+    },
+    {
+      "baseline": "BASELINE_PRIOR_SEASON_HOME_RATE",
+      "brier_score": 0.2589126523942289,
+      "log_loss": 0.7111698800741393,
+      "margin_mae": 12.279704182583995,
+      "margin_rmse": 15.486467719795531,
+      "n_games": 83,
+      "winner_accuracy": 0.4819277108433735
+    }
+  ],
+  "evaluation_timestamp_utc": "2026-09-24T02:13:43.511757+00:00",
+  "game_ids": [
+    "0022300005",
+    "0022300008",
+    "0022300014",
+    "0022300016",
+    "0022300019",
+    "0022300083",
+    "0022300105",
+    "0022300107",
+    "0022300118",
+    "0022300127",
+    "0022300130",
+    "0022300131",
+    "0022300134",
+    "0022300146",
+    "0022300179",
+    "0022300196",
+    "0022300242",
+    "0022300261",
+    "0022300264",
+    "0022300290",
+    "0022300310",
+    "0022300313",
+    "0022300329",
+    "0022300364",
+    "0022300369",
+    "0022300371",
+    "0022300407",
+    "0022300415",
+    "0022300466",
+    "0022300476",
+    "0022300481",
+    "0022300506",
+    "0022300517",
+    "0022300537",
+    "0022300569",
+    "0022300578",
+    "0022300590",
+    "0022300592",
+    "0022300609",
+    "0022300613",
+    "0022300614",
+    "0022300623",
+    "0022300653",
+    "0022300677",
+    "0022300684",
+    "0022300686",
+    "0022300733",
+    "0022300736",
+    "0022300749",
+    "0022300752",
+    "0022300756",
+    "0022300758",
+    "0022300776",
+    "0022300791",
+    "0022300797",
+    "0022300798",
+    "0022300810",
+    "0022300819",
+    "0022300824",
+    "0022300827",
+    "0022300828",
+    "0022300867",
+    "0022300882",
+    "0022300886",
+    "0022300906",
+    "0022300907",
+    "0022300917",
+    "0022300932",
+    "0022300992",
+    "0022301006",
+    "0022301027",
+    "0022301039",
+    "0022301052",
+    "0022301089",
+    "0022301103",
+    "0022301107",
+    "0022301122",
+    "0022301146",
+    "0022301154",
+    "0022301163",
+    "0022301175",
+    "0022301195",
+    "0022301224"
+  ],
+  "holdout_file_sha256": "085735a887770cb4ceb9eca0cfd044bc9049d959984a946e63d86a57fc948964",
+  "holdout_selection_rule": "sha256(game_id) % 16 == 0, season 2023-24",
+  "intervention_version": "allocation-fixes-v1",
+  "isolated_process_run": true,
+  "metrics": {
+    "actual_home_win_rate": 0.4819277108433735,
+    "away_score_mae": 11.203325301204819,
+    "brier_score": 0.25942284337349397,
+    "calibration_bins": [
+      {
+        "actual_hit_rate": 0.48484848484848486,
+        "mean_predicted_confidence": 0.5521212121212121,
+        "n_games": 33,
+        "range": "50-60%"
+      },
+      {
+        "actual_hit_rate": 0.625,
+        "mean_predicted_confidence": 0.6373333333333333,
+        "n_games": 24,
+        "range": "60-70%"
+      },
+      {
+        "actual_hit_rate": 0.35714285714285715,
+        "mean_predicted_confidence": 0.742,
+        "n_games": 14,
+        "range": "70-80%"
+      },
+      {
+        "actual_hit_rate": 0.7272727272727273,
+        "mean_predicted_confidence": 0.8320000000000001,
+        "n_games": 11,
+        "range": "80-90%"
+      },
+      {
+        "actual_hit_rate": 1.0,
+        "mean_predicted_confidence": 0.92,
+        "n_games": 1,
+        "range": "90-100%"
+      }
+    ],
+    "combined_score_mae": 11.714072289156627,
+    "expected_calibration_error": 0.1100722891566265,
+    "home_score_mae": 12.224819277108434,
+    "log_loss": 0.7144091492096174,
+    "margin_mae": 12.108626506024097,
+    "margin_rmse": 14.703230154080273,
+    "mean_predicted_home_prob": 0.4994698795180723,
+    "mean_signed_margin_error": 0.2721927710843373,
+    "n_games": 83,
+    "winner_accuracy": 0.5421686746987951
+  },
+  "model_commit": "eb803ee453a525341014431acdd9684a41d93a3c",
+  "model_version": "backtest-v1",
+  "n_attempted": 83,
+  "n_sims_per_game": 250,
+  "n_skipped": 0,
+  "n_succeeded": 83,
+  "oracle_metrics": {
+    "actual_home_win_rate": 0.4819277108433735,
+    "away_score_mae": 11.732433734939757,
+    "brier_score": 0.24852298795180722,
+    "calibration_bins": [
+      {
+        "actual_hit_rate": 0.7058823529411765,
+        "mean_predicted_confidence": 0.5441176470588235,
+        "n_games": 34,
+        "range": "50-60%"
+      },
+      {
+        "actual_hit_rate": 0.5789473684210527,
+        "mean_predicted_confidence": 0.6412631578947368,
+        "n_games": 19,
+        "range": "60-70%"
+      },
+      {
+        "actual_hit_rate": 0.35294117647058826,
+        "mean_predicted_confidence": 0.7367058823529411,
+        "n_games": 17,
+        "range": "70-80%"
+      },
+      {
+        "actual_hit_rate": 0.8181818181818182,
+        "mean_predicted_confidence": 0.8316363636363636,
+        "n_games": 11,
+        "range": "80-90%"
+      },
+      {
+        "actual_hit_rate": 1.0,
+        "mean_predicted_confidence": 0.9279999999999999,
+        "n_games": 2,
+        "range": "90-100%"
+      }
+    ],
+    "combined_score_mae": 11.993759036144578,
+    "expected_calibration_error": 0.16265060240963852,
+    "home_score_mae": 12.255084337349398,
+    "log_loss": 0.6880595224095436,
+    "margin_mae": 11.916963855421686,
+    "margin_rmse": 14.733589320496899,
+    "mean_predicted_home_prob": 0.47783132530120476,
+    "mean_signed_margin_error": -0.7937831325301207,
+    "n_games": 83,
+    "winner_accuracy": 0.6265060240963856
+  },
+  "oracle_n_succeeded": 83,
+  "oracle_skips": [],
+  "oracle_timing": {
+    "avg_seconds_per_successful_game": 22.31997059052249,
+    "simulation_seconds_total": 1644.1615798473358,
+    "snapshot_seconds_total": 190.86448550224304,
+    "total_seconds": 1852.5575590133667
+  },
+  "pregame_vs_oracle_delta": {
+    "delta_accuracy (oracle-pregame)": 0.08433734939759041,
+    "delta_brier (oracle-pregame, negative=oracle better)": -0.010899855421686755,
+    "delta_margin_mae (oracle-pregame, negative=oracle better)": -0.19166265060241017,
+    "n_common_games": 83,
+    "oracle_on_common": {
+      "brier_score": 0.24852298795180722,
+      "margin_mae": 11.916963855421686,
+      "n_games": 83,
+      "winner_accuracy": 0.6265060240963856
+    },
+    "pregame_on_common": {
+      "brier_score": 0.25942284337349397,
+      "margin_mae": 12.108626506024097,
+      "n_games": 83,
+      "winner_accuracy": 0.5421686746987951
+    }
+  },
+  "seed_policy": "sha256(f'{MODEL_VERSION}|{mode}|{game_id}|{sim_index}')[:16 hex] as int",
+  "snapshot_mode": "PREGAME_EXPECTED",
+  "timing": {
+    "avg_seconds_per_successful_game": 24.264682878930884,
+    "simulation_seconds_total": 1687.2322130203247,
+    "snapshot_seconds_total": 308.92189931869507,
+    "total_seconds": 2013.9686789512634
+  }
+}
