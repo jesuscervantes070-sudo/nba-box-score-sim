@@ -1,0 +1,98 @@
+{
+ "n_sims": 30,
+ "n_games": 362,
+ "results": {
+  "baseline": {
+   "attempts_sd": 3.4491042890478214,
+   "ts_pearson_with_real_ts": 0.3440802210205336,
+   "attempts_pearson_with_real_attempts": -0.09875484921434488,
+   "n_team_seasons": 83,
+   "pearson_with_real_season_ppg": 0.07231869339335148,
+   "spearman_with_real_season_ppg": 0.12280259858153511,
+   "pearson_ortg_with_real_season_ppg": 0.13375901568647489,
+   "team_season_sim_points_sd": 4.575061709404924,
+   "mean_sim_points": 121.68293433362709,
+   "mean_sim_ortg": 117.46483831433228,
+   "per_season": {
+    "2023-24": {
+     "pearson": 0.32856887068694424
+    },
+    "2024-25": {
+     "pearson": 0.021087330174693265
+    },
+    "2025-26": {
+     "pearson": -0.14154209761543068
+    }
+   }
+  },
+  "finishing_role_to_median": {
+   "attempts_sd": 3.089903367483355,
+   "ts_pearson_with_real_ts": 0.3770772916153222,
+   "attempts_pearson_with_real_attempts": -0.03975452528394118,
+   "n_team_seasons": 83,
+   "pearson_with_real_season_ppg": 0.10621057929145179,
+   "spearman_with_real_season_ppg": 0.14620656361331216,
+   "pearson_ortg_with_real_season_ppg": 0.17418594992130995,
+   "team_season_sim_points_sd": 4.110615061404838,
+   "mean_sim_points": 118.40938745770069,
+   "mean_sim_ortg": 116.87494850000735,
+   "per_season": {
+    "2023-24": {
+     "pearson": 0.4399487874090364
+    },
+    "2024-25": {
+     "pearson": -0.12361854494849796
+    },
+    "2025-26": {
+     "pearson": 0.007733529236639248
+    }
+   }
+  },
+  "volume_drivers_to_median": {
+   "attempts_sd": 1.4643820893231183,
+   "ts_pearson_with_real_ts": 0.3979469108167309,
+   "attempts_pearson_with_real_attempts": -0.010051857868984913,
+   "n_team_seasons": 83,
+   "pearson_with_real_season_ppg": 0.18699978791409141,
+   "spearman_with_real_season_ppg": 0.21562083478827782,
+   "pearson_ortg_with_real_season_ppg": 0.18847409764059544,
+   "team_season_sim_points_sd": 3.7695796310940497,
+   "mean_sim_points": 118.79720170837642,
+   "mean_sim_ortg": 117.02638916744718,
+   "per_season": {
+    "2023-24": {
+     "pearson": 0.5027744420553735
+    },
+    "2024-25": {
+     "pearson": 0.014732879532709013
+    },
+    "2025-26": {
+     "pearson": 0.009267528440236775
+    }
+   }
+  },
+  "oreb_and_ball_security_to_median": {
+   "attempts_sd": 2.6264477972718216,
+   "ts_pearson_with_real_ts": 0.32468814296551046,
+   "attempts_pearson_with_real_attempts": -0.10870360729444847,
+   "n_team_seasons": 83,
+   "pearson_with_real_season_ppg": 0.11763152747223889,
+   "spearman_with_real_season_ppg": 0.16028126886060162,
+   "pearson_ortg_with_real_season_ppg": 0.1686189153564029,
+   "team_season_sim_points_sd": 4.201735125889822,
+   "mean_sim_points": 121.99574299027611,
+   "mean_sim_ortg": 117.7260772940282,
+   "per_season": {
+    "2023-24": {
+     "pearson": 0.4362424529973678
+    },
+    "2024-25": {
+     "pearson": -0.015415197746392908
+    },
+    "2025-26": {
+     "pearson": -0.11324662261164331
+    }
+   }
+  }
+ }
+}

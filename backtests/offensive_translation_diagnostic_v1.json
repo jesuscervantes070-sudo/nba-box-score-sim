@@ -1,0 +1,3459 @@
+{
+ "action_families": {
+  "CATCH_AND_SHOOT:MIDRANGE": {
+   "attempts_per_team_game": 15.149504596527061,
+   "block_rate": 0.024457627467195407,
+   "expected_pps_before_blocks": 0.7636791580204267,
+   "freq_corr_with_predicted_offense": -0.04500099270717825,
+   "freq_corr_with_shooting_composite": 0.026402716282689084,
+   "freq_sd_across_team_games": 4.090652129110796,
+   "realized_pps": 0.744270672321798,
+   "share_of_open_attempts": 0.1695108456384061
+  },
+  "CATCH_AND_SHOOT:THREE_POINT": {
+   "attempts_per_team_game": 16.94001021450459,
+   "block_rate": 0.009139986264092407,
+   "expected_pps_before_blocks": 1.0519449266970182,
+   "freq_corr_with_predicted_offense": -0.27362803579302786,
+   "freq_corr_with_shooting_composite": -0.029573753523092182,
+   "freq_sd_across_team_games": 4.442152932542493,
+   "realized_pps": 1.0413913304595277,
+   "share_of_open_attempts": 0.18954517213996483
+  },
+  "FLOATER": {
+   "attempts_per_team_game": 10.919545454545453,
+   "block_rate": 0.10288080664269793,
+   "expected_pps_before_blocks": 0.9482772680065957,
+   "freq_corr_with_predicted_offense": 0.21465111331232326,
+   "freq_corr_with_shooting_composite": -0.0635651915995484,
+   "freq_sd_across_team_games": 1.4841080343207897,
+   "realized_pps": 0.8532918125747481,
+   "share_of_open_attempts": 0.1221809843479199
+  },
+  "PULL_UP:MIDRANGE": {
+   "attempts_per_team_game": 17.311174668028585,
+   "block_rate": 0.024954211913871205,
+   "expected_pps_before_blocks": 0.7589382476948424,
+   "freq_corr_with_predicted_offense": 0.0685401552799113,
+   "freq_corr_with_shooting_composite": 0.1136821787972069,
+   "freq_sd_across_team_games": 4.533878391372514,
+   "realized_pps": 0.7397832382561823,
+   "share_of_open_attempts": 0.1936982056591066
+  },
+  "PULL_UP:THREE_POINT": {
+   "attempts_per_team_game": 18.66692032686416,
+   "block_rate": 0.009246007436970276,
+   "expected_pps_before_blocks": 0.9872169809564821,
+   "freq_corr_with_predicted_offense": -0.05654536467647893,
+   "freq_corr_with_shooting_composite": -0.02998629581895573,
+   "freq_sd_across_team_games": 3.841351463638367,
+   "realized_pps": 0.9775514687756413,
+   "share_of_open_attempts": 0.20886791577309277
+  },
+  "RIM": {
+   "attempts_per_team_game": 10.38473442288051,
+   "block_rate": 0.09881863798860074,
+   "expected_pps_before_blocks": 1.3338870461160102,
+   "freq_corr_with_predicted_offense": 0.1635014329535422,
+   "freq_corr_with_shooting_composite": -0.048554916631140956,
+   "freq_sd_across_team_games": 0.9891258126694593,
+   "realized_pps": 1.204600726590997,
+   "share_of_open_attempts": 0.11619687644150983
+  }
+ },
+ "detailed_vs_aggregate_equivalent_response": {
+  "aggregate": {
+   "base_team": "Indiana Pacers",
+   "baseline": {
+    "mean_points": 135.676,
+    "se": 0.22968621203720524
+   },
+   "free_throw_plus_0.06": {
+    "delta_points": 1.373500000000007,
+    "mean_points": 137.0495,
+    "se": 0.23053174930473244
+   },
+   "offensive_rebounding_x1.4": {
+    "delta_points": 1.9330000000000211,
+    "mean_points": 137.609,
+    "se": 0.2271990421414668
+   },
+   "opponent": "Washington Wizards",
+   "three_point_plus_0.04": {
+    "delta_points": 3.8870000000000005,
+    "mean_points": 139.563,
+    "se": 0.22799809812803265
+   },
+   "turnovers_x0.85": {
+    "delta_points": 0.5132499999999993,
+    "mean_points": 136.18925,
+    "se": 0.22530087352110956
+   },
+   "two_point_plus_0.04": {
+    "delta_points": 4.809500000000014,
+    "mean_points": 140.4855,
+    "se": 0.2233804432744729
+   }
+  },
+  "detailed": {
+   "baseline": {
+    "away": {
+     "block_rate": 0.036372060697324224,
+     "efg": 0.5089208658435634,
+     "exp_pps_open": 0.954705214227125,
+     "fga_per_100": 92.99320284988944,
+     "ft_rate": 0.30482413653415996,
+     "ftm_per_100": 22.645156006879045,
+     "orb_per_100": 10.06797150110556,
+     "ortg": 117.29751863074279,
+     "points": 119.36,
+     "poss": 101.75833333333334,
+     "real_pps_open": 0.9462275113194695,
+     "three_rate": 0.3756979058421544,
+     "tov_per_100": 19.775612152976823
+    },
+    "home": {
+     "block_rate": 0.03513943295970213,
+     "efg": 0.5131156222418358,
+     "exp_pps_open": 0.9558184021337621,
+     "fga_per_100": 92.8460214701303,
+     "ft_rate": 0.3085789938217123,
+     "ftm_per_100": 23.027124477587478,
+     "orb_per_100": 10.15979677128575,
+     "ortg": 118.308612636237,
+     "points": 120.31,
+     "poss": 101.69166666666666,
+     "real_pps_open": 0.9514812879366483,
+     "three_rate": 0.3781465136804943,
+     "tov_per_100": 19.729574694747193
+    },
+    "margin_sd": 17.897974745763833,
+    "mean_margin": 0.95,
+    "n": 600
+   },
+   "free_throw_plus_0.06": {
+    "away": {
+     "block_rate": 0.03448074905784995,
+     "efg": 0.5180851627488035,
+     "exp_pps_open": 0.9557361686950816,
+     "fga_per_100": 92.74680993955675,
+     "ft_rate": 0.3085251055262182,
+     "ftm_per_100": 23.029042244754212,
+     "orb_per_100": 10.044390571508133,
+     "ortg": 119.13053448868942,
+     "points": 121.21333333333334,
+     "poss": 101.74833333333333,
+     "real_pps_open": 0.961370541013621,
+     "three_rate": 0.3765210787516999,
+     "tov_per_100": 20.10024734229881
+    },
+    "delta_ortg": 1.5741218129752212,
+    "delta_points": 1.6866666666666674,
+    "home": {
+     "block_rate": 0.03621565840456395,
+     "efg": 0.5160491205718937,
+     "exp_pps_open": 0.9561349314826745,
+     "fga_per_100": 92.55789577123392,
+     "ft_rate": 0.3048094277524153,
+     "ftm_per_100": 24.353893019751713,
+     "orb_per_100": 9.92335156736218,
+     "ortg": 119.88273444921222,
+     "points": 121.99666666666667,
+     "poss": 101.76333333333334,
+     "real_pps_open": 0.9586658316329623,
+     "three_rate": 0.37693314930813604,
+     "tov_per_100": 20.06452880867372
+    },
+    "margin_sd": 18.613518086475633,
+    "mean_margin": 0.7833333333333333,
+    "n": 600
+   },
+   "offensive_rebounding_x1.4": {
+    "away": {
+     "block_rate": 0.035672893708134444,
+     "efg": 0.5150873241450814,
+     "exp_pps_open": 0.9574361581452251,
+     "fga_per_100": 92.62675100175514,
+     "ft_rate": 0.3086287338445863,
+     "ftm_per_100": 22.932741663079113,
+     "orb_per_100": 9.974500778223003,
+     "ortg": 118.3544722985727,
+     "points": 119.13166666666666,
+     "poss": 100.65666666666667,
+     "real_pps_open": 0.9568148947872319,
+     "three_rate": 0.3772546075329365,
+     "tov_per_100": 20.117892505878068
+    },
+    "delta_ortg": 5.223623530523483,
+    "delta_points": 4.041666666666671,
+    "home": {
+     "block_rate": 0.03661556492315835,
+     "efg": 0.5169885766467376,
+     "exp_pps_open": 0.9563401436164392,
+     "fga_per_100": 96.09424153117652,
+     "ft_rate": 0.3153052257964472,
+     "ftm_per_100": 24.172985860458958,
+     "orb_per_100": 13.952448756581342,
+     "ortg": 123.53223616676048,
+     "points": 124.35166666666667,
+     "poss": 100.66333333333333,
+     "real_pps_open": 0.9638960835099286,
+     "three_rate": 0.37650545322972484,
+     "tov_per_100": 19.873174608430745
+    },
+    "margin_sd": 17.690909153196923,
+    "mean_margin": 5.22,
+    "n": 600
+   },
+   "three_point_plus_0.04": {
+    "away": {
+     "block_rate": 0.036016413527547114,
+     "efg": 0.5130123674911661,
+     "exp_pps_open": 0.955888842406731,
+     "fga_per_100": 92.84319997375458,
+     "ft_rate": 0.30992932862190814,
+     "ftm_per_100": 23.089414890999457,
+     "orb_per_100": 10.197988944113643,
+     "ortg": 118.34883453898266,
+     "points": 120.24833333333333,
+     "poss": 101.605,
+     "real_pps_open": 0.9508967298109706,
+     "three_rate": 0.37853356890459366,
+     "tov_per_100": 19.959647655135083
+    },
+    "delta_ortg": 3.145372377945435,
+    "delta_points": 3.1499999999999915,
+    "home": {
+     "block_rate": 0.033810799270214666,
+     "efg": 0.5344268683683773,
+     "exp_pps_open": 1.0038277110586817,
+     "fga_per_100": 92.55955796756898,
+     "ft_rate": 0.3031725506173277,
+     "ftm_per_100": 22.521355609844075,
+     "orb_per_100": 9.865389975570166,
+     "ortg": 121.45398501418244,
+     "points": 123.46,
+     "poss": 101.65166666666667,
+     "real_pps_open": 1.0011651265568502,
+     "three_rate": 0.38028094166829046,
+     "tov_per_100": 19.74061746815104
+    },
+    "margin_sd": 17.839941999781153,
+    "mean_margin": 3.2116666666666664,
+    "n": 600
+   },
+   "turnovers_x0.85": {
+    "away": {
+     "block_rate": 0.03666673112997737,
+     "efg": 0.5136811318427683,
+     "exp_pps_open": 0.9561427064836067,
+     "fga_per_100": 92.80540248867668,
+     "ft_rate": 0.30938915023697516,
+     "ftm_per_100": 22.991644456072077,
+     "orb_per_100": 10.08224733064081,
+     "ortg": 118.3364128390863,
+     "points": 120.61833333333334,
+     "poss": 101.92833333333333,
+     "real_pps_open": 0.9561961736895991,
+     "three_rate": 0.37658790986133867,
+     "tov_per_100": 19.96664322972023
+    },
+    "delta_ortg": -0.34623377729177207,
+    "delta_points": -0.010000000000005116,
+    "home": {
+     "block_rate": 0.03415335029027435,
+     "efg": 0.5132738664118084,
+     "exp_pps_open": 0.9561514853960551,
+     "fga_per_100": 92.34012649332396,
+     "ft_rate": 0.31400658383774027,
+     "ftm_per_100": 23.170831358577523,
+     "orb_per_100": 10.191374266616549,
+     "ortg": 117.96237885894523,
+     "points": 120.3,
+     "poss": 101.98166666666667,
+     "real_pps_open": 0.9534014152460598,
+     "three_rate": 0.37768574563732255,
+     "tov_per_100": 20.408897023974898
+    },
+    "margin_sd": 18.31866981767205,
+    "mean_margin": -0.31833333333333336,
+    "n": 600
+   },
+   "two_point_plus_0.04": {
+    "away": {
+     "block_rate": 0.036269832033825986,
+     "efg": 0.5143861384389847,
+     "exp_pps_open": 0.9557956819245091,
+     "fga_per_100": 92.58102495339634,
+     "ft_rate": 0.3098715933376901,
+     "ftm_per_100": 23.16774045851457,
+     "orb_per_100": 10.092553226281192,
+     "ortg": 118.41253229551624,
+     "points": 120.69,
+     "poss": 101.92333333333333,
+     "real_pps_open": 0.9559853485751086,
+     "three_rate": 0.376565342564954,
+     "tov_per_100": 20.10498086797266
+    },
+    "delta_ortg": 4.181978101776423,
+    "delta_points": 4.446666666666658,
+    "home": {
+     "block_rate": 0.035334242837653476,
+     "efg": 0.5379099264381604,
+     "exp_pps_open": 1.0027198497225573,
+     "fga_per_100": 92.76223204058256,
+     "ft_rate": 0.3040732443064547,
+     "ftm_per_100": 22.695139911634758,
+     "orb_per_100": 9.728358697430863,
+     "ortg": 122.49059073801342,
+     "points": 124.75666666666666,
+     "poss": 101.85,
+     "real_pps_open": 1.0032729256318564,
+     "three_rate": 0.3784641981406672,
+     "tov_per_100": 19.81672394043528
+    },
+    "margin_sd": 18.494473649054072,
+    "mean_margin": 4.066666666666666,
+    "n": 600
+   }
+  }
+ },
+ "expected_vs_realized": {
+  "corr_expected_vs_realized_across_team_games": 0.9829703765340027,
+  "mean_blocked_shots_per_game": 3.279550561797753,
+  "mean_expected_open_fg_points_given_unblocked": 81.83798353421861,
+  "mean_fta": 28.29679264555669,
+  "mean_ftm": 22.448294177732382,
+  "mean_realized_open_fg_points": 81.79792134831462,
+  "note": "expected = sum(make prob x points) over unblocked, unwhistled attempts; N=100 sims/game, so realized team-game means carry MC noise",
+  "sd_across_team_games_expected_mean": 5.854513712995667,
+  "sd_across_team_games_realized_mean": 5.936304202035559,
+  "sim_ft_pct": 0.7933158523977568
+ },
+ "family_ablations": {
+  "n_games": 362,
+  "n_sims": 30,
+  "results": {
+   "all_roles_to_median": {
+    "mean_sim_ortg": 116.68429430957424,
+    "mean_sim_points": 119.1545511706054,
+    "n_team_seasons": 83,
+    "pearson_ortg_with_real_season_ppg": 0.1664424620610616,
+    "pearson_with_real_season_ppg": 0.11489281293789644,
+    "per_season": {
+     "2023-24": {
+      "pearson": 0.40524885174304814
+     },
+     "2024-25": {
+      "pearson": -0.09920316868723171
+     },
+     "2025-26": {
+      "pearson": 0.008978332331747484
+     }
+    },
+    "spearman_with_real_season_ppg": 0.13710735389019527,
+    "team_season_sim_points_sd": 3.9587202055783854
+   },
+   "all_tendencies_to_median": {
+    "mean_sim_ortg": 117.46971169552391,
+    "mean_sim_points": 121.0283397007945,
+    "n_team_seasons": 83,
+    "pearson_ortg_with_real_season_ppg": 0.26001637693806534,
+    "pearson_with_real_season_ppg": 0.2538734120296857,
+    "per_season": {
+     "2023-24": {
+      "pearson": 0.5985167447045878
+     },
+     "2024-25": {
+      "pearson": 0.223080295575216
+     },
+     "2025-26": {
+      "pearson": 0.01946945341562582
+     }
+    },
+    "spearman_with_real_season_ppg": 0.29134263196508114,
+    "team_season_sim_points_sd": 3.9833204815655727
+   },
+   "ball_security_to_median": {
+    "mean_sim_ortg": 118.3453472711991,
+    "mean_sim_points": 122.41762952464758,
+    "n_team_seasons": 83,
+    "pearson_ortg_with_real_season_ppg": 0.13957585088387586,
+    "pearson_with_real_season_ppg": 0.06815032434124127,
+    "per_season": {
+     "2023-24": {
+      "pearson": 0.3961149259648705
+     },
+     "2024-25": {
+      "pearson": -0.056261605345705935
+     },
+     "2025-26": {
+      "pearson": -0.15770456098323174
+     }
+    },
+    "spearman_with_real_season_ppg": 0.1370443835806927,
+    "team_season_sim_points_sd": 4.38878872120105
+   },
+   "baseline": {
+    "mean_sim_ortg": 117.46483831433228,
+    "mean_sim_points": 121.68293433362709,
+    "n_team_seasons": 83,
+    "pearson_ortg_with_real_season_ppg": 0.13375901568647494,
+    "pearson_with_real_season_ppg": 0.0723186933933514,
+    "per_season": {
+     "2023-24": {
+      "pearson": 0.3285688706869442
+     },
+     "2024-25": {
+      "pearson": 0.02108733017469327
+     },
+     "2025-26": {
+      "pearson": -0.14154209761543066
+     }
+    },
+    "spearman_with_real_season_ppg": 0.12280259858153511,
+    "team_season_sim_points_sd": 4.575061709404924
+   },
+   "finishing_role_to_median": {
+    "mean_sim_ortg": 116.87494850000733,
+    "mean_sim_points": 118.40938745770069,
+    "n_team_seasons": 83,
+    "pearson_ortg_with_real_season_ppg": 0.17418594992131,
+    "pearson_with_real_season_ppg": 0.10621057929145196,
+    "per_season": {
+     "2023-24": {
+      "pearson": 0.43994878740903615
+     },
+     "2024-25": {
+      "pearson": -0.12361854494849736
+     },
+     "2025-26": {
+      "pearson": 0.007733529236639224
+     }
+    },
+    "spearman_with_real_season_ppg": 0.14620656361331216,
+    "team_season_sim_points_sd": 4.110615061404838
+   },
+   "initiation_role_to_median": {
+    "mean_sim_ortg": 117.20823645205039,
+    "mean_sim_points": 121.56306915641252,
+    "n_team_seasons": 83,
+    "pearson_ortg_with_real_season_ppg": 0.10713857360953283,
+    "pearson_with_real_season_ppg": 0.06477258643708757,
+    "per_season": {
+     "2023-24": {
+      "pearson": 0.325912843232258
+     },
+     "2024-25": {
+      "pearson": 0.020545079351129356
+     },
+     "2025-26": {
+      "pearson": -0.16576136211824855
+     }
+    },
+    "spearman_with_real_season_ppg": 0.13315071944311904,
+    "team_season_sim_points_sd": 4.494785576640058
+   },
+   "offensive_rebounding_to_median": {
+    "mean_sim_ortg": 116.8374887886859,
+    "mean_sim_points": 121.18600020238574,
+    "n_team_seasons": 83,
+    "pearson_ortg_with_real_season_ppg": 0.12543662617313722,
+    "pearson_with_real_season_ppg": 0.07321380241457894,
+    "per_season": {
+     "2023-24": {
+      "pearson": 0.354822214567829
+     },
+     "2024-25": {
+      "pearson": -0.016373963069443158
+     },
+     "2025-26": {
+      "pearson": -0.1540811422268938
+     }
+    },
+    "spearman_with_real_season_ppg": 0.14202953308297706,
+    "team_season_sim_points_sd": 4.288108298556051
+   },
+   "other_tendencies_to_median": {
+    "mean_sim_ortg": 117.48104804566962,
+    "mean_sim_points": 121.07430239996505,
+    "n_team_seasons": 83,
+    "pearson_ortg_with_real_season_ppg": 0.1489304855761454,
+    "pearson_with_real_season_ppg": 0.15319582275469426,
+    "per_season": {
+     "2023-24": {
+      "pearson": 0.5243173723905544
+     },
+     "2024-25": {
+      "pearson": 0.04383682131700932
+     },
+     "2025-26": {
+      "pearson": -0.13998792830660323
+     }
+    },
+    "spearman_with_real_season_ppg": 0.24511192973863366,
+    "team_season_sim_points_sd": 4.267368887691899
+   },
+   "passing_to_median": {
+    "mean_sim_ortg": 117.46705511925441,
+    "mean_sim_points": 121.69415378797909,
+    "n_team_seasons": 83,
+    "pearson_ortg_with_real_season_ppg": 0.13622652618826822,
+    "pearson_with_real_season_ppg": 0.07209991038315948,
+    "per_season": {
+     "2023-24": {
+      "pearson": 0.32915323647781025
+     },
+     "2024-25": {
+      "pearson": 0.025843990317497487
+     },
+     "2025-26": {
+      "pearson": -0.14706392122344564
+     }
+    },
+    "spearman_with_real_season_ppg": 0.12363170765665188,
+    "team_season_sim_points_sd": 4.555000357004115
+   },
+   "rim_creation_to_median": {
+    "mean_sim_ortg": 117.39595912559078,
+    "mean_sim_points": 121.52140354123787,
+    "n_team_seasons": 83,
+    "pearson_ortg_with_real_season_ppg": 0.1595616846872723,
+    "pearson_with_real_season_ppg": 0.10539612870142763,
+    "per_season": {
+     "2023-24": {
+      "pearson": 0.3868022152631135
+     },
+     "2024-25": {
+      "pearson": 0.10911151389879506
+     },
+     "2025-26": {
+      "pearson": -0.1460395684837866
+     }
+    },
+    "spearman_with_real_season_ppg": 0.1866335023139423,
+    "team_season_sim_points_sd": 4.30432286108288
+   },
+   "shooting_to_median": {
+    "mean_sim_ortg": 116.6741719681604,
+    "mean_sim_points": 120.78987501342925,
+    "n_team_seasons": 83,
+    "pearson_ortg_with_real_season_ppg": -0.03119700223769916,
+    "pearson_with_real_season_ppg": -0.07055221214750682,
+    "per_season": {
+     "2023-24": {
+      "pearson": 0.10098355253464884
+     },
+     "2024-25": {
+      "pearson": -0.15639827255787772
+     },
+     "2025-26": {
+      "pearson": -0.1977133160892984
+     }
+    },
+    "spearman_with_real_season_ppg": -0.018754755595461962,
+    "team_season_sim_points_sd": 4.169210101013755
+   },
+   "spacing_role_to_median": {
+    "mean_sim_ortg": 117.37724445801807,
+    "mean_sim_points": 122.09939073421002,
+    "n_team_seasons": 83,
+    "pearson_ortg_with_real_season_ppg": 0.15232763000656346,
+    "pearson_with_real_season_ppg": 0.10573606020827915,
+    "per_season": {
+     "2023-24": {
+      "pearson": 0.3747203426659269
+     },
+     "2024-25": {
+      "pearson": 0.033782941920063383
+     },
+     "2025-26": {
+      "pearson": -0.11870033421450658
+     }
+    },
+    "spearman_with_real_season_ppg": 0.14796973227938326,
+    "team_season_sim_points_sd": 4.216710906871628
+   },
+   "three_point_preference_to_median": {
+    "mean_sim_ortg": 117.80631392359352,
+    "mean_sim_points": 121.9799698572289,
+    "n_team_seasons": 83,
+    "pearson_ortg_with_real_season_ppg": 0.2429667802206774,
+    "pearson_with_real_season_ppg": 0.15586158872108846,
+    "per_season": {
+     "2023-24": {
+      "pearson": 0.37655283389289645
+     },
+     "2024-25": {
+      "pearson": 0.1412818252886322
+     },
+     "2025-26": {
+      "pearson": 0.02557116412185544
+     }
+    },
+    "spearman_with_real_season_ppg": 0.16465859238890873,
+    "team_season_sim_points_sd": 4.32832580097549
+   }
+  }
+ },
+ "family_response_table": {
+  "n": 1958,
+  "note": "joint OLS of team points on standardized family composites (+ home flag); real points are single-game and noisy",
+  "real_r2": 0.0317192075338687,
+  "rows": [
+   {
+    "corr_real_efg": 0.15824960801881283,
+    "corr_real_ft_rate": -0.0674063397208856,
+    "corr_real_points": 0.07617665591493776,
+    "corr_real_three_rate": 0.14620213046589006,
+    "corr_sim_efg": 0.426887574654794,
+    "corr_sim_ft_rate": -0.22361991256247205,
+    "corr_sim_orb100": -0.09384713427835267,
+    "corr_sim_points": 0.3601062437580623,
+    "corr_sim_three_rate": -0.0531080381750171,
+    "corr_sim_tov100": -0.023957050723411446,
+    "family": "shooting",
+    "flag": "ok",
+    "real_points_per_sd": 0.7492151118800627,
+    "real_se": 0.37437743577451893,
+    "sim_over_real": 2.342444339115782,
+    "sim_points_per_sd": 1.7549946976034503
+   },
+   {
+    "corr_real_efg": 0.09010643709165768,
+    "corr_real_ft_rate": 0.07104998687268273,
+    "corr_real_points": 0.052643889986412465,
+    "corr_real_three_rate": -0.04261925515357945,
+    "corr_sim_efg": 0.08839455223465509,
+    "corr_sim_ft_rate": -0.023360829609902437,
+    "corr_sim_orb100": 0.032752317746529876,
+    "corr_sim_points": 0.15458805919597346,
+    "corr_sim_three_rate": -0.1813941808374184,
+    "corr_sim_tov100": -0.01233310620956684,
+    "family": "rim_creation",
+    "flag": "ok",
+    "real_points_per_sd": 0.41276563337210176,
+    "real_se": 0.3362076370381559,
+    "sim_over_real": 2.2963913319493843,
+    "sim_points_per_sd": 0.9478714226022921
+   },
+   {
+    "corr_real_efg": 0.11086651013388656,
+    "corr_real_ft_rate": 0.03330421607669941,
+    "corr_real_points": 0.14598231848687288,
+    "corr_real_three_rate": 0.003046447525779302,
+    "corr_sim_efg": 0.07250414958073387,
+    "corr_sim_ft_rate": 0.063598137735305,
+    "corr_sim_orb100": -0.03529065915050588,
+    "corr_sim_points": 0.08356395948532351,
+    "corr_sim_three_rate": -0.17591490860981782,
+    "corr_sim_tov100": -0.12106757614789364,
+    "family": "initiation_role",
+    "flag": "WRONG SIGN",
+    "real_points_per_sd": 1.365464994286245,
+    "real_se": 0.7583757969530994,
+    "sim_over_real": -0.14853664513092835,
+    "sim_points_per_sd": -0.20282158929500108
+   },
+   {
+    "corr_real_efg": 0.12480513373093162,
+    "corr_real_ft_rate": 0.03556572655551764,
+    "corr_real_points": 0.13801607786113856,
+    "corr_real_three_rate": 0.03907800526378384,
+    "corr_sim_efg": 0.14589141903788216,
+    "corr_sim_ft_rate": 0.04174029567062295,
+    "corr_sim_orb100": -0.09584969493232319,
+    "corr_sim_points": 0.10827892432198162,
+    "corr_sim_three_rate": -0.19504434314577462,
+    "corr_sim_tov100": -0.07665566150106223,
+    "family": "passing_playmaking",
+    "flag": "ok",
+    "real_points_per_sd": 0.4227822163550428,
+    "real_se": 0.7856156938732533,
+    "sim_over_real": 1.3402167250290598,
+    "sim_points_per_sd": 0.5666197974038829
+   },
+   {
+    "corr_real_efg": 0.007008293765168691,
+    "corr_real_ft_rate": 0.10147456365467072,
+    "corr_real_points": 0.040381812951451844,
+    "corr_real_three_rate": -0.10821599846126487,
+    "corr_sim_efg": -0.2155142542921392,
+    "corr_sim_ft_rate": 0.15021445607280623,
+    "corr_sim_orb100": 0.015183586191389408,
+    "corr_sim_points": -0.0713464027577047,
+    "corr_sim_three_rate": -0.010614770893156527,
+    "corr_sim_tov100": -0.2637629202989385,
+    "family": "ball_security",
+    "flag": "ok",
+    "real_points_per_sd": 0.2756291535550787,
+    "real_se": 0.334931102890066,
+    "sim_over_real": 1.035934123865553,
+    "sim_points_per_sd": 0.2855336456998845
+   },
+   {
+    "corr_real_efg": -0.026394235803372357,
+    "corr_real_ft_rate": -0.010871839512708748,
+    "corr_real_points": -0.011121841561733866,
+    "corr_real_three_rate": -0.05589370159359598,
+    "corr_sim_efg": -0.10053906003009289,
+    "corr_sim_ft_rate": -0.3233613424962373,
+    "corr_sim_orb100": 0.6370885724744706,
+    "corr_sim_points": 0.16590971529445045,
+    "corr_sim_three_rate": -0.02939627953822807,
+    "corr_sim_tov100": 0.0357493138561957,
+    "family": "offensive_rebounding",
+    "flag": "EXAGGERATED SIM",
+    "real_points_per_sd": 0.2469625730157111,
+    "real_se": 0.3634049609930114,
+    "sim_over_real": 4.682192879298779,
+    "sim_points_per_sd": 1.1563264008274674
+   },
+   {
+    "corr_real_efg": 0.08154153712253921,
+    "corr_real_ft_rate": -0.05037676454039333,
+    "corr_real_points": 0.020559872864502515,
+    "corr_real_three_rate": 0.17495561019720077,
+    "corr_sim_efg": 0.24340010593983094,
+    "corr_sim_ft_rate": -0.1835703749119391,
+    "corr_sim_orb100": 0.3219997943427366,
+    "corr_sim_points": 0.4210751862015271,
+    "corr_sim_three_rate": 0.1781929333555417,
+    "corr_sim_tov100": -0.05518840134259605,
+    "family": "finishing_role",
+    "flag": "WRONG SIGN",
+    "real_points_per_sd": -0.6450249107944893,
+    "real_se": 0.41947164589877367,
+    "sim_over_real": -2.4011879201149857,
+    "sim_points_per_sd": 1.548826023972974
+   },
+   {
+    "corr_real_efg": 0.005110108887063894,
+    "corr_real_ft_rate": -0.007978549383096339,
+    "corr_real_points": 0.02673334538390181,
+    "corr_real_three_rate": -0.004956687119298286,
+    "corr_sim_efg": -0.06416216140228079,
+    "corr_sim_ft_rate": -0.12255958912078269,
+    "corr_sim_orb100": 0.22047133603169386,
+    "corr_sim_points": 0.11235017433054904,
+    "corr_sim_three_rate": 0.03126112286992295,
+    "corr_sim_tov100": -0.11407759670903314,
+    "family": "spacing_role",
+    "flag": "WRONG SIGN",
+    "real_points_per_sd": 0.5956952536979138,
+    "real_se": 0.35806890393575874,
+    "sim_over_real": -0.07683237812820036,
+    "sim_points_per_sd": -0.04576868298129236
+   },
+   {
+    "corr_real_efg": 0.0616697374609864,
+    "corr_real_ft_rate": -0.09381427785301096,
+    "corr_real_points": 0.03436853272704077,
+    "corr_real_three_rate": 0.4087351046460768,
+    "corr_sim_efg": 0.27849163711077757,
+    "corr_sim_ft_rate": 0.22871688562116937,
+    "corr_sim_orb100": -0.12551747131785662,
+    "corr_sim_points": 0.23249136277292612,
+    "corr_sim_three_rate": 0.5902486727247698,
+    "corr_sim_tov100": -0.09233140449080245,
+    "family": "three_point_preference",
+    "flag": "ok",
+    "real_points_per_sd": 0.6705500295520316,
+    "real_se": 0.3306489644088191,
+    "sim_over_real": 2.566499879810043,
+    "sim_points_per_sd": 1.7209665702519097
+   },
+   {
+    "corr_real_efg": 0.031992996042641345,
+    "corr_real_ft_rate": -0.04907837148307106,
+    "corr_real_points": 0.003669846178844054,
+    "corr_real_three_rate": -0.035040037532675185,
+    "corr_sim_efg": 0.019791879403665807,
+    "corr_sim_ft_rate": 0.03330769532721866,
+    "corr_sim_orb100": -0.2753841620909143,
+    "corr_sim_points": -0.13245814932038205,
+    "corr_sim_three_rate": -0.18332794398748511,
+    "corr_sim_tov100": -0.08542501964091717,
+    "family": "other_tendencies",
+    "flag": "ok",
+    "real_points_per_sd": -0.6761313354607386,
+    "real_se": 0.3817884889158683,
+    "sim_over_real": 0.8811899044074392,
+    "sim_points_per_sd": -0.5958001068615224
+   },
+   {
+    "corr_real_efg": 0.08441917137038685,
+    "corr_real_ft_rate": 0.03878203567837192,
+    "corr_real_points": 0.06628157542299672,
+    "corr_real_three_rate": -0.0038539265398009315,
+    "corr_sim_efg": 0.03506473969737038,
+    "corr_sim_ft_rate": -0.0744261957191829,
+    "corr_sim_orb100": -0.01788244804301258,
+    "corr_sim_points": 0.026147223577661298,
+    "corr_sim_three_rate": -0.06477261267507081,
+    "corr_sim_tov100": -0.062125184929777304,
+    "family": "rotation_depth",
+    "flag": "ok",
+    "real_points_per_sd": 0.30399445173293366,
+    "real_se": 0.31804156445313214,
+    "sim_over_real": -0.511380215783018,
+    "sim_points_per_sd": -0.15545674832402784
+   }
+  ],
+  "sim_r2": 0.28751039271224665
+ },
+ "field_percentiles": {
+  "ball_security_error_rate": {
+   "1": 0.0,
+   "10": 0.0,
+   "50": 0.00632848209786363,
+   "90": 0.012695462892287068,
+   "99": 0.018439258860027306
+  },
+  "defensive_playmaking_per36": {
+   "1": 0.5130569044155321,
+   "10": 0.7921095747555635,
+   "50": 1.3667914274566657,
+   "90": 2.156136717728139,
+   "99": 2.9292732718619754
+  },
+  "defensive_rebounding_shrunk_rate": {
+   "1": 0.09161107417046511,
+   "10": 0.11554245292798225,
+   "50": 0.15,
+   "90": 0.19609409912165915,
+   "99": 0.23821332541451162
+  },
+  "drive_aggression": {
+   "1": -2.3528,
+   "10": -0.8508,
+   "50": 0.2074,
+   "90": 0.764,
+   "99": 1.1451
+  },
+  "floater_short_mid_shrunk_rate": {
+   "1": 0.32894661559030064,
+   "10": 0.3706261984393328,
+   "50": 0.4317141019759204,
+   "90": 0.4924245155626366,
+   "99": 0.5481138341264811
+  },
+  "free_throw_shrunk_rate": {
+   "1": 0.5801215905257324,
+   "10": 0.7068345236994165,
+   "50": 0.8022887833504511,
+   "90": 0.8683007975857742,
+   "99": 0.9055350273445032
+  },
+  "midrange_preference": {
+   "1": -1.724611,
+   "10": -0.75376,
+   "50": 0.116,
+   "90": 0.8237,
+   "99": 1.4291310000000013
+  },
+  "midrange_shrunk_rate": {
+   "1": 0.3464063880931441,
+   "10": 0.3699019120552704,
+   "50": 0.39997347864321053,
+   "90": 0.4441418941642574,
+   "99": 0.48302714082788056
+  },
+  "offensive_rebounding_shrunk_rate": {
+   "1": 0.030857197061771643,
+   "10": 0.04283274469272031,
+   "50": 0.06274911440493335,
+   "90": 0.08907584382033171,
+   "99": 0.13000518840209427
+  },
+  "pass_vs_shoot": {
+   "1": 0.0,
+   "10": 0.0,
+   "50": 0.0,
+   "90": 0.0,
+   "99": 0.0
+  },
+  "passing_accuracy_ast_pct": {
+   "1": 0.048,
+   "10": 0.071,
+   "50": 0.17,
+   "90": 0.309,
+   "99": 0.435
+  },
+  "playmaking_vision_shrunk_rate": {
+   "1": 0.07437063094797419,
+   "10": 0.10416541417265733,
+   "50": 0.17071758413518517,
+   "90": 0.23756819503261464,
+   "99": 0.2910894201570766
+  },
+  "poa_containment_shrunk_rate": {
+   "1": -0.042821103702394114,
+   "10": -0.029948781581482332,
+   "50": -0.012721268093593275,
+   "90": 0.005952577521022208,
+   "99": 0.02400540413150076
+  },
+  "pullup_vs_catch": {
+   "1": 0.0,
+   "10": 0.0,
+   "50": 0.0,
+   "90": 0.0,
+   "99": 0.0
+  },
+  "rim_access_creation_shrunk_rate": {
+   "1": 0.44699328807238353,
+   "10": 0.5,
+   "50": 0.62817826207954,
+   "90": 0.7419791316224613,
+   "99": 0.8495070574395684
+  },
+  "rim_finishing_shrunk_rate": {
+   "1": 0.5522115589286599,
+   "10": 0.5941484852755267,
+   "50": 0.6583360454960425,
+   "90": 0.7212809807710387,
+   "99": 0.756456980521271
+  },
+  "rim_protection_suppression_rate": {
+   "1": -0.06045343297901014,
+   "10": -0.033823712154453706,
+   "50": 0.009526784487568803,
+   "90": 0.060121876767216434,
+   "99": 0.10951855435146272
+  },
+  "role_off_finishing": {
+   "1": 0.213,
+   "10": 0.369,
+   "50": 0.607,
+   "90": 0.827,
+   "99": 0.908
+  },
+  "role_off_initiation": {
+   "1": 2.151947551099113,
+   "10": 3.2663000785545955,
+   "50": 6.7947019867549665,
+   "90": 13.256470588235294,
+   "99": 17.76198347107438
+  },
+  "role_off_spacing": {
+   "1": 0.0,
+   "10": 0.5,
+   "50": 0.857,
+   "90": 1.0,
+   "99": 1.0
+  },
+  "three_point_preference": {
+   "1": -2.645893,
+   "10": -1.20374,
+   "50": -0.041749999999999995,
+   "90": 0.60131,
+   "99": 1.1541660000000002
+  },
+  "three_point_shrunk_rate": {
+   "1": 0.2583972951898261,
+   "10": 0.3131328367811086,
+   "50": 0.3568633223687324,
+   "90": 0.39361128052839967,
+   "99": 0.4148566001174387
+  }
+ },
+ "free_throw_foul_response": {
+  "corr_real_ft_rate_vs_rim_access": 0.07104998687268275,
+  "corr_sim_ft_rate_vs_rim_access": -0.023360829609902437,
+  "foul_drawing_signal_available": false,
+  "mean_real_ft_rate": 0.2563968195714826,
+  "mean_sim_ft_rate": 0.29162622385407444,
+  "sd_across_team_games_real_ft_rate": 0.08712398078719312,
+  "sd_across_team_games_sim_ft_rate": 0.027082822593182156
+ },
+ "hash_and_id_order_invariance": {
+  "all_identical": true,
+  "runs": {
+   "hashseed1_ids700001": [
+    [
+     143,
+     110,
+     205
+    ],
+    [
+     115,
+     108,
+     197
+    ],
+    [
+     87,
+     137,
+     199
+    ],
+    [
+     116,
+     104,
+     199
+    ],
+    [
+     78,
+     117,
+     185
+    ],
+    [
+     125,
+     113,
+     192
+    ],
+    [
+     142,
+     121,
+     206
+    ],
+    [
+     120,
+     132,
+     207
+    ]
+   ],
+   "hashseed2_ids700001": [
+    [
+     143,
+     110,
+     205
+    ],
+    [
+     115,
+     108,
+     197
+    ],
+    [
+     87,
+     137,
+     199
+    ],
+    [
+     116,
+     104,
+     199
+    ],
+    [
+     78,
+     117,
+     185
+    ],
+    [
+     125,
+     113,
+     192
+    ],
+    [
+     142,
+     121,
+     206
+    ],
+    [
+     120,
+     132,
+     207
+    ]
+   ],
+   "hashseed3_ids123456": [
+    [
+     143,
+     110,
+     205
+    ],
+    [
+     115,
+     108,
+     197
+    ],
+    [
+     87,
+     137,
+     199
+    ],
+    [
+     116,
+     104,
+     199
+    ],
+    [
+     78,
+     117,
+     185
+    ],
+    [
+     125,
+     113,
+     192
+    ],
+    [
+     142,
+     121,
+     206
+    ],
+    [
+     120,
+     132,
+     207
+    ]
+   ],
+   "hashseed4_ids900001": [
+    [
+     143,
+     110,
+     205
+    ],
+    [
+     115,
+     108,
+     197
+    ],
+    [
+     87,
+     137,
+     199
+    ],
+    [
+     116,
+     104,
+     199
+    ],
+    [
+     78,
+     117,
+     185
+    ],
+    [
+     125,
+     113,
+     192
+    ],
+    [
+     142,
+     121,
+     206
+    ],
+    [
+     120,
+     132,
+     207
+    ]
+   ]
+  }
+ },
+ "identical_team_symmetry": {
+  "away_mean_points": 120.386,
+  "away_ortg": 118.4113079250667,
+  "difference": -0.2740000000000009,
+  "home_mean_points": 120.112,
+  "home_ortg": 118.1853056038891,
+  "n_sims": 2000,
+  "se_of_difference": 0.552642741741895
+ },
+ "lineup_order_invariance": {
+  "0022300048": {
+   "efg": {
+    "mean": 0.503812546379957,
+    "sd_across_orderings": 0.0060749488427491415,
+    "spread_max_minus_min": 0.017647875401364588
+   },
+   "exp_pps_open": {
+    "mean": 0.9400636286913234,
+    "sd_across_orderings": 0.007631986099979539,
+    "spread_max_minus_min": 0.02235688712095707
+   },
+   "ft_rate": {
+    "mean": 0.2892515270779823,
+    "sd_across_orderings": 0.005369024380167724,
+    "spread_max_minus_min": 0.013563185462859784
+   },
+   "orb_per_100": {
+    "mean": 7.891129958186506,
+    "sd_across_orderings": 0.21655151462058528,
+    "spread_max_minus_min": 0.6701792995423173
+   },
+   "ortg": {
+    "mean": 113.0058606759699,
+    "sd_across_orderings": 1.0610338037609057,
+    "spread_max_minus_min": 3.3014389652209104
+   },
+   "points": {
+    "mean": 119.98,
+    "sd_across_orderings": 1.1402742638617218,
+    "spread_max_minus_min": 3.336666666666659
+   },
+   "tov_per_100": {
+    "mean": 19.53847153239405,
+    "sd_across_orderings": 0.305596688216134,
+    "spread_max_minus_min": 1.0723281853769748
+   }
+  },
+  "0022300995": {
+   "efg": {
+    "mean": 0.5223036583614568,
+    "sd_across_orderings": 0.0021799278827781894,
+    "spread_max_minus_min": 0.007520387820654562
+   },
+   "exp_pps_open": {
+    "mean": 0.975818730513324,
+    "sd_across_orderings": 0.006839098531355392,
+    "spread_max_minus_min": 0.01902985898198184
+   },
+   "ft_rate": {
+    "mean": 0.28733601884723187,
+    "sd_across_orderings": 0.002090106315269731,
+    "spread_max_minus_min": 0.0057967409569144035
+   },
+   "orb_per_100": {
+    "mean": 9.730585852323632,
+    "sd_across_orderings": 0.18872770326337204,
+    "spread_max_minus_min": 0.5957527649905607
+   },
+   "ortg": {
+    "mean": 118.63082535996409,
+    "sd_across_orderings": 0.5806376149261661,
+    "spread_max_minus_min": 1.5458494266872833
+   },
+   "points": {
+    "mean": 126.11571428571429,
+    "sd_across_orderings": 0.7494351614546056,
+    "spread_max_minus_min": 2.306666666666672
+   },
+   "tov_per_100": {
+    "mean": 19.818480522586274,
+    "sd_across_orderings": 0.45682536502126925,
+    "spread_max_minus_min": 1.3462151810623872
+   }
+  },
+  "0022400816": {
+   "efg": {
+    "mean": 0.5043931427305589,
+    "sd_across_orderings": 0.00569013082895217,
+    "spread_max_minus_min": 0.01575544661993461
+   },
+   "exp_pps_open": {
+    "mean": 0.9321853839160718,
+    "sd_across_orderings": 0.010095321620145283,
+    "spread_max_minus_min": 0.024248261266353488
+   },
+   "ft_rate": {
+    "mean": 0.28812348115717096,
+    "sd_across_orderings": 0.0056975047318923,
+    "spread_max_minus_min": 0.015114457642139145
+   },
+   "orb_per_100": {
+    "mean": 14.353801952538193,
+    "sd_across_orderings": 0.45643874034138354,
+    "spread_max_minus_min": 1.491243193713835
+   },
+   "ortg": {
+    "mean": 119.1707365693279,
+    "sd_across_orderings": 1.198771173438426,
+    "spread_max_minus_min": 3.5878159919519987
+   },
+   "points": {
+    "mean": 119.33238095238094,
+    "sd_across_orderings": 1.0619833411028832,
+    "spread_max_minus_min": 3.1566666666666663
+   },
+   "tov_per_100": {
+    "mean": 20.272069024148653,
+    "sd_across_orderings": 0.33612088239576954,
+    "spread_max_minus_min": 1.0673555722286636
+   }
+  },
+  "0022500638": {
+   "efg": {
+    "mean": 0.5327865610448221,
+    "sd_across_orderings": 0.005194299985377504,
+    "spread_max_minus_min": 0.015744160371726323
+   },
+   "exp_pps_open": {
+    "mean": 1.0086871721087507,
+    "sd_across_orderings": 0.005037486627369575,
+    "spread_max_minus_min": 0.016180341786291574
+   },
+   "ft_rate": {
+    "mean": 0.2788548945215336,
+    "sd_across_orderings": 0.0034123096327372273,
+    "spread_max_minus_min": 0.011372989178813797
+   },
+   "orb_per_100": {
+    "mean": 11.132785957048956,
+    "sd_across_orderings": 0.24823547893196662,
+    "spread_max_minus_min": 0.6931118692603366
+   },
+   "ortg": {
+    "mean": 121.99924320584321,
+    "sd_across_orderings": 0.9207949570850485,
+    "spread_max_minus_min": 2.9637833120795136
+   },
+   "points": {
+    "mean": 129.31857142857143,
+    "sd_across_orderings": 1.0541435358167763,
+    "spread_max_minus_min": 3.473333333333315
+   },
+   "tov_per_100": {
+    "mean": 20.993113734370294,
+    "sd_across_orderings": 0.25749909717357583,
+    "spread_max_minus_min": 0.8305029923537113
+   }
+  }
+ },
+ "monte_carlo_convergence": {
+  "expected_diff_sd_if_same_engine": 3.0290620472654584,
+  "games": 16,
+  "mean_margin_sd_within_game": 18.43428457077857,
+  "mean_v1_minus_n500_margin": -2.6478125000000006,
+  "noise_share_of_7.9pt_residual_at_n100": 0.05445006371357872,
+  "noise_share_of_7.9pt_residual_at_n40": 0.13612515928394678,
+  "per_n": {
+   "100": {
+    "rms_deviation_home_points_vs_n500": 1.1263154531480095,
+    "rms_deviation_home_win_prob_vs_n500": 0.047050504779438854,
+    "rms_deviation_margin_vs_n500": 1.7686561989261793,
+    "theoretical_se_margin": 1.843428457077857
+   },
+   "20": {
+    "rms_deviation_home_points_vs_n500": 3.4405098096067093,
+    "rms_deviation_home_win_prob_vs_n500": 0.09847588537301911,
+    "rms_deviation_margin_vs_n500": 3.370681088444886,
+    "theoretical_se_margin": 4.122031341683641
+   },
+   "250": {
+    "rms_deviation_home_points_vs_n500": 0.7414327346428683,
+    "rms_deviation_home_win_prob_vs_n500": 0.022726636354727027,
+    "rms_deviation_margin_vs_n500": 0.9060042770318468,
+    "theoretical_se_margin": 1.1658865255871942
+   },
+   "40": {
+    "rms_deviation_home_points_vs_n500": 2.0554188897886476,
+    "rms_deviation_home_win_prob_vs_n500": 0.06315160330506267,
+    "rms_deviation_margin_vs_n500": 1.9814961361304744,
+    "theoretical_se_margin": 2.9147163139679853
+   },
+   "500": {
+    "rms_deviation_home_points_vs_n500": 0.0,
+    "rms_deviation_home_win_prob_vs_n500": 0.0,
+    "rms_deviation_margin_vs_n500": 0.0,
+    "theoretical_se_margin": 0.8244062683367283
+   }
+  },
+  "rms_deviation_home_ortg_vs_n500": {
+   "100": 1.1394178233268908,
+   "20": 3.394513701922214,
+   "250": 0.7052971935084766,
+   "40": 2.0514070468483365,
+   "500": 0.0
+  },
+  "v1_n40_vs_this_n500_margin_diff_sd": 3.2359311298826725
+ },
+ "offensive_rebound_response": {
+  "mean_sim_orb_per_100": 10.881041037871753,
+  "orb100_slope_per_sd": 1.1294028609486237,
+  "ortg_slope_per_sd": 0.41946893646621153,
+  "sim_points_per_extra_offensive_rebound": 0.8263019020842536
+ },
+ "passing_response_sim": {
+  "assists_modeled_as_team_stat": false,
+  "efg_slope_per_sd": 0.004076928212753064,
+  "exp_pps_slope_per_sd": 0.0074817065494952465,
+  "ortg_slope_per_sd": 0.8140912442569322,
+  "tov100_slope_per_sd": -0.24314227628055152
+ },
+ "ranked_failure_modes": [
+  {
+   "confidence": "medium (83 team-seasons; correlation SE about 0.11, but both halves and the volume run agree)",
+   "effect_size": "neutralizing all five tendencies lifts ranking correlation with real season PPG from 0.072 to 0.254 (three_point_preference alone 0.156, the other four 0.153)",
+   "estimated_share_of_recoverable_gap": 0.41,
+   "mechanism": "style tendencies act as strength levers (three_point_preference, drive_aggression, pass_vs_shoot, midrange_preference, pullup_vs_catch)",
+   "observed_mismatch": "team 3PA-rate SD sim 0.059 vs real 0.038; sim efficiency correlation with the three_point_preference composite +0.44 vs real +0.15; drive_aggression has the opposite sign; preference sweep p10->p90 moves ORtg by about +16",
+   "rank": 1,
+   "type": "modeling deficiency (dispersion set at player level, never checked at team level; the 2.0 preference weight amplifies it)"
+  },
+  {
+   "confidence": "medium",
+   "effect_size": "neutralizing OREB + ball security + finishing role + other tendencies cuts attempt SD to 1.46 and lifts ranking correlation to 0.187; OREB + ball security alone 0.118",
+   "estimated_share_of_recoverable_gap": 0.1,
+   "mechanism": "shot-volume mechanics (offensive rebounds, ball security, finishing role) create team volume differences with no real counterpart",
+   "observed_mismatch": "sim shooting-attempt volume SD 3.38 (real 3.41) but correlation with real -0.08; 76% of sim attempt variance tracks offensive rebounds; efficiency itself correlates +0.34",
+   "rank": 2,
+   "type": "modeling deficiency (no team pace/style signal; offensive rebounds convert to extra attempts almost one-for-one)"
+  },
+  {
+   "confidence": "medium",
+   "effect_size": "efficiency slopes roughly half of real for initiation and passing; depth absent because only the primary five play",
+   "estimated_share_of_recoverable_gap": null,
+   "mechanism": "creation, passing and depth are under-translated while finishing role is over-applied to volume",
+   "observed_mismatch": "team-season efficiency correlation real vs sim: initiation +0.47/+0.24, passing +0.52/+0.33, finishing role +0.35/+0.06, depth +0.33/0.00; passing sweep p10->p99 moves ORtg by under 1",
+   "rank": 3,
+   "type": "modeling deficiency (missing signal, not noise)"
+  },
+  {
+   "confidence": "low",
+   "effect_size": "small share of between-team variance (turnovers 0.6% of ORtg variance)",
+   "estimated_share_of_recoverable_gap": null,
+   "mechanism": "free throws and turnovers: foul drawing disabled, turnover cost too weak",
+   "observed_mismatch": "FT-rate correlation real vs sim -0.17; FT rate is 12.8% of simulated ORtg variance; sim turnovers about 19.4 per 100 possessions; 0.76 points lost per turnover",
+   "rank": 4,
+   "type": "known disabled/weak mechanics"
+  },
+  {
+   "confidence": "medium",
+   "effect_size": "information gap rather than an engine bug; cannot be repaired from current inputs",
+   "estimated_share_of_recoverable_gap": null,
+   "mechanism": "real pace / team style is not in the player state",
+   "observed_mismatch": "real team volume varies as much as the simulated volume (SD 3.41) but no player-state family predicts it (|r| <= 0.22)",
+   "rank": 5,
+   "type": "missing information"
+  }
+ ],
+ "realistic_offensive_teams": {
+  "average": {
+   "away": {
+    "block_rate": 0.0363678534152847,
+    "efg": 0.5124222292523463,
+    "exp_pps_open": 0.9560470657116843,
+    "fga_per_100": 93.29988193624558,
+    "ft_rate": 0.3041864388906464,
+    "ftm_per_100": 22.719401810310902,
+    "orb_per_100": 10.360094451003542,
+    "ortg": 118.33726879181425,
+    "points": 120.278,
+    "poss": 101.64,
+    "real_pps_open": 0.9508989818759477,
+    "three_rate": 0.3790361699884003,
+    "tov_per_100": 19.74616292798111
+   },
+   "home": {
+    "block_rate": 0.035483192786563575,
+    "efg": 0.5154774061781976,
+    "exp_pps_open": 0.9563971662797073,
+    "fga_per_100": 92.45839726189071,
+    "ft_rate": 0.3078674155391031,
+    "ftm_per_100": 22.89035760651481,
+    "orb_per_100": 10.053503284944334,
+    "ortg": 118.21078720642039,
+    "points": 120.192,
+    "poss": 101.676,
+    "real_pps_open": 0.9589246790990554,
+    "three_rate": 0.38064845545059994,
+    "tov_per_100": 20.53188559738778
+   },
+   "margin_sd": 17.551370430823912,
+   "mean_margin": -0.086,
+   "n": 500
+  },
+  "elite": {
+   "away": {
+    "block_rate": 0.03611658687693607,
+    "efg": 0.5215772226241648,
+    "exp_pps_open": 0.9613011217600161,
+    "fga_per_100": 92.10536631257105,
+    "ft_rate": 0.31214623143380005,
+    "ftm_per_100": 23.13119830661283,
+    "orb_per_100": 10.158363059072558,
+    "ortg": 119.21132060679707,
+    "points": 121.648,
+    "poss": 102.044,
+    "real_pps_open": 0.9682029557129989,
+    "three_rate": 0.3743669404604843,
+    "tov_per_100": 21.676923679981186
+   },
+   "home": {
+    "block_rate": 0.03765102556898005,
+    "efg": 0.6506371906634,
+    "exp_pps_open": 1.2304701334220856,
+    "fga_per_100": 103.25534877336105,
+    "ft_rate": 0.34824226539798303,
+    "ftm_per_100": 32.49465612927265,
+    "orb_per_100": 16.48461553546565,
+    "ortg": 166.858196223011,
+    "points": 170.172,
+    "poss": 101.986,
+    "real_pps_open": 1.230634475014037,
+    "three_rate": 0.5617913509201755,
+    "tov_per_100": 9.968034828309769
+   },
+   "margin_sd": 19.005299892398437,
+   "mean_margin": 48.524,
+   "n": 500
+  },
+  "strong": {
+   "away": {
+    "block_rate": 0.03542658154381892,
+    "efg": 0.5188526315789473,
+    "exp_pps_open": 0.9604494824016483,
+    "fga_per_100": 92.20078419193291,
+    "ft_rate": 0.3120421052631579,
+    "ftm_per_100": 23.10648705306883,
+    "orb_per_100": 9.895570480220506,
+    "ortg": 118.78372607632284,
+    "points": 122.39,
+    "poss": 103.036,
+    "real_pps_open": 0.9623095622036631,
+    "three_rate": 0.37930526315789476,
+    "tov_per_100": 20.553981132807948
+   },
+   "home": {
+    "block_rate": 0.03526222591434755,
+    "efg": 0.5953264094955489,
+    "exp_pps_open": 1.1258752881792524,
+    "fga_per_100": 99.52591901764202,
+    "ft_rate": 0.33066531313446823,
+    "ftm_per_100": 28.481775083547056,
+    "orb_per_100": 13.194606357348254,
+    "ortg": 146.98259112458229,
+    "points": 151.298,
+    "poss": 102.936,
+    "real_pps_open": 1.114933152050759,
+    "three_rate": 0.5339489301889739,
+    "tov_per_100": 12.044377088676459
+   },
+   "margin_sd": 18.00865169855867,
+   "mean_margin": 28.908,
+   "n": 500
+  },
+  "weak": {
+   "away": {
+    "block_rate": 0.035717644845748686,
+    "efg": 0.5149708304735758,
+    "exp_pps_open": 0.9547315001175549,
+    "fga_per_100": 93.09718256424591,
+    "ft_rate": 0.3055293411118737,
+    "ftm_per_100": 22.699227251852,
+    "orb_per_100": 10.065693576406222,
+    "ortg": 118.58389409157166,
+    "points": 118.776,
+    "poss": 100.162,
+    "real_pps_open": 0.9598380843229535,
+    "three_rate": 0.37961135895676046,
+    "tov_per_100": 19.608234659851043
+   },
+   "home": {
+    "block_rate": 0.03000829722503918,
+    "efg": 0.38909687506881896,
+    "exp_pps_open": 0.7420482633032768,
+    "fga_per_100": 90.58971392091928,
+    "ft_rate": 0.17826862516241274,
+    "ftm_per_100": 11.369349239915413,
+    "orb_per_100": 7.9579459761401266,
+    "ortg": 81.86569843993138,
+    "points": 82.072,
+    "poss": 100.252,
+    "real_pps_open": 0.7415054887611082,
+    "three_rate": 0.08901319121760004,
+    "tov_per_100": 25.91070502334118
+   },
+   "margin_sd": 16.406717648573096,
+   "mean_margin": -36.704,
+   "n": 500
+  }
+ },
+ "recommended_intervention": {
+  "action": "make style tendencies redistribute attempts without acting as a strength lever: calibrate team-level shot-diet dispersion (3PA-rate SD) to real, and make the diet-to-efficiency effect come from each player's own per-shot-type skill rather than from the tendency itself; re-check the sign of drive_aggression",
+  "target": "team-level shot-selection tendencies (three_point_preference plus the four style tendencies)",
+  "validation_plan": "team-season 3PA-rate SD and correlation, efficiency vs 3PT-preference slope, team-season points-per-shooting-attempt ranking, then one holdout re-evaluation",
+  "why_first": "largest measured single-family recovery in ranking correlation, direct dispersion mismatch (0.059 vs 0.038), and it was amplified by the recent preference-weight change"
+ },
+ "rejected_mechanisms": {
+  "expected_vs_realized_randomness": "sign mismatch persists using expected shot points (r 0.98 with realized)",
+  "monte_carlo_noise": "5% of the 7.9-point residual at N=100",
+  "player_id_or_order": "identical results across hash seeds, id relabelling and lineup permutations (within Monte Carlo noise)",
+  "seed_path_dependence": "first-quarter margin correlates 0.46-0.58 with final margin (0.5 expected from independent quarters); initiator identity explains ~0",
+  "team_level_shooting_conversion": "3PT/FT/midrange slope 1.06-1.14 per unit skill; efficiency corr 0.34 with matching spread"
+ },
+ "runtime_seconds": 124.86332297325134,
+ "sample": {
+  "config": "primary-five profiles reconstructed from the stored pregame state; synthetic player ids; seeds sha256(ot-sim|game|i)",
+  "holdout_used": false,
+  "n_games_analyzed": 979,
+  "n_team_rows": 1958,
+  "seasons": [
+   "2022-23",
+   "2023-24",
+   "2024-25",
+   "2025-26"
+  ],
+  "sim_n_per_game": 100
+ },
+ "seed_path_dependence": {
+  "0022300038": {
+   "corr_q1_margin_final_margin": 0.4641867841065934,
+   "eta2_first_possession_initiator": 0.0,
+   "final_margin_mean_if_away_turnover_first": -5.633333333333334,
+   "final_margin_mean_if_home_turnover_first": -9.405857740585773,
+   "final_margin_sd": 18.023531666962498,
+   "independence_baseline_corr": 0.5,
+   "n": 400
+  },
+  "0022300668": {
+   "corr_q1_margin_final_margin": 0.47244215935200745,
+   "eta2_first_possession_initiator": 0.0,
+   "final_margin_mean_if_away_turnover_first": -15.97872340425532,
+   "final_margin_mean_if_home_turnover_first": -19.623015873015873,
+   "final_margin_sd": 18.74549929316368,
+   "independence_baseline_corr": 0.5,
+   "n": 400
+  },
+  "0022400179": {
+   "corr_q1_margin_final_margin": 0.5747780334122153,
+   "eta2_first_possession_initiator": 0.0,
+   "final_margin_mean_if_away_turnover_first": -2.0920245398773005,
+   "final_margin_mean_if_home_turnover_first": -0.8193832599118943,
+   "final_margin_sd": 18.592164848397832,
+   "independence_baseline_corr": 0.5,
+   "n": 400
+  },
+  "0022400792": {
+   "corr_q1_margin_final_margin": 0.5041853926801702,
+   "eta2_first_possession_initiator": 0.0,
+   "final_margin_mean_if_away_turnover_first": 5.505050505050505,
+   "final_margin_mean_if_home_turnover_first": 1.0261780104712042,
+   "final_margin_sd": 19.073325450744033,
+   "independence_baseline_corr": 0.5,
+   "n": 400
+  },
+  "0022500345": {
+   "corr_q1_margin_final_margin": 0.5306723436130739,
+   "eta2_first_possession_initiator": 0.0,
+   "final_margin_mean_if_away_turnover_first": 2.23728813559322,
+   "final_margin_mean_if_home_turnover_first": 1.9800995024875623,
+   "final_margin_sd": 19.126107647663183,
+   "independence_baseline_corr": 0.5,
+   "n": 400
+  },
+  "0022500833": {
+   "corr_q1_margin_final_margin": 0.5056864182639861,
+   "eta2_first_possession_initiator": 0.0,
+   "final_margin_mean_if_away_turnover_first": -2.4450549450549453,
+   "final_margin_mean_if_home_turnover_first": -5.248803827751196,
+   "final_margin_sd": 19.07964212845723,
+   "independence_baseline_corr": 0.5,
+   "n": 400
+  }
+ },
+ "shot_diet_and_creation_response": {
+  "initiation": {
+   "real_ft_rate_slope_per_sd": 0.002901595881598954,
+   "real_points_slope_per_sd": 1.9218384848730534,
+   "real_three_rate_slope_per_sd": 0.00022583317168916253,
+   "sim_efg_slope_per_sd": 0.0020261247365797783,
+   "sim_ft_rate_slope_per_sd": 0.0017224170815421161,
+   "sim_orb100_slope_per_sd": -0.06256174279587788,
+   "sim_ortg_slope_per_sd": 0.6308802172831333,
+   "sim_points_slope_per_sd": 0.615780214116071,
+   "sim_rim_share_slope_per_sd": 0.0022754605100717747,
+   "sim_three_rate_slope_per_sd": -0.014183025009102287,
+   "sim_tov100_slope_per_sd": -0.3840113759628779
+  },
+  "rim_access_creation": {
+   "real_ft_rate_slope_per_sd": 0.006190157691225527,
+   "real_points_slope_per_sd": 0.6930500544035504,
+   "real_three_rate_slope_per_sd": -0.0031593656168087485,
+   "sim_efg_slope_per_sd": 0.002470181222690324,
+   "sim_ft_rate_slope_per_sd": -0.0006326772039550146,
+   "sim_orb100_slope_per_sd": 0.05806188175993312,
+   "sim_ortg_slope_per_sd": 0.6298906573972367,
+   "sim_points_slope_per_sd": 1.139154592216064,
+   "sim_rim_share_slope_per_sd": 0.0025863833983166017,
+   "sim_three_rate_slope_per_sd": -0.014624787766164705,
+   "sim_tov100_slope_per_sd": -0.039119087340531225
+  },
+  "spacing": {
+   "real_ft_rate_slope_per_sd": -0.0006951229831623175,
+   "real_points_slope_per_sd": 0.35194106053892515,
+   "real_three_rate_slope_per_sd": -0.00036743924316695435,
+   "sim_efg_slope_per_sd": -0.0017930083053355065,
+   "sim_ft_rate_slope_per_sd": -0.0033192596092511705,
+   "sim_orb100_slope_per_sd": 0.3908419777555153,
+   "sim_ortg_slope_per_sd": 0.2751227040045915,
+   "sim_points_slope_per_sd": 0.8279049345118682,
+   "sim_rim_share_slope_per_sd": -0.0026575154750286627,
+   "sim_three_rate_slope_per_sd": 0.0025204076844914805,
+   "sim_tov100_slope_per_sd": -0.3618400258154904
+  },
+  "three_point_preference": {
+   "real_ft_rate_slope_per_sd": -0.008173473341230102,
+   "real_points_slope_per_sd": 0.45245732187344295,
+   "real_three_rate_slope_per_sd": 0.030299535535003846,
+   "sim_efg_slope_per_sd": 0.007782434497109835,
+   "sim_ft_rate_slope_per_sd": 0.00619429883734329,
+   "sim_orb100_slope_per_sd": -0.22251190388617476,
+   "sim_ortg_slope_per_sd": 1.7238644158732979,
+   "sim_points_slope_per_sd": 1.7132216092942159,
+   "sim_rim_share_slope_per_sd": -0.000656660621477463,
+   "sim_three_rate_slope_per_sd": 0.04758841506385937,
+   "sim_tov100_slope_per_sd": -0.29286379401687074
+  }
+ },
+ "sign_mismatch_recheck": {
+  "predicted_offense_sd": 2.8286190367580084,
+  "real_points_on_predicted_offense": {
+   "corr": 0.11147395630131035,
+   "n": 1448,
+   "slope": 0.5288249996760561
+  },
+  "sim_expected_open_fg_points_on_predicted_offense": {
+   "corr": -0.13286335741426208,
+   "n": 1448,
+   "slope": -0.2500893275398391
+  },
+  "sim_ortg_N100_on_predicted_offense": {
+   "corr": 0.006672974872067473,
+   "n": 1448,
+   "slope": 0.014502095322102306
+  },
+  "sim_points_N100_on_predicted_offense": {
+   "corr": -0.0720760464260514,
+   "n": 1448,
+   "slope": -0.17543073092819914
+  },
+  "sim_points_mean_sd_across_team_games": 6.884765879118949,
+  "sim_points_mean_vs_v1_stored_corr": 0.9083325142925388,
+  "sim_realized_open_fg_points_on_predicted_offense": {
+   "corr": -0.13198557276767484,
+   "n": 1448,
+   "slope": -0.2518342324880211
+  },
+  "v1_stored_N40_sim_points_on_predicted_offense": {
+   "corr": -0.09958779665454638,
+   "n": 706,
+   "slope": -0.2528045400967763
+  }
+ },
+ "sim_offense_explained_by": {
+  "composites_plus_expected_components_plus_frequencies": 0.9683702777254097,
+  "expected_components": 0.9332731797427671,
+  "expected_components_plus_family_frequencies": 0.9675067829446198,
+  "player_state_family_composites": 0.28751039271224665,
+  "residual_sd_after_all": 1.3186590467356463,
+  "sd_of_sim_mean_points": 7.368968846242717
+ },
+ "simulated_offense_variance_decomposition": {
+  "between_share_of_total_points_variance": 0.23655381136392178,
+  "between_team_game_sd_of_mean_points": 7.368968846242717,
+  "mean_within_game_sd_of_points": 13.238261670753072,
+  "n": 195800,
+  "ortg_sd": 13.924644547632417,
+  "points_variance_from_pace": 0.11225023914339034,
+  "r2_four_factors_plus_volume": 0.9704515399848442,
+  "residual_share": 0.029548460015138445,
+  "shares_of_ortg_variance": {
+   "free_throw_rate": 0.12774793138764262,
+   "offensive_rebounds_per_100": -0.00026239342744865723,
+   "shot_conversion_efg": 0.7505835672095602,
+   "shot_volume_fga_per_100": 0.08677428090835713,
+   "turnovers_per_100": 0.005608153906750248
+  }
+ },
+ "single_family_sweeps": {
+  "ball_security": {
+   "average": {
+    "away": {
+     "block_rate": 0.03655523816876399,
+     "efg": 0.5150811248372223,
+     "exp_pps_open": 0.9549637946075009,
+     "fga_per_100": 93.19710040345065,
+     "ft_rate": 0.3013761306444233,
+     "ftm_per_100": 22.527634729556862,
+     "orb_per_100": 10.351953291566897,
+     "ortg": 118.5357693443107,
+     "points": 120.46,
+     "poss": 101.62333333333333,
+     "real_pps_open": 0.9599342922392724,
+     "three_rate": 0.3771864991377186,
+     "tov_per_100": 20.031488831305147
+    },
+    "home": {
+     "block_rate": 0.03263194741550309,
+     "efg": 0.5140110957984381,
+     "exp_pps_open": 0.9552985008489709,
+     "fga_per_100": 92.8383964306804,
+     "ft_rate": 0.3095162373228736,
+     "ftm_per_100": 23.12840364805459,
+     "orb_per_100": 10.209303851453317,
+     "ortg": 118.56833541106226,
+     "points": 120.47333333333333,
+     "poss": 101.60666666666667,
+     "real_pps_open": 0.9494612415567707,
+     "three_rate": 0.38287571999010567,
+     "tov_per_100": 19.959320254576472
+    },
+    "margin_sd": 19.218042448583454,
+    "mean_margin": 0.013333333333333334,
+    "n": 300
+   },
+   "elite": {
+    "away": {
+     "block_rate": 0.03735898624632978,
+     "efg": 0.5182832678270635,
+     "exp_pps_open": 0.9570107629950615,
+     "fga_per_100": 93.10896912269237,
+     "ft_rate": 0.3085696238068501,
+     "ftm_per_100": 22.937428524750857,
+     "orb_per_100": 10.462342754451887,
+     "ortg": 119.45107008658715,
+     "points": 121.86,
+     "poss": 102.01666666666667,
+     "real_pps_open": 0.9645222137496489,
+     "three_rate": 0.37622824256035936,
+     "tov_per_100": 20.18624407776507
+    },
+    "home": {
+     "block_rate": 0.033388787867063875,
+     "efg": 0.5161267655119106,
+     "exp_pps_open": 0.9561095595331108,
+     "fga_per_100": 92.95231874591771,
+     "ft_rate": 0.31491110954957485,
+     "ftm_per_100": 23.59568909209667,
+     "orb_per_100": 10.267798824297843,
+     "ortg": 119.54604833442195,
+     "points": 122.01666666666667,
+     "poss": 102.06666666666666,
+     "real_pps_open": 0.9541706692283061,
+     "three_rate": 0.37755603963178974,
+     "tov_per_100": 19.604833442194643
+    },
+    "margin_sd": 19.6997154519777,
+    "mean_margin": 0.15666666666666668,
+    "n": 300
+   },
+   "strong": {
+    "away": {
+     "block_rate": 0.03475007713668621,
+     "efg": 0.5134212840809147,
+     "exp_pps_open": 0.9549941324358582,
+     "fga_per_100": 93.30072868115276,
+     "ft_rate": 0.301882145998241,
+     "ftm_per_100": 22.910785793999867,
+     "orb_per_100": 10.168712663296791,
+     "ortg": 118.71594564432482,
+     "points": 120.56,
+     "poss": 101.55333333333333,
+     "real_pps_open": 0.9545690654093579,
+     "three_rate": 0.37927880386983287,
+     "tov_per_100": 19.241121249917942
+    },
+    "home": {
+     "block_rate": 0.03718320758367189,
+     "efg": 0.5107371682039006,
+     "exp_pps_open": 0.9566411755203396,
+     "fga_per_100": 93.15580625061489,
+     "ft_rate": 0.31627121030768146,
+     "ftm_per_100": 23.7398747253468,
+     "orb_per_100": 10.326960285967271,
+     "ortg": 118.89614009772735,
+     "points": 120.85,
+     "poss": 101.64333333333333,
+     "real_pps_open": 0.9477575952419225,
+     "three_rate": 0.3776666901358868,
+     "tov_per_100": 19.053553274522024
+    },
+    "margin_sd": 18.612699069900277,
+    "mean_margin": 0.29,
+    "n": 300
+   },
+   "weak": {
+    "away": {
+     "block_rate": 0.036377076605843675,
+     "efg": 0.5105994540749407,
+     "exp_pps_open": 0.9571523280276539,
+     "fga_per_100": 92.5401043204409,
+     "ft_rate": 0.31160267999574603,
+     "ftm_per_100": 23.373683692549946,
+     "orb_per_100": 10.241774103598727,
+     "ortg": 117.8755371846603,
+     "points": 119.77333333333333,
+     "poss": 101.61,
+     "real_pps_open": 0.950702519379845,
+     "three_rate": 0.37931156723031656,
+     "tov_per_100": 20.194862710363154
+    },
+    "home": {
+     "block_rate": 0.03510551156531575,
+     "efg": 0.5148363739618088,
+     "exp_pps_open": 0.9566948153317749,
+     "fga_per_100": 92.41012857517713,
+     "ft_rate": 0.30056080073826935,
+     "ftm_per_100": 22.48097612175282,
+     "orb_per_100": 10.089215429021255,
+     "ortg": 117.63316714773025,
+     "points": 119.54666666666667,
+     "poss": 101.62666666666667,
+     "real_pps_open": 0.955289647087359,
+     "three_rate": 0.38308369418612903,
+     "tov_per_100": 21.20506428758856
+    },
+    "margin_sd": 16.6177201270879,
+    "mean_margin": -0.22666666666666666,
+    "n": 300
+   }
+  },
+  "finishing_role": {
+   "average": {
+    "away": {
+     "block_rate": 0.035633704193573486,
+     "efg": 0.5162679425837321,
+     "exp_pps_open": 0.95759205028996,
+     "fga_per_100": 92.79418535815299,
+     "ft_rate": 0.3066454013822435,
+     "ftm_per_100": 22.857330789975663,
+     "orb_per_100": 10.093402617904362,
+     "ortg": 118.6706571071499,
+     "points": 120.27666666666667,
+     "poss": 101.35333333333334,
+     "real_pps_open": 0.9612343686970553,
+     "three_rate": 0.37614743930533406,
+     "tov_per_100": 19.81187923436164
+    },
+    "home": {
+     "block_rate": 0.03481931910608466,
+     "efg": 0.5147500441618089,
+     "exp_pps_open": 0.9560622666172918,
+     "fga_per_100": 93.17598261900059,
+     "ft_rate": 0.30167814873697224,
+     "ftm_per_100": 22.555796958325104,
+     "orb_per_100": 10.23438014352492,
+     "ortg": 118.48047929422609,
+     "points": 119.97333333333333,
+     "poss": 101.26,
+     "real_pps_open": 0.9571829855537721,
+     "three_rate": 0.3794029323441088,
+     "tov_per_100": 20.047402725656724
+    },
+    "margin_sd": 18.997666230940638,
+    "mean_margin": -0.30333333333333334,
+    "n": 300
+   },
+   "elite": {
+    "away": {
+     "block_rate": 0.037286851079954525,
+     "efg": 0.5151902671689766,
+     "exp_pps_open": 0.9560765142543853,
+     "fga_per_100": 92.86493773269996,
+     "ft_rate": 0.30892060968444335,
+     "ftm_per_100": 23.070997560662473,
+     "orb_per_100": 10.023751444344589,
+     "ortg": 118.7572217229426,
+     "points": 123.33333333333333,
+     "poss": 103.85333333333334,
+     "real_pps_open": 0.9618200425096434,
+     "three_rate": 0.3742093802923997,
+     "tov_per_100": 19.614199512132494
+    },
+    "home": {
+     "block_rate": 0.031402877697841725,
+     "efg": 0.5070167872072192,
+     "exp_pps_open": 0.9469124857293442,
+     "fga_per_100": 96.75162097964949,
+     "ft_rate": 0.29294671886404355,
+     "ftm_per_100": 22.754702445913846,
+     "orb_per_100": 10.86858830326764,
+     "ortg": 120.86409449829878,
+     "points": 125.51333333333334,
+     "poss": 103.84666666666666,
+     "real_pps_open": 0.9489360121810821,
+     "three_rate": 0.40926282263950636,
+     "tov_per_100": 14.091288438081786
+    },
+    "margin_sd": 18.85650020549943,
+    "mean_margin": 2.18,
+    "n": 300
+   },
+   "strong": {
+    "away": {
+     "block_rate": 0.03463070793748085,
+     "efg": 0.5147975349047735,
+     "exp_pps_open": 0.9561523367071256,
+     "fga_per_100": 92.91213768115942,
+     "ft_rate": 0.3183384979631628,
+     "ftm_per_100": 23.751293995859214,
+     "orb_per_100": 10.183747412008282,
+     "ortg": 119.41317287784679,
+     "points": 123.04333333333334,
+     "poss": 103.04,
+     "real_pps_open": 0.9531746031746032,
+     "three_rate": 0.37690191845687826,
+     "tov_per_100": 19.316123188405797
+    },
+    "home": {
+     "block_rate": 0.03213235294117647,
+     "efg": 0.5107946482870465,
+     "exp_pps_open": 0.9486330316291723,
+     "fga_per_100": 95.8081118700029,
+     "ft_rate": 0.29096560578417463,
+     "ftm_per_100": 22.45492506393034,
+     "orb_per_100": 10.371281520085457,
+     "ortg": 120.33146667529861,
+     "points": 123.91333333333333,
+     "poss": 102.97666666666667,
+     "real_pps_open": 0.9538479070120793,
+     "three_rate": 0.4054665855801068,
+     "tov_per_100": 15.3368076910627
+    },
+    "margin_sd": 18.500444138812814,
+    "mean_margin": 0.87,
+    "n": 300
+   },
+   "weak": {
+    "away": {
+     "block_rate": 0.035733559478837405,
+     "efg": 0.5132975927677914,
+     "exp_pps_open": 0.9558234715113227,
+     "fga_per_100": 93.4509970856937,
+     "ft_rate": 0.3047408808998213,
+     "ftm_per_100": 22.764334130128688,
+     "orb_per_100": 10.462032155604309,
+     "ortg": 118.70067782180162,
+     "points": 120.83333333333333,
+     "poss": 101.79666666666667,
+     "real_pps_open": 0.9507895262842294,
+     "three_rate": 0.3806720627912681,
+     "tov_per_100": 19.630636235633126
+    },
+    "home": {
+     "block_rate": 0.02971881706740388,
+     "efg": 0.48968370161043207,
+     "exp_pps_open": 0.9285534977471867,
+     "fga_per_100": 96.17853166546597,
+     "ft_rate": 0.25028088931258724,
+     "ftm_per_100": 19.343113497936997,
+     "orb_per_100": 11.146767961228633,
+     "ortg": 113.53723230074007,
+     "points": 115.57333333333334,
+     "poss": 101.79333333333334,
+     "real_pps_open": 0.9246457224263328,
+     "three_rate": 0.42916482244390725,
+     "tov_per_100": 18.60305193529373
+    },
+    "margin_sd": 18.48023448624683,
+    "mean_margin": -5.26,
+    "n": 300
+   }
+  },
+  "initiation_role": {
+   "average": {
+    "away": {
+     "block_rate": 0.0355743373031118,
+     "efg": 0.5119611350801502,
+     "exp_pps_open": 0.9546092048324496,
+     "fga_per_100": 93.47213114754098,
+     "ft_rate": 0.29401241713143217,
+     "ftm_per_100": 22.17377049180328,
+     "orb_per_100": 10.255737704918033,
+     "ortg": 117.88196721311475,
+     "points": 119.84666666666666,
+     "poss": 101.66666666666667,
+     "real_pps_open": 0.9540710643722116,
+     "three_rate": 0.37507453786523554,
+     "tov_per_100": 19.747540983606555
+    },
+    "home": {
+     "block_rate": 0.035324816949680635,
+     "efg": 0.5106469815807219,
+     "exp_pps_open": 0.9564156020698976,
+     "fga_per_100": 92.4139061987537,
+     "ft_rate": 0.31138872129751216,
+     "ftm_per_100": 22.92882912430305,
+     "orb_per_100": 10.05575598556904,
+     "ortg": 117.31059363725811,
+     "points": 119.22666666666667,
+     "poss": 101.63333333333334,
+     "real_pps_open": 0.9475554120069442,
+     "three_rate": 0.3800617524931682,
+     "tov_per_100": 20.163988192850116
+    },
+    "margin_sd": 17.176212232813924,
+    "mean_margin": -0.62,
+    "n": 300
+   },
+   "elite": {
+    "away": {
+     "block_rate": 0.035249585994795364,
+     "efg": 0.5154746517305759,
+     "exp_pps_open": 0.955908957276686,
+     "fga_per_100": 92.57769652650822,
+     "ft_rate": 0.3045382737325865,
+     "ftm_per_100": 22.502908426125977,
+     "orb_per_100": 10.137942496260594,
+     "ortg": 117.94582017616753,
+     "points": 118.28,
+     "poss": 100.28333333333333,
+     "real_pps_open": 0.9585989864312572,
+     "three_rate": 0.3751256642251903,
+     "tov_per_100": 20.49193950473658
+    },
+    "home": {
+     "block_rate": 0.04029778281275287,
+     "efg": 0.5217145977429923,
+     "exp_pps_open": 0.9686979931273215,
+     "fga_per_100": 91.26549054785873,
+     "ft_rate": 0.3440116490717146,
+     "ftm_per_100": 25.286554370577097,
+     "orb_per_100": 9.940529585700522,
+     "ortg": 120.51563174856308,
+     "points": 120.91333333333333,
+     "poss": 100.33,
+     "real_pps_open": 0.9645868465430016,
+     "three_rate": 0.3598471059337459,
+     "tov_per_100": 20.156815841057842
+    },
+    "margin_sd": 18.15247151828704,
+    "mean_margin": 2.6333333333333333,
+    "n": 300
+   },
+   "strong": {
+    "away": {
+     "block_rate": 0.03625048619214313,
+     "efg": 0.5127559166873648,
+     "exp_pps_open": 0.9571124285718479,
+     "fga_per_100": 92.96717796470394,
+     "ft_rate": 0.31256431181918176,
+     "ftm_per_100": 23.242619165429655,
+     "orb_per_100": 10.344713838033977,
+     "ortg": 118.58156028368793,
+     "points": 119.82666666666667,
+     "poss": 101.05,
+     "real_pps_open": 0.9546775365243361,
+     "three_rate": 0.37849057942731434,
+     "tov_per_100": 19.445818901533894
+    },
+    "home": {
+     "block_rate": 0.03779277491067884,
+     "efg": 0.5176369679425324,
+     "exp_pps_open": 0.9605132695210877,
+     "fga_per_100": 92.25823469286821,
+     "ft_rate": 0.3267217040134377,
+     "ftm_per_100": 24.029806455867323,
+     "orb_per_100": 10.059678855221076,
+     "ortg": 119.54235220416103,
+     "points": 120.85333333333334,
+     "poss": 101.09666666666666,
+     "real_pps_open": 0.9518524630745111,
+     "three_rate": 0.364068475036632,
+     "tov_per_100": 19.56543242441228
+    },
+    "margin_sd": 17.836833301408134,
+    "mean_margin": 1.0266666666666666,
+    "n": 300
+   },
+   "weak": {
+    "away": {
+     "block_rate": 0.03329227927026403,
+     "efg": 0.5169957291885459,
+     "exp_pps_open": 0.9550020677440326,
+     "fga_per_100": 93.19457131671669,
+     "ft_rate": 0.3068683049779458,
+     "ftm_per_100": 22.690199660707293,
+     "orb_per_100": 10.475662273261124,
+     "ortg": 119.05259036930707,
+     "points": 121.64,
+     "poss": 102.17333333333333,
+     "real_pps_open": 0.9592307998566708,
+     "three_rate": 0.3799621928166352,
+     "tov_per_100": 20.14550437165601
+    },
+    "home": {
+     "block_rate": 0.03442766386426751,
+     "efg": 0.5114376240381602,
+     "exp_pps_open": 0.9535017540694364,
+     "fga_per_100": 93.69413453382919,
+     "ft_rate": 0.29271264928101387,
+     "ftm_per_100": 22.17981340118745,
+     "orb_per_100": 10.373850068506558,
+     "ortg": 118.01722450577412,
+     "points": 120.59,
+     "poss": 102.18,
+     "real_pps_open": 0.9536679536679536,
+     "three_rate": 0.38710351310887503,
+     "tov_per_100": 19.58308866705813
+    },
+    "margin_sd": 18.79150960762156,
+    "mean_margin": -1.05,
+    "n": 300
+   }
+  },
+  "offensive_rebounding": {
+   "average": {
+    "away": {
+     "block_rate": 0.03721726943590143,
+     "efg": 0.5076251950631295,
+     "exp_pps_open": 0.9556574745185625,
+     "fga_per_100": 92.69511473469656,
+     "ft_rate": 0.3111079585756845,
+     "ftm_per_100": 23.055427707278586,
+     "orb_per_100": 10.148596225918864,
+     "ortg": 117.16417910447761,
+     "points": 118.79666666666667,
+     "poss": 101.39333333333333,
+     "real_pps_open": 0.9424204439771946,
+     "three_rate": 0.3769683643069939,
+     "tov_per_100": 20.218291800907355
+    },
+    "home": {
+     "block_rate": 0.03500542719801519,
+     "efg": 0.5096428949878139,
+     "exp_pps_open": 0.9539894040707321,
+     "fga_per_100": 93.04870834155,
+     "ft_rate": 0.30507576560347566,
+     "ftm_per_100": 22.566226253861828,
+     "orb_per_100": 10.395714191809637,
+     "ortg": 117.40945244199041,
+     "points": 119.07666666666667,
+     "poss": 101.42,
+     "real_pps_open": 0.9458482304262242,
+     "three_rate": 0.37066864469640776,
+     "tov_per_100": 20.022349306514165
+    },
+    "margin_sd": 18.4394938469941,
+    "mean_margin": 0.28,
+    "n": 300
+   },
+   "elite": {
+    "away": {
+     "block_rate": 0.0352092930102143,
+     "efg": 0.5155691027232241,
+     "exp_pps_open": 0.9607084677620233,
+     "fga_per_100": 92.09924690693921,
+     "ft_rate": 0.31379134116959917,
+     "ftm_per_100": 22.93908015061861,
+     "orb_per_100": 10.015465303926842,
+     "ortg": 117.90613232920926,
+     "points": 116.9,
+     "poss": 99.14666666666666,
+     "real_pps_open": 0.9587312131528689,
+     "three_rate": 0.38289406439366286,
+     "tov_per_100": 20.938676707907476
+    },
+    "home": {
+     "block_rate": 0.03652833523585079,
+     "efg": 0.5142016975205507,
+     "exp_pps_open": 0.9561192664747734,
+     "fga_per_100": 100.5071368597817,
+     "ft_rate": 0.3279088418097975,
+     "ftm_per_100": 26.374475230898405,
+     "orb_per_100": 19.916036943744754,
+     "ortg": 129.73635600335854,
+     "points": 128.76333333333332,
+     "poss": 99.25,
+     "real_pps_open": 0.9527231033823811,
+     "three_rate": 0.37719708614582637,
+     "tov_per_100": 21.225860621326618
+    },
+    "margin_sd": 17.545692412162655,
+    "mean_margin": 11.863333333333333,
+    "n": 300
+   },
+   "strong": {
+    "away": {
+     "block_rate": 0.03577056413488812,
+     "efg": 0.5163878761884337,
+     "exp_pps_open": 0.9586445607894994,
+     "fga_per_100": 92.56269436908622,
+     "ft_rate": 0.31163771534777324,
+     "ftm_per_100": 22.95374842850526,
+     "orb_per_100": 10.117117713227024,
+     "ortg": 118.55025474756833,
+     "points": 119.44333333333333,
+     "poss": 100.75333333333333,
+     "real_pps_open": 0.9563654191861415,
+     "three_rate": 0.3812281077989849,
+     "tov_per_100": 20.20776814662873
+    },
+    "home": {
+     "block_rate": 0.034801297036422596,
+     "efg": 0.5201838323558665,
+     "exp_pps_open": 0.95621846830963,
+     "fga_per_100": 96.50162176474481,
+     "ft_rate": 0.3091538910038756,
+     "ftm_per_100": 24.074932150658633,
+     "orb_per_100": 14.036539352617991,
+     "ortg": 124.47209902694117,
+     "points": 125.36,
+     "poss": 100.71333333333334,
+     "real_pps_open": 0.967654986522911,
+     "three_rate": 0.38128065301642833,
+     "tov_per_100": 20.169457867213875
+    },
+    "margin_sd": 18.25202424085857,
+    "mean_margin": 5.916666666666667,
+    "n": 300
+   },
+   "weak": {
+    "away": {
+     "block_rate": 0.03441233140655106,
+     "efg": 0.5162632904308898,
+     "exp_pps_open": 0.9552967950268071,
+     "fga_per_100": 93.09109852184672,
+     "ft_rate": 0.31029658645775043,
+     "ftm_per_100": 23.282542163182914,
+     "orb_per_100": 10.467539232923096,
+     "ortg": 119.40157582861235,
+     "points": 122.24333333333334,
+     "poss": 102.38,
+     "real_pps_open": 0.9553019116414575,
+     "three_rate": 0.3820299384443201,
+     "tov_per_100": 19.671810900566516
+    },
+    "home": {
+     "block_rate": 0.035729864773763734,
+     "efg": 0.5133278026258837,
+     "exp_pps_open": 0.9559808178376036,
+     "fga_per_100": 90.3415015641293,
+     "ft_rate": 0.30396046746501226,
+     "ftm_per_100": 22.135688216892596,
+     "orb_per_100": 7.0613920750782055,
+     "ortg": 114.88529718456726,
+     "points": 117.52,
+     "poss": 102.29333333333334,
+     "real_pps_open": 0.9520069090310906,
+     "three_rate": 0.37671331698167654,
+     "tov_per_100": 19.54509906152242
+    },
+    "margin_sd": 18.08296036481736,
+    "mean_margin": -4.723333333333334,
+    "n": 300
+   }
+  },
+  "passing": {
+   "average": {
+    "away": {
+     "block_rate": 0.03729222624469617,
+     "efg": 0.5131130669316488,
+     "exp_pps_open": 0.9567708810753658,
+     "fga_per_100": 92.21454985764309,
+     "ft_rate": 0.3042444460217191,
+     "ftm_per_100": 22.606931308701768,
+     "orb_per_100": 9.8897143044147,
+     "ortg": 117.23991229505515,
+     "points": 119.41666666666667,
+     "poss": 101.85666666666667,
+     "real_pps_open": 0.9552787998867818,
+     "three_rate": 0.37781247781957555,
+     "tov_per_100": 20.633570049415844
+    },
+    "home": {
+     "block_rate": 0.03545331529093369,
+     "efg": 0.5157108637452444,
+     "exp_pps_open": 0.9543251377972937,
+     "fga_per_100": 92.85620829517205,
+     "ft_rate": 0.30583345075383966,
+     "ftm_per_100": 22.64163286667539,
+     "orb_per_100": 10.005887740416068,
+     "ortg": 118.41554363469842,
+     "points": 120.67333333333333,
+     "poss": 101.90666666666667,
+     "real_pps_open": 0.9589145422478755,
+     "three_rate": 0.37635620684796395,
+     "tov_per_100": 19.645427188276855
+    },
+    "margin_sd": 18.198831159048527,
+    "mean_margin": 1.2566666666666666,
+    "n": 300
+   },
+   "elite": {
+    "away": {
+     "block_rate": 0.03377125193199382,
+     "efg": 0.5121186500387515,
+     "exp_pps_open": 0.9564615952291105,
+     "fga_per_100": 92.87093080320629,
+     "ft_rate": 0.30645388571831184,
+     "ftm_per_100": 22.627187960085067,
+     "orb_per_100": 10.070341894323573,
+     "ortg": 117.74905938164568,
+     "points": 119.96666666666667,
+     "poss": 101.88333333333334,
+     "real_pps_open": 0.9506918339598497,
+     "three_rate": 0.38670471359120695,
+     "tov_per_100": 19.505970881727468
+    },
+    "home": {
+     "block_rate": 0.03591331269349845,
+     "efg": 0.5149327322673805,
+     "exp_pps_open": 0.9550608199386916,
+     "fga_per_100": 92.9183847110413,
+     "ft_rate": 0.30841022751285485,
+     "ftm_per_100": 22.949800379605996,
+     "orb_per_100": 10.210092283526409,
+     "ortg": 118.64323581386216,
+     "points": 120.85,
+     "poss": 101.86,
+     "real_pps_open": 0.9573699421965318,
+     "three_rate": 0.3799394238219342,
+     "tov_per_100": 19.72969435172459
+    },
+    "margin_sd": 19.059111265277355,
+    "mean_margin": 0.8833333333333333,
+    "n": 300
+   },
+   "strong": {
+    "away": {
+     "block_rate": 0.03630669295905348,
+     "efg": 0.5114691039983061,
+     "exp_pps_open": 0.956801530298817,
+     "fga_per_100": 92.8077817443422,
+     "ft_rate": 0.3050781663549423,
+     "ftm_per_100": 22.831035273310842,
+     "orb_per_100": 10.192251007107064,
+     "ortg": 117.76766121900894,
+     "points": 119.86,
+     "poss": 101.77666666666667,
+     "real_pps_open": 0.9524554646124218,
+     "three_rate": 0.3819035183682112,
+     "tov_per_100": 20.024236072446204
+    },
+    "home": {
+     "block_rate": 0.035790288256916235,
+     "efg": 0.5191453353078063,
+     "exp_pps_open": 0.9584183868991943,
+     "fga_per_100": 92.75902668759811,
+     "ft_rate": 0.3082998378111558,
+     "ftm_per_100": 22.792386185243327,
+     "orb_per_100": 10.269492412349555,
+     "ortg": 119.10321821036108,
+     "points": 121.39,
+     "poss": 101.92,
+     "real_pps_open": 0.9674558587479936,
+     "three_rate": 0.3836471334884705,
+     "tov_per_100": 19.96664050235479
+    },
+    "margin_sd": 19.01689862552076,
+    "mean_margin": 1.53,
+    "n": 300
+   },
+   "weak": {
+    "away": {
+     "block_rate": 0.03474467339227983,
+     "efg": 0.5157392291858897,
+     "exp_pps_open": 0.9580628649871783,
+     "fga_per_100": 92.6207145909345,
+     "ft_rate": 0.30949677053020086,
+     "ftm_per_100": 23.051638562929362,
+     "orb_per_100": 10.133780363540742,
+     "ortg": 118.58791046247904,
+     "points": 120.26,
+     "poss": 101.41,
+     "real_pps_open": 0.9591219079133206,
+     "three_rate": 0.3831002910071687,
+     "tov_per_100": 19.95200999243993
+    },
+    "home": {
+     "block_rate": 0.0341598010259599,
+     "efg": 0.5163664673201458,
+     "exp_pps_open": 0.9563759300517748,
+     "fga_per_100": 92.79240822223682,
+     "ft_rate": 0.30411550302558477,
+     "ftm_per_100": 22.67025678071846,
+     "orb_per_100": 9.995402902738556,
+     "ortg": 118.50003283640902,
+     "points": 120.29333333333334,
+     "poss": 101.51333333333334,
+     "real_pps_open": 0.9588379672474148,
+     "three_rate": 0.37920662443823205,
+     "tov_per_100": 19.590201615551322
+    },
+    "margin_sd": 19.09342527910822,
+    "mean_margin": 0.03333333333333333,
+    "n": 300
+   }
+  },
+  "rim_creation": {
+   "average": {
+    "away": {
+     "block_rate": 0.03606027987082885,
+     "efg": 0.5130841448889512,
+     "exp_pps_open": 0.9572497269755083,
+     "fga_per_100": 93.37302106502682,
+     "ft_rate": 0.30575211938625374,
+     "ftm_per_100": 22.87060054952244,
+     "orb_per_100": 10.365694099175716,
+     "ortg": 118.68703388721707,
+     "points": 120.95,
+     "poss": 101.90666666666667,
+     "real_pps_open": 0.9532982372178352,
+     "three_rate": 0.38292580396552933,
+     "tov_per_100": 19.62907235378778
+    },
+    "home": {
+     "block_rate": 0.03651500484027106,
+     "efg": 0.5173586634710278,
+     "exp_pps_open": 0.9555850280960871,
+     "fga_per_100": 92.68866383534792,
+     "ft_rate": 0.3053010009868885,
+     "ftm_per_100": 22.62985952303169,
+     "orb_per_100": 9.905259719046065,
+     "ortg": 118.53642600457366,
+     "points": 120.94666666666667,
+     "poss": 102.03333333333333,
+     "real_pps_open": 0.9632264287436701,
+     "three_rate": 0.3778725504018046,
+     "tov_per_100": 19.50996406403136
+    },
+    "margin_sd": 17.552872192955267,
+    "mean_margin": -0.0033333333333333335,
+    "n": 300
+   },
+   "elite": {
+    "away": {
+     "block_rate": 0.03791213033742568,
+     "efg": 0.5134165640935466,
+     "exp_pps_open": 0.9560975089878653,
+     "fga_per_100": 92.80049606736073,
+     "ft_rate": 0.30420256725866013,
+     "ftm_per_100": 22.606964524656505,
+     "orb_per_100": 10.126954081133123,
+     "ortg": 117.89758819881857,
+     "points": 120.41666666666667,
+     "poss": 102.13666666666667,
+     "real_pps_open": 0.9565409309791332,
+     "three_rate": 0.3780200457183049,
+     "tov_per_100": 19.829640024803368
+    },
+    "home": {
+     "block_rate": 0.04102825345820761,
+     "efg": 0.5307880910683013,
+     "exp_pps_open": 0.98251071682494,
+     "fga_per_100": 93.12414377976384,
+     "ft_rate": 0.339369527145359,
+     "ftm_per_100": 25.18755300410986,
+     "orb_per_100": 9.870180703242221,
+     "ortg": 124.0459260225716,
+     "points": 126.76666666666667,
+     "poss": 102.19333333333333,
+     "real_pps_open": 0.9788738149722132,
+     "three_rate": 0.3475306479859895,
+     "tov_per_100": 17.718050753473808
+    },
+    "margin_sd": 17.48849621894347,
+    "mean_margin": 6.35,
+    "n": 300
+   },
+   "strong": {
+    "away": {
+     "block_rate": 0.03539308419910064,
+     "efg": 0.5114700788236541,
+     "exp_pps_open": 0.9573914185561702,
+     "fga_per_100": 92.52681841967556,
+     "ft_rate": 0.309108903891697,
+     "ftm_per_100": 23.165227629513343,
+     "orb_per_100": 10.276033490319204,
+     "ortg": 117.81462585034012,
+     "points": 120.07666666666667,
+     "poss": 101.92,
+     "real_pps_open": 0.9513322348591408,
+     "three_rate": 0.3770810505107631,
+     "tov_per_100": 20.73194662480377
+    },
+    "home": {
+     "block_rate": 0.039091368781360616,
+     "efg": 0.5199311023622047,
+     "exp_pps_open": 0.9688224793843476,
+     "fga_per_100": 93.04942269322605,
+     "ft_rate": 0.31963582677165353,
+     "ftm_per_100": 23.82821443757564,
+     "orb_per_100": 9.891080365027966,
+     "ortg": 120.58679226768719,
+     "points": 122.89,
+     "poss": 101.91,
+     "real_pps_open": 0.9641758419689119,
+     "three_rate": 0.3612204724409449,
+     "tov_per_100": 18.836882216334676
+    },
+    "margin_sd": 18.59547854243666,
+    "mean_margin": 2.8133333333333335,
+    "n": 300
+   },
+   "weak": {
+    "away": {
+     "block_rate": 0.03374004472517557,
+     "efg": 0.5156484458735262,
+     "exp_pps_open": 0.955506927617194,
+     "fga_per_100": 92.20278683664394,
+     "ft_rate": 0.31632725973561987,
+     "ftm_per_100": 23.348815759132986,
+     "orb_per_100": 10.155812497941167,
+     "ortg": 118.43726323417994,
+     "points": 119.84666666666666,
+     "poss": 101.19,
+     "real_pps_open": 0.9557432295261683,
+     "three_rate": 0.3842443729903537,
+     "tov_per_100": 20.222683400863062
+    },
+    "home": {
+     "block_rate": 0.030915344328929884,
+     "efg": 0.5071305718790311,
+     "exp_pps_open": 0.9399792400746967,
+     "fga_per_100": 91.97811614264056,
+     "ft_rate": 0.2951841765801921,
+     "ftm_per_100": 21.80146331817283,
+     "orb_per_100": 10.404719530683542,
+     "ortg": 115.09129259771933,
+     "points": 116.40333333333334,
+     "poss": 101.14,
+     "real_pps_open": 0.9411978221415608,
+     "three_rate": 0.4011752902393579,
+     "tov_per_100": 22.615516445850638
+    },
+    "margin_sd": 17.370284651924646,
+    "mean_margin": -3.4433333333333334,
+    "n": 300
+   }
+  },
+  "shooting": {
+   "average": {
+    "away": {
+     "block_rate": 0.03475266123982467,
+     "efg": 0.5199316628701595,
+     "exp_pps_open": 0.9550583200761034,
+     "fga_per_100": 92.13917948381595,
+     "ft_rate": 0.3085136674259681,
+     "ftm_per_100": 22.91017610599154,
+     "orb_per_100": 9.956383432263143,
+     "ortg": 118.72232971501656,
+     "points": 120.67333333333333,
+     "poss": 101.64333333333333,
+     "real_pps_open": 0.9654151800194616,
+     "three_rate": 0.37510677676537585,
+     "tov_per_100": 20.542419571704983
+    },
+    "home": {
+     "block_rate": 0.036732796032238064,
+     "efg": 0.5105885249938439,
+     "exp_pps_open": 0.9568998034765205,
+     "fga_per_100": 93.23078941326949,
+     "ft_rate": 0.31181623104794737,
+     "ftm_per_100": 22.95103473156013,
+     "orb_per_100": 10.330917319864879,
+     "ortg": 118.15617723262602,
+     "points": 120.09,
+     "poss": 101.63666666666667,
+     "real_pps_open": 0.9448109412711183,
+     "three_rate": 0.37970943117458755,
+     "tov_per_100": 19.63202256403529
+    },
+    "margin_sd": 17.264309684690232,
+    "mean_margin": -0.5833333333333334,
+    "n": 300
+   },
+   "elite": {
+    "away": {
+     "block_rate": 0.03402018015231763,
+     "efg": 0.5158598546327006,
+     "exp_pps_open": 0.9582441015775425,
+     "fga_per_100": 92.68755314278239,
+     "ft_rate": 0.30752946157645894,
+     "ftm_per_100": 22.866112891621427,
+     "orb_per_100": 10.278631695990581,
+     "ortg": 118.4936882726143,
+     "points": 120.77666666666667,
+     "poss": 101.92666666666666,
+     "real_pps_open": 0.9604194180974106,
+     "three_rate": 0.38088349446051795,
+     "tov_per_100": 20.53764144155929
+    },
+    "home": {
+     "block_rate": 0.03579999213186986,
+     "efg": 0.6018979080678731,
+     "exp_pps_open": 1.1333395925662844,
+     "fga_per_100": 92.68874865121145,
+     "ft_rate": 0.27618442868733906,
+     "ftm_per_100": 23.169734819998038,
+     "orb_per_100": 8.364123859660594,
+     "ortg": 134.7480626491842,
+     "points": 137.36666666666667,
+     "poss": 101.94333333333333,
+     "real_pps_open": 1.1380309274144191,
+     "three_rate": 0.37457226514269587,
+     "tov_per_100": 19.15770199130236
+    },
+    "margin_sd": 18.095539966153723,
+    "mean_margin": 16.59,
+    "n": 300
+   },
+   "strong": {
+    "away": {
+     "block_rate": 0.0374796936644233,
+     "efg": 0.5153675538656527,
+     "exp_pps_open": 0.956884340059063,
+     "fga_per_100": 92.96632081955946,
+     "ft_rate": 0.3073862836220251,
+     "ftm_per_100": 22.79317906588551,
+     "orb_per_100": 10.440873236670702,
+     "ortg": 118.61682977121724,
+     "points": 120.80333333333333,
+     "poss": 101.84333333333333,
+     "real_pps_open": 0.9595740405866988,
+     "three_rate": 0.3721658921278693,
+     "tov_per_100": 20.367885314044447
+    },
+    "home": {
+     "block_rate": 0.03461433633142546,
+     "efg": 0.5613506658211794,
+     "exp_pps_open": 1.0594624370601806,
+     "fga_per_100": 92.87396937573617,
+     "ft_rate": 0.27820052138378076,
+     "ftm_per_100": 22.506870828425598,
+     "orb_per_100": 8.941892422457794,
+     "ortg": 126.77659992147625,
+     "points": 129.16,
+     "poss": 101.88,
+     "real_pps_open": 1.054771315640881,
+     "three_rate": 0.37765095469597687,
+     "tov_per_100": 19.801073157963618
+    },
+    "margin_sd": 18.896634327014134,
+    "mean_margin": 8.356666666666667,
+    "n": 300
+   },
+   "weak": {
+    "away": {
+     "block_rate": 0.03500097333073778,
+     "efg": 0.5132608618674976,
+     "exp_pps_open": 0.9542796808122788,
+     "fga_per_100": 92.8094909461369,
+     "ft_rate": 0.30870011685138626,
+     "ftm_per_100": 22.849912912024713,
+     "orb_per_100": 9.895165795786914,
+     "ortg": 118.1208715370206,
+     "points": 119.81,
+     "poss": 101.43,
+     "real_pps_open": 0.9513435003631082,
+     "three_rate": 0.3799086434616338,
+     "tov_per_100": 19.179072595221662
+    },
+    "home": {
+     "block_rate": 0.035088392069639915,
+     "efg": 0.46337028668267194,
+     "exp_pps_open": 0.8510311509390613,
+     "fga_per_100": 93.01500771731635,
+     "ft_rate": 0.3218471967236266,
+     "ftm_per_100": 21.289941217037207,
+     "orb_per_100": 10.997996781714885,
+     "ortg": 107.49072280056484,
+     "points": 109.10666666666667,
+     "poss": 101.50333333333333,
+     "real_pps_open": 0.8543438518400763,
+     "three_rate": 0.3769241632537777,
+     "tov_per_100": 20.058454566352502
+    },
+    "margin_sd": 17.808293635893985,
+    "mean_margin": -10.703333333333333,
+    "n": 300
+   }
+  },
+  "spacing_role": {
+   "average": {
+    "away": {
+     "block_rate": 0.03609857688302673,
+     "efg": 0.5145057495516405,
+     "exp_pps_open": 0.9565729974289983,
+     "fga_per_100": 93.09870682599444,
+     "ft_rate": 0.3062207687168126,
+     "ftm_per_100": 22.95302013422819,
+     "orb_per_100": 10.240628580782452,
+     "ortg": 118.75266000982157,
+     "points": 120.91,
+     "poss": 101.81666666666666,
+     "real_pps_open": 0.957908214300004,
+     "three_rate": 0.3784506101206175,
+     "tov_per_100": 19.692257325257817
+    },
+    "home": {
+     "block_rate": 0.035426356589147286,
+     "efg": 0.5127811319422377,
+     "exp_pps_open": 0.9565955189390543,
+     "fga_per_100": 92.71031096563011,
+     "ft_rate": 0.3163153620732267,
+     "ftm_per_100": 23.48936170212766,
+     "orb_per_100": 10.297872340425531,
+     "ortg": 118.569558101473,
+     "points": 120.74333333333334,
+     "poss": 101.83333333333333,
+     "real_pps_open": 0.952503415575022,
+     "three_rate": 0.38191575751156304,
+     "tov_per_100": 20.29787234042553
+    },
+    "margin_sd": 18.306252726565557,
+    "mean_margin": -0.16666666666666666,
+    "n": 300
+   },
+   "elite": {
+    "away": {
+     "block_rate": 0.036286594761171034,
+     "efg": 0.51112123016568,
+     "exp_pps_open": 0.9562426591239802,
+     "fga_per_100": 92.68854907308204,
+     "ft_rate": 0.31195488458439874,
+     "ftm_per_100": 23.207038732508682,
+     "orb_per_100": 10.230187331580144,
+     "ortg": 117.95720918152008,
+     "points": 121.10666666666667,
+     "poss": 102.67,
+     "real_pps_open": 0.9487568950355744,
+     "three_rate": 0.37945287050334514,
+     "tov_per_100": 20.06753027499107
+    },
+    "home": {
+     "block_rate": 0.0330172641758906,
+     "efg": 0.5170856177373194,
+     "exp_pps_open": 0.9536703627527413,
+     "fga_per_100": 94.26621160409556,
+     "ft_rate": 0.29712768525223265,
+     "ftm_per_100": 22.389078498293514,
+     "orb_per_100": 10.362424833414595,
+     "ortg": 119.87648301641475,
+     "points": 122.93333333333334,
+     "poss": 102.55,
+     "real_pps_open": 0.9606594522795641,
+     "three_rate": 0.39440019309678975,
+     "tov_per_100": 18.3130180399805
+    },
+    "margin_sd": 17.493140242836777,
+    "mean_margin": 1.8266666666666667,
+    "n": 300
+   },
+   "strong": {
+    "away": {
+     "block_rate": 0.03533541642556803,
+     "efg": 0.5121416289433975,
+     "exp_pps_open": 0.9560705387530073,
+     "fga_per_100": 92.29797570850202,
+     "ft_rate": 0.3115415657788539,
+     "ftm_per_100": 23.01862348178138,
+     "orb_per_100": 10.098785425101214,
+     "ortg": 117.5578947368421,
+     "points": 120.98666666666666,
+     "poss": 102.91666666666667,
+     "real_pps_open": 0.9490142760027193,
+     "three_rate": 0.37751342246552266,
+     "tov_per_100": 20.330364372469635
+    },
+    "home": {
+     "block_rate": 0.033996776490872974,
+     "efg": 0.5113077848427565,
+     "exp_pps_open": 0.9549380684204887,
+     "fga_per_100": 94.34482311358994,
+     "ft_rate": 0.2960989860800825,
+     "ftm_per_100": 22.429391355102304,
+     "orb_per_100": 10.467265475534226,
+     "ortg": 118.90787639028504,
+     "points": 122.23333333333333,
+     "poss": 102.79666666666667,
+     "real_pps_open": 0.9550287133322987,
+     "three_rate": 0.39302285616085236,
+     "tov_per_100": 18.48957488893933
+    },
+    "margin_sd": 17.830287590377097,
+    "mean_margin": 1.2466666666666666,
+    "n": 300
+   },
+   "weak": {
+    "away": {
+     "block_rate": 0.036440778777905546,
+     "efg": 0.5178320291370668,
+     "exp_pps_open": 0.9571539065129853,
+     "fga_per_100": 92.97592704351908,
+     "ft_rate": 0.30164797519022035,
+     "ftm_per_100": 22.534030711459803,
+     "orb_per_100": 10.15892174612754,
+     "ortg": 118.82585663515056,
+     "points": 118.13666666666667,
+     "poss": 99.42,
+     "real_pps_open": 0.9621810699588478,
+     "three_rate": 0.37715913598499873,
+     "tov_per_100": 20.210554549721717
+    },
+    "home": {
+     "block_rate": 0.03797520153865041,
+     "efg": 0.5164796504092138,
+     "exp_pps_open": 0.9616977828263565,
+     "fga_per_100": 90.44716127951767,
+     "ft_rate": 0.33311113579972595,
+     "ftm_per_100": 24.14001004856808,
+     "orb_per_100": 9.871043376318875,
+     "ortg": 117.56824652487022,
+     "points": 117.0,
+     "poss": 99.51666666666667,
+     "real_pps_open": 0.9567825088264069,
+     "three_rate": 0.35544198792726733,
+     "tov_per_100": 22.512142019762184
+    },
+    "margin_sd": 17.591607531875976,
+    "mean_margin": -1.1366666666666667,
+    "n": 300
+   }
+  },
+  "three_point_preference": {
+   "average": {
+    "away": {
+     "block_rate": 0.034349957208433826,
+     "efg": 0.5141517778170883,
+     "exp_pps_open": 0.9573503756951249,
+     "fga_per_100": 92.84869588069114,
+     "ft_rate": 0.31123297364231384,
+     "ftm_per_100": 23.043821036725575,
+     "orb_per_100": 10.34754615334078,
+     "ortg": 118.52046514683661,
+     "points": 120.26666666666667,
+     "poss": 101.47333333333333,
+     "real_pps_open": 0.9531482898924385,
+     "three_rate": 0.3789492304970812,
+     "tov_per_100": 19.926417449576245
+    },
+    "home": {
+     "block_rate": 0.03538037785622842,
+     "efg": 0.5196637168141592,
+     "exp_pps_open": 0.9587936469626525,
+     "fga_per_100": 92.82686557355501,
+     "ft_rate": 0.3054513274336283,
+     "ftm_per_100": 22.971774061052148,
+     "orb_per_100": 10.17973909900437,
+     "ortg": 119.44928202937601,
+     "points": 121.17333333333333,
+     "poss": 101.44333333333333,
+     "real_pps_open": 0.9716871103961392,
+     "three_rate": 0.38141592920353984,
+     "tov_per_100": 19.879735813097625
+    },
+    "margin_sd": 18.736718555345337,
+    "mean_margin": 0.9066666666666666,
+    "n": 300
+   },
+   "elite": {
+    "away": {
+     "block_rate": 0.036971150127620075,
+     "efg": 0.5145562713415708,
+     "exp_pps_open": 0.9562418741903942,
+     "fga_per_100": 93.43793171501875,
+     "ft_rate": 0.31055725701411624,
+     "ftm_per_100": 23.320834155647656,
+     "orb_per_100": 10.44339188211302,
+     "ortg": 119.47898164594434,
+     "points": 121.08,
+     "poss": 101.34,
+     "real_pps_open": 0.9571118785639707,
+     "three_rate": 0.37958953778998133,
+     "tov_per_100": 19.3145187816591
+    },
+    "home": {
+     "block_rate": 0.03013730967462722,
+     "efg": 0.5525751072961373,
+     "exp_pps_open": 1.0258325586316985,
+     "fga_per_100": 92.0069762084965,
+     "ft_rate": 0.33969957081545066,
+     "ftm_per_100": 25.12751324492415,
+     "orb_per_100": 10.095758333607556,
+     "ortg": 126.80904274573037,
+     "points": 128.45333333333335,
+     "poss": 101.29666666666667,
+     "real_pps_open": 1.0289643422173542,
+     "three_rate": 0.6335836909871244,
+     "tov_per_100": 20.263911283688177
+    },
+    "margin_sd": 19.755183848521604,
+    "mean_margin": 7.373333333333333,
+    "n": 300
+   },
+   "strong": {
+    "away": {
+     "block_rate": 0.03422642093851634,
+     "efg": 0.5134635040355268,
+     "exp_pps_open": 0.9553882028790762,
+     "fga_per_100": 92.60117493472585,
+     "ft_rate": 0.3114580763401826,
+     "ftm_per_100": 23.136422976501304,
+     "orb_per_100": 9.93472584856397,
+     "ortg": 118.23107049608355,
+     "points": 120.75333333333333,
+     "poss": 102.13333333333334,
+     "real_pps_open": 0.9512508017960231,
+     "three_rate": 0.37817643534346035,
+     "tov_per_100": 19.72911227154047
+    },
+    "home": {
+     "block_rate": 0.03272642571528398,
+     "efg": 0.5385725854723425,
+     "exp_pps_open": 1.0055371002672646,
+     "fga_per_100": 92.78340411630185,
+     "ft_rate": 0.3360797155029753,
+     "ftm_per_100": 25.00816726559948,
+     "orb_per_100": 10.64031362299902,
+     "ortg": 124.94936295328326,
+     "points": 127.49,
+     "poss": 102.03333333333333,
+     "real_pps_open": 0.998715684700594,
+     "three_rate": 0.550086264568149,
+     "tov_per_100": 19.797451813132962
+    },
+    "margin_sd": 19.2617234142973,
+    "mean_margin": 6.736666666666666,
+    "n": 300
+   },
+   "weak": {
+    "away": {
+     "block_rate": 0.03627527216174183,
+     "efg": 0.5213265126124537,
+     "exp_pps_open": 0.9554398016332802,
+     "fga_per_100": 93.13290619352719,
+     "ft_rate": 0.3068266008114306,
+     "ftm_per_100": 22.871693773615903,
+     "orb_per_100": 10.3663545260391,
+     "ortg": 119.97700016428455,
+     "points": 121.71666666666667,
+     "poss": 101.45,
+     "real_pps_open": 0.968168798160326,
+     "three_rate": 0.3756923619686012,
+     "tov_per_100": 19.77985871529489
+    },
+    "home": {
+     "block_rate": 0.040271025533055164,
+     "efg": 0.4744311230731588,
+     "exp_pps_open": 0.8726201676675818,
+     "fga_per_100": 93.95710860783605,
+     "ft_rate": 0.25491978048865743,
+     "ftm_per_100": 19.225590331373773,
+     "orb_per_100": 9.750730730073236,
+     "ortg": 108.3779434464186,
+     "points": 110.0,
+     "poss": 101.49666666666667,
+     "real_pps_open": 0.8820549639025168,
+     "three_rate": 0.0767241077982453,
+     "tov_per_100": 19.534303261190843
+    },
+    "margin_sd": 16.00509467499507,
+    "mean_margin": -11.716666666666667,
+    "n": 300
+   }
+  }
+ },
+ "stable_offense_ranking_report_only": {
+  "by_season": {
+   "2023-24": {
+    "agg": {
+     "bottom5_overlap": 2,
+     "pearson": 0.7263942052339167,
+     "spearman": 0.6756395995550611,
+     "spread_sd": 4.854946025579297,
+     "top5_overlap": 3
+    },
+    "n_teams": 30,
+    "pred": {
+     "bottom5_overlap": 2,
+     "pearson": 0.6047953737776627,
+     "spearman": 0.6004449388209121,
+     "spread_sd": 1.5770005259117432,
+     "top5_overlap": 3
+    },
+    "real_season_ppg_sd": 5.01627169228228,
+    "sim": {
+     "bottom5_overlap": 2,
+     "pearson": 0.40681773623092776,
+     "spearman": 0.3904338153503893,
+     "spread_sd": 4.278215748803202,
+     "top5_overlap": 2
+    }
+   },
+   "2024-25": {
+    "agg": {
+     "bottom5_overlap": 2,
+     "pearson": 0.6415496337015455,
+     "spearman": 0.5477806241483478,
+     "spread_sd": 5.165470105151641,
+     "top5_overlap": 3
+    },
+    "n_teams": 30,
+    "pred": {
+     "bottom5_overlap": 2,
+     "pearson": 0.625286947613439,
+     "spearman": 0.6214261914079348,
+     "spread_sd": 1.61212678734615,
+     "top5_overlap": 1
+    },
+    "real_season_ppg_sd": 5.015493478193056,
+    "sim": {
+     "bottom5_overlap": 0,
+     "pearson": 0.0021482143969610464,
+     "spearman": 0.07987540376492966,
+     "spread_sd": 3.3359388402834034,
+     "top5_overlap": 1
+    }
+   },
+   "2025-26": {
+    "agg": {
+     "bottom5_overlap": 3,
+     "pearson": 0.3125548011423594,
+     "spearman": 0.34842585597738124,
+     "spread_sd": 4.978942840893957,
+     "top5_overlap": 1
+    },
+    "n_teams": 30,
+    "pred": {
+     "bottom5_overlap": 1,
+     "pearson": 0.32782985839575113,
+     "spearman": 0.34330849027656396,
+     "spread_sd": 2.4749899181224766,
+     "top5_overlap": 1
+    },
+    "real_season_ppg_sd": 5.203602312904771,
+    "sim": {
+     "bottom5_overlap": 0,
+     "pearson": -0.2431133602797825,
+     "spearman": -0.0044498832181019314,
+     "spread_sd": 3.5612276594155667,
+     "top5_overlap": 1
+    }
+   }
+  },
+  "target": "season points per game per team (full season, in-sample; report-only)"
+ },
+ "team_season_efficiency_vs_volume": {
+  "components": {
+   "efficiency_points_per_shooting_attempt": {
+    "corr": 0.3448416668993276,
+    "real_mean": 1.1597171783978304,
+    "real_sd": 0.03423167339419985,
+    "sim_mean": 1.1105485150903338,
+    "sim_sd": 0.032942512146895746
+   },
+   "fga_per_game": {
+    "corr": -0.15833129284451367,
+    "real_mean": 87.87723577235771,
+    "real_sd": 3.2372758691852437,
+    "sim_mean": 97.4357990127321,
+    "sim_sd": 3.438527226943449
+   },
+   "free_throw_pct": {
+    "corr": 0.619755138616823,
+    "real_mean": 0.7828068337584673,
+    "real_sd": 0.021647896451785685,
+    "sim_mean": 0.7947581652380956,
+    "sim_sd": 0.02005989427353619
+   },
+   "free_throw_rate": {
+    "corr": -0.17324842912397526,
+    "real_mean": 0.251259661301338,
+    "real_sd": 0.02283762158738166,
+    "sim_mean": 0.2883244743699116,
+    "sim_sd": 0.01879934814303303
+   },
+   "fta_per_game": {
+    "corr": 0.0016163800798968087,
+    "real_mean": 22.055826558265586,
+    "real_sd": 1.8939713033283383,
+    "sim_mean": 28.049522680343202,
+    "sim_sd": 1.3685483330902521
+   },
+   "points_per_game": {
+    "corr": 0.07857612022435576,
+    "real_mean": 113.16287262872628,
+    "real_sd": 5.081132456108869,
+    "sim_mean": 121.87556618708491,
+    "sim_sd": 4.209757616455705
+   },
+   "shooting_attempt_volume_per_game": {
+    "corr": -0.08485248148275111,
+    "real_mean": 97.58179945799456,
+    "real_sd": 3.4099560704855114,
+    "sim_mean": 109.77758899208311,
+    "sim_sd": 3.3803904994886103
+   },
+   "three_point_attempt_rate": {
+    "corr": 0.5709054550389108,
+    "real_mean": 0.4100881048955112,
+    "real_sd": 0.03758661854325895,
+    "sim_mean": 0.3758448093352245,
+    "sim_sd": 0.05852021936699219
+   }
+  },
+  "family_composites": {
+   "ball_security": {
+    "efficiency_corr_real": 0.14472930528406516,
+    "efficiency_corr_sim": -0.13822665791697927,
+    "points_corr_real": 0.01575155556746976,
+    "points_corr_sim": 0.31667565882710563,
+    "sim_oreb_corr": 0.39804494585811984,
+    "sim_possessions_corr": 0.47787289768681923,
+    "sim_turnovers_corr": -0.0034667962849434858,
+    "volume_corr_real": -0.09976640031321614,
+    "volume_corr_sim": 0.4903589039931882
+   },
+   "finishing_role": {
+    "efficiency_corr_real": 0.34741087871802406,
+    "efficiency_corr_sim": 0.06497620237266025,
+    "points_corr_real": 0.15654060139194326,
+    "points_corr_sim": 0.4936249601972909,
+    "sim_oreb_corr": 0.48969499792150484,
+    "sim_possessions_corr": 0.3810231360278627,
+    "sim_turnovers_corr": -0.12807616480375672,
+    "volume_corr_real": -0.092265914239426,
+    "volume_corr_sim": 0.49723933232482825
+   },
+   "initiation_role": {
+    "efficiency_corr_real": 0.47296069569744015,
+    "efficiency_corr_sim": 0.2382807671159727,
+    "points_corr_real": 0.4789909504940998,
+    "points_corr_sim": 0.3367879158968185,
+    "sim_oreb_corr": 0.09738454408381049,
+    "sim_possessions_corr": 0.12178140586995842,
+    "sim_turnovers_corr": -0.15731530414879946,
+    "volume_corr_real": 0.2214945787601049,
+    "volume_corr_sim": 0.15632947357971413
+   },
+   "offensive_rebounding": {
+    "efficiency_corr_real": -0.07643709530159004,
+    "efficiency_corr_sim": -0.3763343576142759,
+    "points_corr_real": -0.008339515588219456,
+    "points_corr_sim": 0.19728870783264113,
+    "sim_oreb_corr": 0.7669178061678813,
+    "sim_possessions_corr": 0.36679637361984635,
+    "sim_turnovers_corr": 0.017788557313097725,
+    "volume_corr_real": 0.055840059332752254,
+    "volume_corr_sim": 0.5860319477753867
+   },
+   "other_tendencies": {
+    "efficiency_corr_real": 0.08951428618099715,
+    "efficiency_corr_sim": 0.26530638355784975,
+    "points_corr_real": 0.04821756555360954,
+    "points_corr_sim": -0.10561360429702059,
+    "sim_oreb_corr": -0.38104706378961134,
+    "sim_possessions_corr": -0.36407993773450725,
+    "sim_turnovers_corr": -0.20301302277362457,
+    "volume_corr_real": -0.012057046590012974,
+    "volume_corr_sim": -0.3721010681690741
+   },
+   "passing_playmaking": {
+    "efficiency_corr_real": 0.5208206999328036,
+    "efficiency_corr_sim": 0.3321282241741781,
+    "points_corr_real": 0.44390204066609673,
+    "points_corr_sim": 0.35234020358556595,
+    "sim_oreb_corr": 0.01755667373771254,
+    "sim_possessions_corr": 0.074671610217817,
+    "sim_turnovers_corr": -0.1338976106415089,
+    "volume_corr_real": 0.1359627330201572,
+    "volume_corr_sim": 0.08566836417697307
+   },
+   "rim_creation": {
+    "efficiency_corr_real": 0.1904796743811747,
+    "efficiency_corr_sim": 0.04483199609337164,
+    "points_corr_real": 0.060040983479961244,
+    "points_corr_sim": 0.2379122775386787,
+    "sim_oreb_corr": 0.05605208979018789,
+    "sim_possessions_corr": 0.22498739039109936,
+    "sim_turnovers_corr": -0.21135634380233745,
+    "volume_corr_real": -0.07568301364150702,
+    "volume_corr_sim": 0.2252621646734105
+   },
+   "rotation_depth": {
+    "efficiency_corr_real": 0.32795026619094936,
+    "efficiency_corr_sim": 0.0009807482681663533,
+    "points_corr_real": 0.1928636982933076,
+    "points_corr_sim": 0.035922810269049525,
+    "sim_oreb_corr": 0.03874196304060619,
+    "sim_possessions_corr": -0.007764837388493777,
+    "sim_turnovers_corr": -0.1056139374374241,
+    "volume_corr_real": -0.023902017964946874,
+    "volume_corr_sim": 0.040539339508867026
+   },
+   "shooting": {
+    "efficiency_corr_real": 0.6762353580623939,
+    "efficiency_corr_sim": 0.5745130025245256,
+    "points_corr_real": 0.362748779510695,
+    "points_corr_sim": 0.44251040421616405,
+    "sim_oreb_corr": -0.17125957625523644,
+    "sim_possessions_corr": -0.033251851757042206,
+    "sim_turnovers_corr": -0.24012701746615142,
+    "volume_corr_real": -0.1022554705696539,
+    "volume_corr_sim": -0.04916850193867925
+   },
+   "spacing_role": {
+    "efficiency_corr_real": -0.0043189205370057805,
+    "efficiency_corr_sim": -0.13410729693795187,
+    "points_corr_real": 0.11508452728604601,
+    "points_corr_sim": 0.10819525240402947,
+    "sim_oreb_corr": 0.2123666737877488,
+    "sim_possessions_corr": 0.2193669431115164,
+    "sim_turnovers_corr": -0.13359266750620655,
+    "volume_corr_real": 0.1510444450463431,
+    "volume_corr_sim": 0.251394518570971
+   },
+   "three_point_preference": {
+    "efficiency_corr_real": 0.1500480042837491,
+    "efficiency_corr_sim": 0.43494980938691563,
+    "points_corr_real": 0.06346909887845309,
+    "points_corr_sim": 0.3005926580307098,
+    "sim_oreb_corr": -0.16972934623990504,
+    "sim_possessions_corr": -0.10413231147270943,
+    "sim_turnovers_corr": -0.14025224952029638,
+    "volume_corr_real": -0.05022039143057228,
+    "volume_corr_sim": -0.08482875876316878
+   }
+  },
+  "n_team_seasons": 90,
+  "points_variance_shares": {
+   "real_efficiency_share_of_log_points_variance": 0.3983654191522243,
+   "real_volume_share_of_log_points_variance": 0.6016345808477759,
+   "sim_efficiency_share_of_log_points_variance": 0.47311243340869397,
+   "sim_volume_share_of_log_points_variance": 0.5268875665913075
+  },
+  "sim_volume_drivers": {
+   "corr_attempts_with_oreb": 0.8707334418593289,
+   "corr_attempts_with_possessions": 0.8861364312899499,
+   "corr_attempts_with_turnovers": -0.21088921209505623,
+   "oreb_sd": 1.5782950511133156,
+   "possessions_sd": 1.6348719203089501
+  }
+ },
+ "team_shot_conversion": {
+  "efg_on_shooting_composite": {
+   "real_corr": 0.16593489254692617,
+   "real_slope_per_sd": 0.014356100867054326,
+   "sim_corr": 0.43437321891572056,
+   "sim_slope_per_sd": 0.016072405913709828
+  },
+  "free_throw": {
+   "feature": "mw__free_throw_shrunk_rate",
+   "feature_sd": 0.01540680007959689,
+   "real_corr": 0.1294373318906804,
+   "real_sd_of_output": 0.09978614804725901,
+   "real_slope": 0.8383345468336593,
+   "sim_corr": 0.6740008416865845,
+   "sim_sd_of_output": 0.024865421993956315,
+   "sim_slope": 1.0877869035902459
+  },
+  "three_point": {
+   "feature": "mw__three_point_shrunk_rate",
+   "feature_sd": 0.010461800748911622,
+   "real_corr": 0.1163921295892433,
+   "real_sd_of_output": 0.08404272287797071,
+   "real_slope": 0.9350122151067803,
+   "sim_corr": 0.6318764336916447,
+   "sim_sd_of_output": 0.017622794187908925,
+   "sim_slope": 1.0643892586365877
+  },
+  "two_point_midrange": {
+   "feature": "mw__midrange_shrunk_rate",
+   "feature_sd": 0.009396585066885963,
+   "real_corr": 0.06689742519537745,
+   "real_sd_of_output": 0.07426167830126033,
+   "real_slope": 0.5286936726139901,
+   "sim_corr": 0.28437503744233794,
+   "sim_sd_of_output": 0.03780147107175087,
+   "sim_slope": 1.1440107948671048
+  },
+  "two_point_rim": {
+   "feature": "mw__rim_finishing_shrunk_rate",
+   "feature_sd": 0.014845895748624346,
+   "real_corr": 0.14392188297752292,
+   "real_sd_of_output": 0.07426167830126033,
+   "real_slope": 0.719921569917989,
+   "sim_corr": 0.1911582330611613,
+   "sim_sd_of_output": 0.03780147107175087,
+   "sim_slope": 0.48673805471509374
+  }
+ },
+ "turnover_response": {
+  "mean_sim_tov_per_100_poss": 19.379509684472612,
+  "ortg_slope_per_sd_ball_security": -0.4833836534204111,
+  "sd_sim_tov100_across_team_games": 3.1718763039724522,
+  "sim_points_lost_per_turnover_ols_on_points": -0.7586732159195264,
+  "tov100_slope_per_sd_ball_security": -0.8366233567627739
+ },
+ "volume_driver_ablations": {
+  "n_games": 362,
+  "n_sims": 30,
+  "results": {
+   "baseline": {
+    "attempts_pearson_with_real_attempts": -0.09875484921434488,
+    "attempts_sd": 3.4491042890478214,
+    "mean_sim_ortg": 117.46483831433228,
+    "mean_sim_points": 121.68293433362709,
+    "n_team_seasons": 83,
+    "pearson_ortg_with_real_season_ppg": 0.13375901568647489,
+    "pearson_with_real_season_ppg": 0.07231869339335148,
+    "per_season": {
+     "2023-24": {
+      "pearson": 0.32856887068694424
+     },
+     "2024-25": {
+      "pearson": 0.021087330174693265
+     },
+     "2025-26": {
+      "pearson": -0.14154209761543068
+     }
+    },
+    "spearman_with_real_season_ppg": 0.12280259858153511,
+    "team_season_sim_points_sd": 4.575061709404924,
+    "ts_pearson_with_real_ts": 0.3440802210205336
+   },
+   "finishing_role_to_median": {
+    "attempts_pearson_with_real_attempts": -0.03975452528394118,
+    "attempts_sd": 3.089903367483355,
+    "mean_sim_ortg": 116.87494850000735,
+    "mean_sim_points": 118.40938745770069,
+    "n_team_seasons": 83,
+    "pearson_ortg_with_real_season_ppg": 0.17418594992130995,
+    "pearson_with_real_season_ppg": 0.10621057929145179,
+    "per_season": {
+     "2023-24": {
+      "pearson": 0.4399487874090364
+     },
+     "2024-25": {
+      "pearson": -0.12361854494849796
+     },
+     "2025-26": {
+      "pearson": 0.007733529236639248
+     }
+    },
+    "spearman_with_real_season_ppg": 0.14620656361331216,
+    "team_season_sim_points_sd": 4.110615061404838,
+    "ts_pearson_with_real_ts": 0.3770772916153222
+   },
+   "oreb_and_ball_security_to_median": {
+    "attempts_pearson_with_real_attempts": -0.10870360729444847,
+    "attempts_sd": 2.6264477972718216,
+    "mean_sim_ortg": 117.7260772940282,
+    "mean_sim_points": 121.99574299027611,
+    "n_team_seasons": 83,
+    "pearson_ortg_with_real_season_ppg": 0.1686189153564029,
+    "pearson_with_real_season_ppg": 0.11763152747223889,
+    "per_season": {
+     "2023-24": {
+      "pearson": 0.4362424529973678
+     },
+     "2024-25": {
+      "pearson": -0.015415197746392908
+     },
+     "2025-26": {
+      "pearson": -0.11324662261164331
+     }
+    },
+    "spearman_with_real_season_ppg": 0.16028126886060162,
+    "team_season_sim_points_sd": 4.201735125889822,
+    "ts_pearson_with_real_ts": 0.32468814296551046
+   },
+   "volume_drivers_to_median": {
+    "attempts_pearson_with_real_attempts": -0.010051857868984913,
+    "attempts_sd": 1.4643820893231183,
+    "mean_sim_ortg": 117.02638916744718,
+    "mean_sim_points": 118.79720170837642,
+    "n_team_seasons": 83,
+    "pearson_ortg_with_real_season_ppg": 0.18847409764059544,
+    "pearson_with_real_season_ppg": 0.18699978791409141,
+    "per_season": {
+     "2023-24": {
+      "pearson": 0.5027744420553735
+     },
+     "2024-25": {
+      "pearson": 0.014732879532709013
+     },
+     "2025-26": {
+      "pearson": 0.009267528440236775
+     }
+    },
+    "spearman_with_real_season_ppg": 0.21562083478827782,
+    "team_season_sim_points_sd": 3.7695796310940497,
+    "ts_pearson_with_real_ts": 0.3979469108167309
+   }
+  }
+ }
+}
