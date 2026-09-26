@@ -1,0 +1,113 @@
+{
+ "config": "center50_mid0.5_drive0.75",
+ "n_sims": 30,
+ "settings": {
+  "TEAM_STYLE_CENTERING": 0.5,
+  "MIDRANGE_PREFERENCE_WEIGHT": 0.5,
+  "TENDENCY_DRIVE_WEIGHT": 0.75
+ },
+ "n_team_rows": 1958,
+ "team_game_three_point_attempt_rate": {
+  "sim": {
+   "mean": 0.41456308103444095,
+   "sd": 0.0462089283567948,
+   "p10": 0.35873624498500933,
+   "p50": 0.41221107620332287,
+   "p90": 0.4752300048422072
+  },
+  "real": {
+   "mean": 0.40410720358399543,
+   "sd": 0.07413000544996037,
+   "p10": 0.30908743795341737,
+   "p50": 0.40229885057471265,
+   "p90": 0.5
+  }
+ },
+ "ortg": {
+  "mean": 117.82399675874544,
+  "sd": 6.247913913475981,
+  "p10": 109.78070412184073,
+  "p50": 117.94186104144373,
+  "p90": 125.7401070650068
+ },
+ "team_season_three_point_attempt_rate": {
+  "sim": {
+   "mean": 0.4151772119143017,
+   "sd": 0.031589638604501605,
+   "p10": 0.3808191337305387,
+   "p50": 0.4114293823581744,
+   "p90": 0.4624977761074086
+  },
+  "real": {
+   "mean": 0.4100881048955112,
+   "sd": 0.03758661854325895,
+   "p10": 0.35888119183055167,
+   "p50": 0.4083161216522505,
+   "p90": 0.4575728047750119
+  },
+  "corr": 0.5362754129060362,
+  "mae_of_centered": 0.02740440070671121,
+  "sd_ratio_sim_over_real": 0.8404490701429995
+ },
+ "team_season_offense_spread_sd_points": 3.892934035246548,
+ "team_season_ortg_spread_sd": 3.241442960896915,
+ "stable_ranking": {
+  "by_season": {
+   "2023-24": {
+    "n_teams": 30,
+    "sim_pearson": 0.4969054280003157,
+    "sim_spearman": 0.4981090100111235,
+    "sim_ortg_pearson": 0.5406255284815905
+   },
+   "2024-25": {
+    "n_teams": 30,
+    "sim_pearson": 0.1382545932224359,
+    "sim_spearman": 0.1702080330923989,
+    "sim_ortg_pearson": 0.11069488324053778
+   },
+   "2025-26": {
+    "n_teams": 30,
+    "sim_pearson": -0.2502389184085527,
+    "sim_spearman": -0.031149182526713518,
+    "sim_ortg_pearson": -0.2442411514353021
+   }
+  },
+  "pooled_within_season_z_pearson": 0.12830703427139958
+ },
+ "transfer_points_on_predicted_offense": {
+  "slope": -0.14009239065996074,
+  "corr": -0.0599835560791377,
+  "n": 1448
+ },
+ "transfer_ortg_on_predicted_offense": {
+  "slope": -0.01824325016177369,
+  "corr": -0.00847886580146942,
+  "n": 1448
+ },
+ "game_margin": {
+  "n": 979,
+  "margin_r": 0.17225755415219607,
+  "margin_mae": 13.833299284984678,
+  "winner_accuracy": 0.5842696629213483,
+  "brier_win_frac": 0.25282374304846217,
+  "mean_sim_margin": -0.7624106230847805,
+  "sd_sim_margin": 9.028500067024515
+ },
+ "incremental_information": {
+  "n": 724,
+  "r2_player_input_offense_diff": 0.02877762076516921,
+  "r2_sim_margin_only": 0.0327979847987373,
+  "r2_player_input_plus_sim": 0.049385398671720315
+ },
+ "volume_side_effects": {
+  "sd_team_season_fga": 2.6847853486343007,
+  "sd_team_season_oreb": 1.55428045693505,
+  "sd_team_season_tov": 1.4774119476361314,
+  "sd_team_season_poss": 1.0696446512531081,
+  "corr_points_fga": 0.5529390569897011,
+  "corr_points_oreb": 0.3430631110611077,
+  "corr_points_tov": -0.39782825438014574,
+  "mean_oreb": 11.663584636644362,
+  "mean_tov": 20.882283019751974
+ }
+}
